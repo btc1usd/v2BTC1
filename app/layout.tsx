@@ -6,6 +6,7 @@ import "./globals.css";
 import { Web3Provider } from "@/lib/web3-provider";
 import { WagmiProviderComponent } from "@/lib/wagmi-provider";
 import { ThemeProvider } from "@/components/theme-provider";
+import "@/lib/bigint-serializer"; // Global BigInt JSON serialization
 
 export const metadata: Metadata = {
   title: "BTC1USD Protocol",
