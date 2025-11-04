@@ -17,11 +17,11 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run build
-      - uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BTC1USD }}
-          channelId: live
-          projectId: btc1usd
+      - name: Deploy to Firebase with --force
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > $HOME/firebase-service-account.json
+          export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-service-account.json
+          npx firebase-tools deploy --force --non-interactive --project btc1usd
         env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BTC1USD }}
           FIREBASE_CLI_EXPERIMENTS: webframeworks
