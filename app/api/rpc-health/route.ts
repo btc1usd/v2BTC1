@@ -1,13 +1,18 @@
 import { NextRequest } from "next/server";
 import { executeWithProviderFallback } from "@/lib/rpc-provider";
 import { jsonResponse } from "@/lib/json-response";
+import { apiCache } from "@/lib/api-cache";
 
 export async function GET(request: NextRequest) {
   try {
     console.log("Testing RPC provider health...");
-    
-    // Test the robust RPC provider mechanism
-    const result = await executeWithProviderFallback(async (provider) => {
+
+    // Use cache to speed up repeated requests
+    const result = await apiCache.getOrSet(
+      'rpc-health',
+      async () => {
+        // Test the robust RPC provider mechanism
+        return await executeWithProviderFallback(async (provider) => {
       try {
         // Test network detection
         const network = await provider.getNetwork();
@@ -35,13 +40,16 @@ export async function GET(request: NextRequest) {
         console.error("Provider test failed:", error);
         throw error;
       }
-    }, 84532, { // Base Sepolia chain ID
-      timeout: 15000, // Increased timeout
-      maxRetries: 3,
-      retryDelay: 2000,
-      backoffMultiplier: 2
-    });
-    
+        }, 84532, { // Base Sepolia chain ID
+          timeout: 15000, // Increased timeout
+          maxRetries: 3,
+          retryDelay: 2000,
+          backoffMultiplier: 2
+        });
+      },
+      30 // Cache for 30 seconds
+    );
+
     return jsonResponse(result);
   } catch (error) {
     console.error("RPC health check failed:", error);
