@@ -21,6 +21,7 @@ yarn-error.log*
 # env files (IMPORTANT: Never commit these!)
 .env*
 !.env.example
+!.env.production
 
 # vercel
 .vercel
