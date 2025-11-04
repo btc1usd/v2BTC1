@@ -43,7 +43,16 @@
       "Bash(netstat -ano)",
       "Bash(curl \"http://localhost:3000/api/distribution-analytics\")",
       "Bash(curl -s \"http://localhost:3000/api/merkle-distributions/latest\")",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(git restore:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(firebase --version:*)",
+      "Bash(npx firebase:*)",
+      "Bash(firebase login:list:*)",
+      "Bash(where:*)",
+      "Bash(firebase.cmd:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
