@@ -89,11 +89,11 @@ export function ProtocolStats({
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Weekly Rewards</CardTitle>
+          <CardTitle className="text-sm font-medium text-muted-foreground">Distribution Rewards</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{weeklyRewards}¢</div>
-          <div className="text-sm text-muted-foreground">Per token (Friday)</div>
+          <div className="text-sm text-muted-foreground">Per token (7-hour cycle)</div>
         </CardContent>
       </Card>
     </div>

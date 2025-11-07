@@ -1448,7 +1448,7 @@ This action cannot be undone. Continue?`;
                   <h3 className="text-base sm:text-lg font-semibold">Execute Distribution</h3>
                 </div>
                 <p className="text-sm text-muted-foreground ml-4 sm:ml-10">
-                  Trigger the weekly reward minting based on collateral ratio
+                  Trigger the reward distribution based on collateral ratio (7-hour cycle)
                 </p>
 
                 {/* Execution Requirements Alert */}
@@ -1464,8 +1464,8 @@ This action cannot be undone. Continue?`;
                             <div className="font-semibold text-[10px] sm:text-sm">Time Window:</div>
                             <div className="text-[9px] sm:text-xs text-gray-400 mt-0.5 sm:mt-1 break-words leading-tight">
                               {finalCanDistribute
-                                ? 'Ready (7d + Fri 14:00+) ✓'
-                                : 'Need: 7d passed & Fri 14:00+ UTC'}
+                                ? 'Ready (7 hours passed) ✓'
+                                : 'Need: 7 hours since last distribution'}
                             </div>
                           </div>
                         </div>

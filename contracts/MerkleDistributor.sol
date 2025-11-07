@@ -22,6 +22,13 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
     bytes32 public override merkleRoot;
     address public admin;
     address public weeklyDistribution;
+
+    // ============================================
+    // CONFIGURATION: TESTNET vs MAINNET
+    // ============================================
+    // TESTNET (current): 10 hours - for rapid testing
+    // MAINNET: Change to "365 days" for full claim window
+    uint256 public constant CLAIM_PERIOD = 10 hours;
     
     // Current distribution information
     uint256 public currentDistributionId;
@@ -133,6 +140,12 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
     ) external override whenNotPaused nonReentrant {
         require(distributionId > 0 && distributionId <= currentDistributionId, "MerkleDistributor: Invalid distributionId");
         require(!isClaimed(distributionId, index), "MerkleDistributor: Drop already claimed");
+
+        // Check if claim period has expired (10 hours for testing)
+        require(
+            block.timestamp <= distributions[distributionId].timestamp + CLAIM_PERIOD,
+            "MerkleDistributor: Claim period expired"
+        );
 
         // Get the merkle root for this distribution (authoritative)
         bytes32 root = distributions[distributionId].merkleRoot;

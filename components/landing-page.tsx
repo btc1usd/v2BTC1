@@ -36,7 +36,7 @@ export function LandingPage() {
     {
       icon: <TrendingUp className="h-8 w-8 text-orange-500" />,
       title: "Yield Generation",
-      description: "Earn weekly rewards from protocol fees and donations"
+      description: "Earn rewards from protocol fees and donations (7-hour distribution cycle)"
     },
     {
       icon: <Users className="h-8 w-8 text-orange-500" />,
@@ -47,7 +47,7 @@ export function LandingPage() {
 
   const stats = [
     { value: "$1.2M", label: "Total Value Locked" },
-    { value: "4.8%", label: "Avg. Weekly Yield" },
+    { value: "4.8%", label: "Avg. Per-Dist Yield" },
     { value: "1,250+", label: "Holders" },
     { value: "99.9%", label: "Uptime" }
   ]
@@ -240,7 +240,7 @@ export function LandingPage() {
             {
               step: 3,
               title: "Earn Rewards",
-              description: "Earn weekly yield from protocol fees and donations"
+              description: "Earn yield from protocol fees and donations (7-hour cycle)"
             }
           ].map((item, index) => (
             <motion.div

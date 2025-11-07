@@ -132,8 +132,9 @@ export function AnalyticsDashboard({
   };
 
   // Current reward projection for next 6 weeks (based on current tier)
+  // Note: weeklyRewardGrowth represents per-distribution rewards (testnet: 7-hour cycle, mainnet: weekly)
   const weeklyRewardGrowth = Array.from({ length: 6 }, (_, i) => ({
-    week: `Week ${i + 1}`,
+    week: `Dist ${i + 1}`, // Distribution cycle (7 hours in testnet, 7 days in mainnet)
     earned: userBalance * weeklyReward,
     currentBalance: userBalance + (userBalance * weeklyReward * i),
   }));
@@ -146,7 +147,7 @@ export function AnalyticsDashboard({
 
   // Fee allocation data
   const feeAllocationData = [
-    { name: "Holders (Weekly)", value: 98.9, amount: merkleDistributorBalance, color: CHART_COLORS.primary },
+    { name: "Holders (Per Dist)", value: 98.9, amount: merkleDistributorBalance, color: CHART_COLORS.primary },
     { name: "Development", value: 1.0, amount: devWalletBalance, color: CHART_COLORS.secondary },
     { name: "Endowment", value: 0.1, amount: endowmentWalletBalance, color: CHART_COLORS.success },
   ];
@@ -289,8 +290,8 @@ export function AnalyticsDashboard({
           {/* Weekly Reward Projection Chart */}
           <Card className="bg-gray-800/30 border-gray-700">
             <CardHeader>
-              <CardTitle className="text-white">Weekly Reward Projection</CardTitle>
-              <CardDescription className="text-gray-400">Estimated earnings based on current tier and balance</CardDescription>
+              <CardTitle className="text-white">Distribution Reward Projection</CardTitle>
+              <CardDescription className="text-gray-400">Estimated earnings based on current tier and balance (7-hour cycle)</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>

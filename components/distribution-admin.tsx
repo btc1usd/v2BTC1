@@ -156,16 +156,16 @@ export default function DistributionAdmin({ collateralRatio, totalSupply }: Dist
         <CardHeader>
           <CardTitle className="text-white text-sm flex items-center gap-2">
             <AlertCircle className="h-4 w-4" />
-            Weekly Distribution Schedule
+            Distribution Schedule (Testing Mode: 7 Hours)
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-gray-300">
           <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
             <div className="font-semibold text-blue-400 mb-2">When do distributions happen?</div>
             <div className="space-y-1 text-xs">
-              <div>• Distributions occur <strong>weekly</strong>, at least 7 days apart</div>
-              <div>• Each week becomes available starting <strong>Friday at 14:00 UTC</strong></div>
-              <div>• Once available, admin can execute <strong>anytime</strong> (no deadline)</div>
+              <div>• Distributions occur every <strong>7 hours</strong> (testing mode)</div>
+              <div>• Once 7 hours pass, admin can execute <strong>immediately</strong></div>
+              <div>• No day/time restrictions during testing</div>
               <div>• Requires collateral ratio <strong>≥ 112%</strong> to proceed</div>
             </div>
           </div>
@@ -173,7 +173,7 @@ export default function DistributionAdmin({ collateralRatio, totalSupply }: Dist
           <div className="p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
             <div className="font-semibold text-purple-400 mb-2">How do rewards work?</div>
             <div className="space-y-1 text-xs">
-              <div>• Higher collateral ratio = higher rewards (1¢-10¢ per BTC1 weekly)</div>
+              <div>• Higher collateral ratio = higher rewards (1¢-10¢ per BTC1 per distribution)</div>
               <div>• Rewards are distributed proportionally to all BTC1 holders</div>
               <div>• After distribution, claim your rewards via Merkle Claim tab</div>
             </div>
@@ -184,10 +184,10 @@ export default function DistributionAdmin({ collateralRatio, totalSupply }: Dist
       {/* Admin Instructions */}
       <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-xl">
         <CardHeader>
-          <CardTitle className="text-white text-sm">Admin Instructions</CardTitle>
+          <CardTitle className="text-white text-sm">Admin Instructions (Testing Mode)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-gray-400">
-          <div>• <strong>Distribution Window:</strong> Opens Friday 14:00 UTC (after 7 days). No closing time - execute when ready.</div>
+          <div>• <strong>Distribution Window:</strong> Opens immediately after 7 hours from last distribution. Execute anytime once available.</div>
           <div>• <strong>Requirements Check:</strong> Verify collateral ratio ≥ 112% and admin wallet connected</div>
           <div>• <strong>Execute Distribution:</strong> Mints new BTC1 tokens based on reward tier</div>
           <div>• <strong>Generate Merkle Tree:</strong> Create distribution data after execution</div>

@@ -236,7 +236,7 @@ function Dashboard() {
 
     if (!canExecuteDistribution) {
       setTransactionStatus(
-        "Distribution cannot be executed at this time. Check: Friday 14:00 UTC, ratio ≥ 112%, 7 days since last distribution"
+        "Distribution cannot be executed at this time. Check: ratio ≥ 112%, 7 hours since last distribution"
       );
       setTimeout(() => setTransactionStatus(""), 8000);
       return;
@@ -244,7 +244,7 @@ function Dashboard() {
 
     try {
       setPendingTransactionType("mint");
-      setTransactionStatus("Executing weekly distribution...");
+      setTransactionStatus("Executing distribution (7-hour interval)...");
 
       writeContract({
         address: protocolState?.contractAddresses?.weeklyDistribution as any,
@@ -1193,25 +1193,27 @@ function Dashboard() {
   const isHealthy = healthMetrics.isHealthy;
   const protocolCanDistribute = healthMetrics.canDistribute;
 
-  // weeklyReward is in DOLLARS (not cents), matching contract's getRewardPerToken() which returns cents with 8 decimals
+  // TESTNET: Per-distribution reward (7-hour cycle)
+  // MAINNET: weeklyReward (7-day cycle)
+  // Reward is in DOLLARS (not cents), matching contract's getRewardPerToken() which returns cents with 8 decimals
   // Contract: 0.01e8 = 1 cent = $0.01, so we divide by 100 to get dollar amount
   let weeklyReward = 0;
   if (collateralRatio > 0) {
-    if (collateralRatio >= 2.02) weeklyReward = 0.1;  // 10¢ per token
-    else if (collateralRatio >= 1.92) weeklyReward = 0.09;  // 9¢ per token
-    else if (collateralRatio >= 1.82) weeklyReward = 0.08;  // 8¢ per token
-    else if (collateralRatio >= 1.72) weeklyReward = 0.07;  // 7¢ per token
-    else if (collateralRatio >= 1.62) weeklyReward = 0.06;  // 6¢ per token
-    else if (collateralRatio >= 1.52) weeklyReward = 0.05;  // 5¢ per token
-    else if (collateralRatio >= 1.42) weeklyReward = 0.04;  // 4¢ per token
-    else if (collateralRatio >= 1.32) weeklyReward = 0.03;  // 3¢ per token
-    else if (collateralRatio >= 1.22) weeklyReward = 0.02;  // 2¢ per token
-    else if (collateralRatio >= 1.12) weeklyReward = 0.01;  // 1¢ per token
+    if (collateralRatio >= 2.02) weeklyReward = 0.1;  // 10¢ per token per distribution
+    else if (collateralRatio >= 1.92) weeklyReward = 0.09;  // 9¢ per token per distribution
+    else if (collateralRatio >= 1.82) weeklyReward = 0.08;  // 8¢ per token per distribution
+    else if (collateralRatio >= 1.72) weeklyReward = 0.07;  // 7¢ per token per distribution
+    else if (collateralRatio >= 1.62) weeklyReward = 0.06;  // 6¢ per token per distribution
+    else if (collateralRatio >= 1.52) weeklyReward = 0.05;  // 5¢ per token per distribution
+    else if (collateralRatio >= 1.42) weeklyReward = 0.04;  // 4¢ per token per distribution
+    else if (collateralRatio >= 1.32) weeklyReward = 0.03;  // 3¢ per token per distribution
+    else if (collateralRatio >= 1.22) weeklyReward = 0.02;  // 2¢ per token per distribution
+    else if (collateralRatio >= 1.12) weeklyReward = 0.01;  // 1¢ per token per distribution
   }
 
   const protocolStats = {
     totalCollateralValue: totalCollateralUSD,
-    weeklyRewards: weeklyReward,
+    weeklyRewards: weeklyReward, // Note: variable name kept for compatibility, but represents per-distribution reward in testnet
     endowmentBalance: protocolState.endowmentWallet,
     nextDistribution: "2024-01-05T14:00:00Z",
     totalUsers: 3353,
@@ -3017,7 +3019,7 @@ function Dashboard() {
                         : "Loading..."}
                     </div>
                     <p className="text-xs text-gray-400 mt-1">
-                      Until next distribution
+                      Until next distribution (7-hour cycle)
                     </p>
                   </CardContent>
                 </Card>
@@ -4188,7 +4190,7 @@ function Dashboard() {
                   Claim Your Rewards
                 </h2>
                 <p className="text-muted-foreground">
-                  Claim your weekly BTC1 rewards from multiple distributions
+                  Claim your BTC1 rewards from multiple distributions (7-hour cycle, 10-hour claim window)
                 </p>
               </div>
               <EnhancedMerkleClaim isAdmin={!!isAdminUser} />
@@ -4201,7 +4203,7 @@ function Dashboard() {
                   Distribution Administration
                 </h2>
                 <p className="text-muted-foreground">
-                  Manage weekly distributions and merkle tree operations
+                  Manage distributions (7-hour cycle) and merkle tree operations
                 </p>
               </div>
               <DistributionAdmin

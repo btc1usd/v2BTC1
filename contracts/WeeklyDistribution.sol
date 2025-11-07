@@ -57,7 +57,14 @@ contract WeeklyDistribution {
     IMerkleDistributor public merklDistributor;
 
     uint256 public lastDistributionTime;
-    uint256 public constant DISTRIBUTION_INTERVAL = 7 days; // Changed from 2 minutes to 7 days for weekly distribution
+
+    // ============================================
+    // CONFIGURATION: TESTNET vs MAINNET
+    // ============================================
+    // TESTNET (current): 7 hours - for rapid testing
+    // MAINNET: Change to "7 days" for weekly distributions
+    uint256 public constant DISTRIBUTION_INTERVAL = 7 hours;
+
     uint256 public constant FRIDAY_14_UTC = 14 * 3600; // 14:00 UTC in seconds
 
     // Protocol wallets excluded from receiving holder rewards
@@ -124,11 +131,15 @@ contract WeeklyDistribution {
     }
 
     function canDistribute() public view returns (bool) {
-        // Check if 7 days have passed since last distribution
+        // TESTNET MODE: Simple 7-hour interval check
+        // MAINNET MODE: Uncomment the code below for Friday 14:00 UTC restriction
+
         bool intervalPassed = block.timestamp >= lastDistributionTime.add(DISTRIBUTION_INTERVAL);
+
+        /* MAINNET: Uncomment this block for Friday 14:00 UTC check
         if (!intervalPassed) return false;
 
-        // Once 7 days passed, check if we've reached Friday 14:00 UTC
+        // Once interval passed, check if we've reached Friday 14:00 UTC
         uint256 dayOfWeek = (block.timestamp / 86400 + 4) % 7; // 0 = Thursday, 1 = Friday, etc.
         uint256 timeOfDay = block.timestamp % 86400;
 
@@ -140,6 +151,9 @@ contract WeeklyDistribution {
 
         // If it's Friday 14:00+ or any day after Friday (Sat, Sun, Mon, etc.), allowed
         return true;
+        */
+
+        return intervalPassed;
     }
 
     function getRewardPerToken(uint256 collateralRatio) public pure returns (uint256) {

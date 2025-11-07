@@ -438,7 +438,7 @@ export default function MerkleClaim() {
             Merkle Rewards
           </CardTitle>
           <CardDescription className="text-gray-400">
-            Claim your weekly BTC1USD rewards
+            Claim your BTC1USD rewards (7-hour distribution cycle)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -757,13 +757,13 @@ export default function MerkleClaim() {
             • If the vault collateral ratio {'>'} 1.12% then
           </div>
           <div>
-            • weekly rewards are distributed based on your BTC1USD balance.
+            • rewards are distributed every 7 hours based on your BTC1USD balance.
           </div>
           <div>
-            • You can claim your rewards within 365 days.
+            • You can claim your rewards within 10 hours.
           </div>
           <div>
-            • After 365 days, all unclaimed rewards are donated to the endowment fund.
+            • After 10 hours, unclaimed rewards expire.
           </div>
           <div>• The system is fully decentralized, permissionless and automated.</div>
         </CardContent>
