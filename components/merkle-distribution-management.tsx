@@ -29,7 +29,11 @@ import {
   Terminal,
   Shield,
   History,
-  Calendar
+  Calendar,
+  ListOrdered,
+  Sliders,
+  Wallet,
+  Sparkles
 } from 'lucide-react';
 
 interface DistributionHistory {
@@ -965,7 +969,7 @@ Please try the manual process or check the console for more details.`);
           setCurrentDistId(maxDistId);
 
           const now = Date.now();
-          const FOUR_MINUTES_MS = 365 * 24 * 60 * 60 * 1000; // 365 days expiration period
+          const TEN_HOURS_MS = 10 * 60 * 60 * 1000; // 10 hours expiration period (matching testnet CLAIM_PERIOD)
           const reclaimedDistIds = getReclaimedDistributions();
 
           // Debug logging
@@ -996,7 +1000,7 @@ Please try the manual process or check the console for more details.`);
             const isNotReclaimed = !reclaimedDistIds.has(dist.distributionId);
 
             // Check if distribution is eligible based on expiration period
-            const isExpired = ageMs > FOUR_MINUTES_MS;
+            const isExpired = ageMs > TEN_HOURS_MS;
 
             // Base criteria for all distributions
             const baseCheck = hasUnclaimedRewards && isNotFinalized && isNotReclaimedInFile && isNotReclaimed;
@@ -1013,7 +1017,7 @@ Please try the manual process or check the console for more details.`);
               activeHolders: dist.activeHolders || 0,
               percentageClaimed: dist.percentageClaimed || 0,
               ageMs: ageMs,
-              timeUntilEligible: Math.max(0, FOUR_MINUTES_MS - ageMs),
+              timeUntilEligible: Math.max(0, TEN_HOURS_MS - ageMs),
             };
 
             // Only include if has actual unclaimed rewards
@@ -1240,12 +1244,12 @@ This action cannot be undone. Continue?`;
     const interval = setInterval(() => {
       // Recalculate time until eligible for each pending distribution
       const now = Date.now();
-      const FOUR_MINUTES_MS = 365 * 24 * 60 * 60 * 1000; // 365 days expiration period
+      const TEN_HOURS_MS = 10 * 60 * 60 * 1000; // 10 hours expiration period (matching testnet CLAIM_PERIOD)
 
       const updatedPending = pendingDistributions.map(dist => {
         const distTime = new Date(dist.date).getTime();
         const ageMs = now - distTime;
-        const timeUntilEligible = Math.max(0, FOUR_MINUTES_MS - ageMs);
+        const timeUntilEligible = Math.max(0, TEN_HOURS_MS - ageMs);
 
         return {
           ...dist,
@@ -1420,11 +1424,69 @@ This action cannot be undone. Continue?`;
 
       {/* Advanced Options */}
       <Tabs defaultValue="manual" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
-          <TabsTrigger value="manual">Manual Steps</TabsTrigger>
-          <TabsTrigger value="control">Control</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
-          <TabsTrigger value="reclaim">Reclaim Rewards</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 gap-2 p-2 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border-2 border-gray-700/30 rounded-2xl shadow-2xl backdrop-blur-md">
+          <TabsTrigger
+            value="manual"
+            className="group relative overflow-hidden rounded-xl py-4 px-4 font-semibold text-sm
+              bg-gradient-to-br from-gray-800/50 to-gray-900/50 text-gray-400 border border-gray-700/50
+              hover:text-white hover:border-blue-500/50 hover:shadow-md hover:shadow-blue-500/20
+              data-[state=active]:bg-gradient-to-br data-[state=active]:from-blue-500 data-[state=active]:to-blue-600
+              data-[state=active]:text-white data-[state=active]:border-blue-400/50
+              data-[state=active]:shadow-xl data-[state=active]:shadow-blue-500/50
+              transition-all duration-300 ease-in-out
+              flex items-center justify-center gap-2.5"
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+            <ListOrdered className="h-5 w-5 group-data-[state=active]:drop-shadow-lg relative z-10" />
+            <span className="hidden sm:inline relative z-10 font-bold tracking-wide">Manual Steps</span>
+            <span className="sm:hidden relative z-10 font-bold">Manual</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="control"
+            className="group relative overflow-hidden rounded-xl py-4 px-4 font-semibold text-sm
+              bg-gradient-to-br from-gray-800/50 to-gray-900/50 text-gray-400 border border-gray-700/50
+              hover:text-white hover:border-purple-500/50 hover:shadow-md hover:shadow-purple-500/20
+              data-[state=active]:bg-gradient-to-br data-[state=active]:from-purple-500 data-[state=active]:to-purple-600
+              data-[state=active]:text-white data-[state=active]:border-purple-400/50
+              data-[state=active]:shadow-xl data-[state=active]:shadow-purple-500/50
+              transition-all duration-300 ease-in-out
+              flex items-center justify-center gap-2.5"
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+            <Sliders className="h-5 w-5 group-data-[state=active]:drop-shadow-lg relative z-10" />
+            <span className="relative z-10 font-bold tracking-wide">Control</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="history"
+            className="group relative overflow-hidden rounded-xl py-4 px-4 font-semibold text-sm
+              bg-gradient-to-br from-gray-800/50 to-gray-900/50 text-gray-400 border border-gray-700/50
+              hover:text-white hover:border-green-500/50 hover:shadow-md hover:shadow-green-500/20
+              data-[state=active]:bg-gradient-to-br data-[state=active]:from-green-500 data-[state=active]:to-green-600
+              data-[state=active]:text-white data-[state=active]:border-green-400/50
+              data-[state=active]:shadow-xl data-[state=active]:shadow-green-500/50
+              transition-all duration-300 ease-in-out
+              flex items-center justify-center gap-2.5"
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+            <History className="h-5 w-5 group-data-[state=active]:drop-shadow-lg relative z-10" />
+            <span className="relative z-10 font-bold tracking-wide">History</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="reclaim"
+            className="group relative overflow-hidden rounded-xl py-4 px-4 font-semibold text-sm
+              bg-gradient-to-br from-gray-800/50 to-gray-900/50 text-gray-400 border border-gray-700/50
+              hover:text-white hover:border-amber-500/50 hover:shadow-md hover:shadow-amber-500/20
+              data-[state=active]:bg-gradient-to-br data-[state=active]:from-amber-500 data-[state=active]:to-amber-600
+              data-[state=active]:text-white data-[state=active]:border-amber-400/50
+              data-[state=active]:shadow-xl data-[state=active]:shadow-amber-500/50
+              transition-all duration-300 ease-in-out
+              flex items-center justify-center gap-2.5"
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+            <Wallet className="h-5 w-5 group-data-[state=active]:drop-shadow-lg relative z-10" />
+            <span className="hidden sm:inline relative z-10 font-bold tracking-wide">Reclaim Rewards</span>
+            <span className="sm:hidden relative z-10 font-bold">Reclaim</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* Manual Steps */}
@@ -1924,7 +1986,7 @@ This action cannot be undone. Continue?`;
                         <Alert className="mt-3 bg-blue-500/10 border-blue-500/30">
                           <AlertCircle className="h-4 w-4 text-blue-400" />
                           <AlertDescription className="text-xs text-blue-400">
-                            Distributions must be 4 minutes old before they can be reclaimed.
+                            Distributions must be 10 hours old before they can be reclaimed.
                             {unclaimedDistributions.length > 0 && ` ${unclaimedDistributions.length} distribution(s) ready to reclaim now.`}
                             {pendingDistributions.length > 0 && ` ${pendingDistributions.length} distribution(s) pending expiration.`}
                           </AlertDescription>
@@ -2143,7 +2205,7 @@ This action cannot be undone. Continue?`;
                       <Alert className="bg-blue-500/10 border-blue-500/30">
                         <AlertCircle className="h-4 w-4 text-blue-400" />
                         <AlertDescription className="text-sm text-blue-400">
-                          These distributions have unclaimed rewards but have not reached the 4-minute expiration period yet. They will become eligible for reclaim after expiration.
+                          These distributions have unclaimed rewards but have not reached the 10-hour expiration period yet. They will become eligible for reclaim after expiration.
                         </AlertDescription>
                       </Alert>
 
@@ -2172,8 +2234,8 @@ This action cannot be undone. Continue?`;
                         }
 
                         // Calculate progress percentage (0-100)
-                        const FOUR_MINUTES_MS = 365 * 24 * 60 * 60 * 1000; // 365 days expiration period
-                        const progressPercentage = Math.min(100, (ageMs / FOUR_MINUTES_MS) * 100);
+                        const TEN_HOURS_MS = 10 * 60 * 60 * 1000; // 10 hours expiration period (matching testnet CLAIM_PERIOD)
+                        const progressPercentage = Math.min(100, (ageMs / TEN_HOURS_MS) * 100);
 
                         return (
                           <div

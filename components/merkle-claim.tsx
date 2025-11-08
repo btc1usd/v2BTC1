@@ -245,16 +245,16 @@ export default function MerkleClaim() {
   const isAlreadyClaimed = !!isClaimedData;
   const isReclaimed = distributionData?.metadata?.reclaimed || false;
   
-  // Check if the claim has expired (4 minutes = 240000 milliseconds)
-  const isExpired = distributionData?.metadata?.generated 
-    ? (Date.now() - new Date(distributionData.metadata.generated).getTime()) > 240000 
+  // Check if the claim has expired (10 hours = 36000000 milliseconds)
+  const isExpired = distributionData?.metadata?.generated
+    ? (Date.now() - new Date(distributionData.metadata.generated).getTime()) > 36000000
     : false;
   
   // Users can only claim if:
   // 1. They have a claim
   // 2. The claim hasn't been claimed already
   // 3. The claim hasn't been reclaimed
-  // 4. The claim hasn't expired (4-minute limit)
+  // 4. The claim hasn't expired (10-hour limit)
   const canUserClaim = hasUserClaim && !isAlreadyClaimed && !isCheckingClaimed && !isReclaimed && !isExpired;
 
   // Refresh claim status when transaction is confirmed

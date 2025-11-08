@@ -347,9 +347,9 @@ const DistributionItem = ({
   const hasUserClaimForDist = !!userClaimForDist;
   const isReclaimed = metadata?.reclaimed || false;
   
-  // Check if the claim has expired (4 minutes = 240000 milliseconds)
-  const isExpired = metadata?.generated 
-    ? (Date.now() - new Date(metadata.generated).getTime()) > 240000 
+  // Check if the claim has expired (10 hours = 36000000 milliseconds)
+  const isExpired = metadata?.generated
+    ? (Date.now() - new Date(metadata.generated).getTime()) > 36000000
     : false;
 
   // Only create isClaimed hook if user has a claim for this distribution
@@ -372,58 +372,44 @@ const DistributionItem = ({
     ? formatUnits(BigInt(userClaimForDist.amount), 8)
     : "0";
 
+  // Check if merkle root is valid (distribution is ready)
+  const isDistributionReady = distribution.merkleRoot &&
+    distribution.merkleRoot !== "0x0000000000000000000000000000000000000000000000000000000000000000" &&
+    metadata?.generated;
+
+  // Hide distribution if:
+  // 1. Already claimed
+  // 2. Reclaimed by admin
+  // 3. Expired
+  // 4. Not ready (no valid merkle root)
+  // 5. User has no claim
+  if (!hasUserClaimForDist || isClaimed || isReclaimed || isExpired || !isDistributionReady) {
+    return null;
+  }
+
+  // At this point, we know the distribution is claimable
   return (
     <div key={distId} className="p-4 bg-gray-700 rounded-lg">
       <div className="flex justify-between items-center">
         <div>
           <div className="font-semibold text-white">Distribution #{distId}</div>
           <div className="text-sm text-gray-300">
-            {hasUserClaimForDist
-              ? `${rewardAmount} BTC1USD available`
-              : "No rewards for your address"}
+            {rewardAmount} BTC1USD available
           </div>
         </div>
-        {hasUserClaimForDist ? (
-          isReclaimed ? (
-            <Badge variant="secondary" className="bg-red-600">
-              <AlertCircle className="h-3 w-3 mr-1" />
-              Reclaimed
-            </Badge>
-          ) : isClaimed ? (
-            <Badge variant="secondary" className="bg-green-600">
-              <CheckCircle className="h-3 w-3 mr-1" />
-              Claimed
-            </Badge>
-          ) : isExpired ? (
-            <Badge variant="secondary" className="bg-yellow-600">
-              <Clock className="h-3 w-3 mr-1" />
-              Expired
-            </Badge>
-          ) : (
-            <Button
-              onClick={() => onClaim(distId, userClaimForDist)}
-              className="bg-blue-600 hover:bg-blue-700"
-              disabled={isClaimLoading || isConfirming}
-            >
-              Claim
-            </Button>
-          )
-        ) : (
-          <Badge variant="secondary" className="bg-gray-600">
-            No Claim
-          </Badge>
-        )}
+        <Button
+          onClick={() => onClaim(distId, userClaimForDist!)}
+          className="bg-blue-600 hover:bg-blue-700"
+          disabled={isClaimLoading || isConfirming}
+        >
+          Claim
+        </Button>
       </div>
       <div className="mt-2 text-xs text-gray-400">
         Generated:{" "}
         {new Date(parseInt(distribution.timestamp) * 1000).toLocaleDateString()}
         {distribution.finalized ? " • Finalized" : " • Active"}
-        {hasUserClaimForDist && !isClaimed && (
-          <span> • {rewardAmount} BTC1USD</span>
-        )}
-        {isExpired && hasUserClaimForDist && !isClaimed && (
-          <span> • Reward Expired Will go Endowment</span>
-        )}
+        <span> • {rewardAmount} BTC1USD</span>
       </div>
     </div>
   );
@@ -694,10 +680,10 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
   const hasUserClaim = !!userClaim;
   const isAlreadyClaimed = !!isClaimedData;
   const isReclaimed = distributionData?.metadata?.reclaimed || false;
-  
-  // Check if the claim has expired (4 minutes = 240000 milliseconds)
-  const isExpired = distributionData?.metadata?.generated 
-    ? (Date.now() - new Date(distributionData.metadata.generated).getTime()) > 240000 
+
+  // Check if the claim has expired (10 hours = 36000000 milliseconds)
+  const isExpired = distributionData?.metadata?.generated
+    ? (Date.now() - new Date(distributionData.metadata.generated).getTime()) > 36000000
     : false;
   
   const canUserClaim =
@@ -993,44 +979,61 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
         </Card>
       )}
 
-      {/* All User Distributions Section - Show ALL distributions the user has claims for (including already claimed) */}
+      {/* All User Distributions Section - Show ONLY claimable distributions (filters out claimed, expired, reclaimed) */}
       {allUserDistributions && allUserDistributions.length > 0 && (
         <Card className="bg-gray-800 border-gray-700">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Gift className="h-5 w-5" />
-              Your Distribution History
+              Claimable Rewards
             </CardTitle>
             <CardDescription className="text-gray-400">
-              All distributions with rewards for your address
+              Ready to claim rewards • Claimed rewards are automatically hidden
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {allUserDistributions.map((dist) => (
-              <DistributionItem
-                key={dist.id}
-                distribution={{
-                  id: dist.id,
-                  merkleRoot: dist.merkleRoot,
-                  totalTokens: dist.totalRewards,
-                  totalClaimed: "0",
-                  timestamp: dist.metadata?.generated
-                    ? new Date(dist.metadata.generated).getTime().toString()
-                    : "0",
-                  finalized: false,
-                  complete: false,
-                }}
-                userClaimForDist={dist.claim}
-                onClaim={handleClaim}
-                isClaimLoading={isClaimLoading}
-                isConfirming={isConfirming}
-                isConnected={isConnected}
-                address={address}
-                MERKLE_DISTRIBUTOR_ADDRESS={MERKLE_DISTRIBUTOR_ADDRESS}
-                MERKLE_DISTRIBUTOR_ABI={MERKLE_DISTRIBUTOR_ABI}
-                metadata={dist.metadata}
-              />
-            ))}
+            {(() => {
+              const claimableItems = allUserDistributions.map((dist) => (
+                <DistributionItem
+                  key={dist.id}
+                  distribution={{
+                    id: dist.id,
+                    merkleRoot: dist.merkleRoot,
+                    totalTokens: dist.totalRewards,
+                    totalClaimed: "0",
+                    timestamp: dist.metadata?.generated
+                      ? new Date(dist.metadata.generated).getTime().toString()
+                      : "0",
+                    finalized: false,
+                    complete: false,
+                  }}
+                  userClaimForDist={dist.claim}
+                  onClaim={handleClaim}
+                  isClaimLoading={isClaimLoading}
+                  isConfirming={isConfirming}
+                  isConnected={isConnected}
+                  address={address}
+                  MERKLE_DISTRIBUTOR_ADDRESS={MERKLE_DISTRIBUTOR_ADDRESS}
+                  MERKLE_DISTRIBUTOR_ABI={MERKLE_DISTRIBUTOR_ABI}
+                  metadata={dist.metadata}
+                />
+              ));
+
+              const hasAnyClaimable = claimableItems.some((item) => item !== null);
+
+              if (!hasAnyClaimable) {
+                return (
+                  <Alert className="bg-gray-700/50 border-gray-600">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <AlertDescription className="text-gray-300">
+                      No claimable rewards at the moment. All rewards have been claimed, expired, or are not yet ready.
+                    </AlertDescription>
+                  </Alert>
+                );
+              }
+
+              return claimableItems;
+            })()}
           </CardContent>
         </Card>
       )}

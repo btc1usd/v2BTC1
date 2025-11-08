@@ -149,6 +149,7 @@ interface UserDistribution {
     reclaimedAmount?: string;
   };
   claim: MerkleClaim;
+  claimedOnChain?: boolean; // Whether user has already claimed this distribution
 }
 
 function Dashboard() {
@@ -212,6 +213,7 @@ function Dashboard() {
   // Claimable rewards state
   const [claimableRewards, setClaimableRewards] = useState(0);
   const [hasClaimableRewards, setHasClaimableRewards] = useState(false);
+  const [claimableDistributionCount, setClaimableDistributionCount] = useState(0); // Count of actually claimable distributions
   const [userDistributions, setUserDistributions] = useState<any[]>([]);
 
   const handleExecuteDistribution = async () => {
@@ -939,27 +941,68 @@ function Dashboard() {
         console.log("Distributions data:", data);
         setUserDistributions(data.userDistributions);
 
-        // Calculate total potential claimable rewards
-        // Note: Actual claim status is verified on the claim page
+        // Calculate total ACTUALLY claimable rewards (filter out claimed, expired, not ready)
         let totalClaimable = 0;
+        let claimableCount = 0; // Count of claimable distributions
+        const TEN_HOURS_MS = 10 * 60 * 60 * 1000; // 10 hours in milliseconds
 
         if (data.userDistributions && data.userDistributions.length > 0) {
           for (const dist of data.userDistributions) {
+            // Check if already claimed on-chain
+            if (dist.claimedOnChain === true) {
+              console.log(`⏭️ Skipping claimed distribution #${dist.id}`);
+              continue;
+            }
+
+            // Check if reclaimed by admin (API already filters these, but double-check)
+            if (dist.metadata?.reclaimed === true) {
+              console.log(`⏭️ Skipping reclaimed distribution #${dist.id}`);
+              continue;
+            }
+
+            // Check if expired (10 hours from generation)
+            if (dist.metadata?.generated) {
+              const generatedTime = new Date(dist.metadata.generated).getTime();
+              const now = Date.now();
+              const isExpired = (now - generatedTime) > TEN_HOURS_MS;
+
+              if (isExpired) {
+                console.log(`⏭️ Skipping expired distribution #${dist.id}`);
+                continue;
+              }
+            }
+
+            // Check if distribution is ready (valid merkle root)
+            const isReady = dist.merkleRoot &&
+              dist.merkleRoot !== "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+            if (!isReady) {
+              console.log(`⏭️ Skipping not-ready distribution #${dist.id}`);
+              continue;
+            }
+
+            // If all checks pass, add to total and increment count
             const amount = parseFloat(formatUnits(BigInt(dist.claim.amount), 8));
             totalClaimable += amount;
+            claimableCount++; // Increment the count
+            console.log(`✅ Including claimable distribution #${dist.id}: ${amount} BTC1USD`);
           }
 
-          console.log("Total potential claimable rewards:", totalClaimable);
+          console.log("Total ACTUALLY claimable rewards:", totalClaimable);
+          console.log("Total CLAIMABLE distribution count:", claimableCount);
           setClaimableRewards(totalClaimable);
           setHasClaimableRewards(totalClaimable > 0);
+          setClaimableDistributionCount(claimableCount); // Set the count
         } else {
           setClaimableRewards(0);
           setHasClaimableRewards(false);
+          setClaimableDistributionCount(0);
         }
       } catch (error) {
         console.error("Error fetching claimable rewards:", error);
         setClaimableRewards(0);
         setHasClaimableRewards(false);
+        setClaimableDistributionCount(0);
       }
     };
 
@@ -2917,14 +2960,14 @@ function Dashboard() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="text-2xl font-bold text-purple-500">
-                      {userDistributions.length}
+                      {claimableDistributionCount}
                     </div>
                     <p className="text-xs text-gray-400 mt-1">
-                      {userDistributions.length === 0
-                        ? "No pending distributions"
-                        : userDistributions.length === 1
-                        ? '1 Distribution available'
-                        : `${userDistributions.length} Distributions available`}
+                      {claimableDistributionCount === 0
+                        ? "No claimable distributions"
+                        : claimableDistributionCount === 1
+                        ? '1 Distribution ready to claim'
+                        : `${claimableDistributionCount} Distributions ready to claim`}
                     </p>
                   </CardContent>
                 </Card>

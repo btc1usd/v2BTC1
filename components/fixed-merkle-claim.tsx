@@ -204,15 +204,15 @@ export default function FixedMerkleClaim() {
   const hasUserClaim = !!userClaim;
   const isAlreadyClaimed = !!isClaimedData;
   
-  // Check if the claim has expired (4 minutes = 240000 milliseconds)
-  const isExpired = distributionData?.metadata?.generated 
-    ? (Date.now() - new Date(distributionData.metadata.generated).getTime()) > 240000 
+  // Check if the claim has expired (10 hours = 36000000 milliseconds)
+  const isExpired = distributionData?.metadata?.generated
+    ? (Date.now() - new Date(distributionData.metadata.generated).getTime()) > 36000000
     : false;
   
   // Users can only claim if:
   // 1. They have a claim
   // 2. The claim hasn't been claimed already
-  // 3. The claim hasn't expired (4-minute limit)
+  // 3. The claim hasn't expired (10-hour limit)
   const canUserClaim = hasUserClaim && !isAlreadyClaimed && !isCheckingClaimed && !isExpired;
 
   // Write contract hook
@@ -1028,15 +1028,15 @@ const DistributionItem = ({
 
   const isAlreadyClaimedForDist = hasClaim && !!isClaimedForDist;
   
-  // Check if the claim has expired (4 minutes = 240000 milliseconds)
-  const isExpiredForDist = dist.timestamp 
-    ? (Date.now() - new Date(parseInt(dist.timestamp) * 1000).getTime()) > 240000 
+  // Check if the claim has expired (10 hours = 36000000 milliseconds)
+  const isExpiredForDist = dist.timestamp
+    ? (Date.now() - new Date(parseInt(dist.timestamp) * 1000).getTime()) > 36000000
     : false;
   
   // Users can only claim if:
   // 1. They have a claim
   // 2. The claim hasn't been claimed already
-  // 3. The claim hasn't expired (4-minute limit)
+  // 3. The claim hasn't expired (10-hour limit)
   const canUserClaimForDist = hasClaim && !isAlreadyClaimedForDist && !isCheckingClaimedForDist && !isExpiredForDist;
 
   return (
