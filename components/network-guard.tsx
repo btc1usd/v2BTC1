@@ -119,35 +119,48 @@ export function NetworkGuard() {
   }
 
   return (
-    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-md px-4 animate-in slide-in-from-top-5 duration-300">
-      <Alert className="border-2 border-orange-500/50 bg-gradient-to-br from-orange-950/95 to-red-950/95 backdrop-blur-md shadow-2xl">
-        <div className="flex items-start gap-2.5">
-          <div className="flex-shrink-0 mt-0.5">
-            <div className="relative w-5 h-5">
-              <div className="absolute inset-0 bg-orange-500 rounded-full blur opacity-40 animate-pulse"></div>
-              <AlertTriangle className="h-5 w-5 text-orange-400 relative" />
+    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-sm animate-in slide-in-from-top-5 duration-300">
+      <Alert className="border-2 border-orange-500/50 bg-gradient-to-br from-orange-950/95 to-red-950/95 backdrop-blur-md shadow-2xl p-3">
+        <div className="space-y-2.5">
+          {/* Header with icon and title - centered */}
+          <div className="flex items-center justify-center gap-2">
+            <div className="flex-shrink-0">
+              <div className="relative w-5 h-5">
+                <div className="absolute inset-0 bg-orange-500 rounded-full blur opacity-40 animate-pulse"></div>
+                <AlertTriangle className="h-5 w-5 text-orange-400 relative" />
+              </div>
             </div>
-          </div>
-          
-          <div className="flex-1 min-w-0 space-y-2">
-            <AlertTitle className="text-orange-50 font-semibold text-base leading-tight pr-6">
+            
+            <AlertTitle className="text-orange-50 font-semibold text-sm leading-tight">
               Wrong Network
             </AlertTitle>
+            
+            <button
+              onClick={handleDismiss}
+              className="text-orange-300 hover:text-orange-100 transition-colors p-0.5 rounded hover:bg-white/10 ml-auto"
+              aria-label="Dismiss"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          
+          {/* Content */}
+          <div className="space-y-2">
             <AlertDescription className="text-orange-100/90 space-y-2">
-              <p className="text-xs leading-snug">
-                Please switch to the correct network.
+              <p className="text-xs leading-snug text-orange-200/80 text-center">
+                Switch to correct network
               </p>
               
-              <div className="bg-black/30 rounded-md p-2 space-y-1 border border-orange-500/20">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-orange-200/70">Current:</span>
-                  <span className="font-semibold text-red-400 truncate ml-2">
+              <div className="bg-black/30 rounded p-1.5 space-y-1 border border-orange-500/20 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-orange-200/70 text-[11px]">Current:</span>
+                  <span className="font-semibold text-red-400 truncate text-[11px]">
                     {getNetworkName(chainId)}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-orange-200/70">Required:</span>
-                  <span className="font-semibold text-emerald-400">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-orange-200/70 text-[11px]">Required:</span>
+                  <span className="font-semibold text-emerald-400 text-[11px]">
                     {NETWORK_CONFIG.name}
                   </span>
                 </div>
@@ -156,30 +169,22 @@ export function NetworkGuard() {
               <Button
                 onClick={handleSwitchNetwork}
                 disabled={isPending}
-                className="w-full bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200 border-0 h-9 text-sm"
+                className="w-full bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200 border-0 h-8 text-xs"
               >
                 {isPending ? (
                   <>
-                    <RefreshCw className="mr-1.5 h-4 w-4 animate-spin" />
+                    <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                     Switching...
                   </>
                 ) : (
                   <>
-                    <RefreshCw className="mr-1.5 h-4 w-4" />
-                    Switch to {NETWORK_CONFIG.name}
+                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                    Switch Network
                   </>
                 )}
               </Button>
             </AlertDescription>
           </div>
-
-          <button
-            onClick={handleDismiss}
-            className="flex-shrink-0 text-orange-300 hover:text-orange-100 transition-colors p-0.5 rounded hover:bg-white/10 -mt-1 -mr-1"
-            aria-label="Dismiss"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
       </Alert>
     </div>
