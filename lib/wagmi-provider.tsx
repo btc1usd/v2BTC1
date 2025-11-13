@@ -2,13 +2,25 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider, createConfig, http, fallback } from "wagmi";
-import { baseSepolia } from "wagmi/chains";
+import { baseSepolia, base, mainnet, polygon, arbitrum, optimism, bsc, avalanche } from "wagmi/chains";
 import { injected, coinbaseWallet } from "wagmi/connectors";
 import React, { ReactNode, useState, useEffect } from "react";
 import type { Config } from "wagmi";
 
 // WalletConnect Project ID
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "";
+
+// ============================================
+// NETWORK CONFIGURATION
+// ============================================
+// Current: Base Sepolia (Testnet)
+const TARGET_CHAIN = baseSepolia;
+const ALCHEMY_ENDPOINT = 'base-sepolia';
+
+// For Mainnet deployment, uncomment these lines:
+// const TARGET_CHAIN = base;
+// const ALCHEMY_ENDPOINT = 'base-mainnet';
+// ============================================
 
 // Create a react-query client once
 const queryClient = new QueryClient({
@@ -74,17 +86,22 @@ const createWagmiConfig = () => {
   const transportUrls: string[] = [];
 
   if (alchemyApiKey) {
-    transportUrls.push(`https://base-sepolia.g.alchemy.com/v2/${alchemyApiKey}`);
+    transportUrls.push(`https://${ALCHEMY_ENDPOINT}.g.alchemy.com/v2/${alchemyApiKey}`);
   }
 
   // Add configured fallback URLs
   transportUrls.push(...rpcUrls);
 
   // Add additional public fallbacks as last resort
-  const publicFallbacks = [
-    'https://base-sepolia.blockpi.network/v1/rpc/public',
-    'https://base-sepolia.publicnode.com',
-  ];
+  const publicFallbacks = TARGET_CHAIN.id === 84532
+    ? [
+        'https://base-sepolia.blockpi.network/v1/rpc/public',
+        'https://base-sepolia.publicnode.com',
+      ]
+    : [
+        'https://mainnet.base.org',
+        'https://base.publicnode.com',
+      ];
 
   publicFallbacks.forEach(url => {
     if (!transportUrls.includes(url)) {
@@ -104,16 +121,26 @@ const createWagmiConfig = () => {
   // Use fallback transport to automatically switch between RPC providers
   const transport = transports.length > 1 ? fallback(transports) : transports[0];
 
-  console.log(`🌐 Wagmi configured with ${transportUrls.length} RPC endpoint(s):`);
+  console.log(`🌐 Wagmi configured for ${TARGET_CHAIN.name} (Chain ID: ${TARGET_CHAIN.id})`);
+  console.log(`   RPC Endpoints: ${transportUrls.length}`);
   console.log(`   Primary: ${transportUrls[0]}`);
   if (transportUrls.length > 1) {
     console.log(`   Fallbacks: ${transportUrls.slice(1).join(', ')}`);
   }
 
   return createConfig({
-    chains: [baseSepolia],
+    // Include multiple chains so wagmi can detect when user is on wrong network
+    chains: [TARGET_CHAIN, base, mainnet, polygon, arbitrum, optimism, bsc, avalanche],
     transports: {
-      [baseSepolia.id]: transport,
+      [TARGET_CHAIN.id]: transport,
+      // Add minimal transports for other chains (just for detection)
+      [base.id]: http(),
+      [mainnet.id]: http(),
+      [polygon.id]: http(),
+      [arbitrum.id]: http(),
+      [optimism.id]: http(),
+      [bsc.id]: http(),
+      [avalanche.id]: http(),
     },
     connectors,
     ssr: true,
@@ -146,13 +173,37 @@ export function WagmiProviderComponent({ children }: { children: ReactNode }) {
     setConfig(getWagmiConfig());
   }, []);
 
-  // Show a loading state instead of nothing while initializing
+  // Show a state-of-the-art, lightweight loading state
   if (!mounted || !config) {
     return (
-      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-background to-background/80 flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
+          {/* Modern 3D spinner */}
+          <div className="relative w-16 h-16 mx-auto mb-8">
+            <div 
+              className="absolute inset-0 rounded-full border-[3px] border-primary/20"
+              style={{
+                background: 'conic-gradient(from 0deg, transparent, var(--primary))',
+                animation: 'spin 1s linear infinite',
+                maskImage: 'linear-gradient(transparent 50%, black 50%)',
+                WebkitMaskImage: 'linear-gradient(transparent 50%, black 50%)'
+              }}
+            />
+            <div className="absolute inset-2 rounded-full bg-background" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+            </div>
+          </div>
+          
+          {/* Minimal text */}
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium text-foreground/90">Loading Protocol</p>
+            <div className="flex gap-1 justify-center">
+              <span className="w-1 h-1 rounded-full bg-primary/60 animate-pulse" style={{ animationDelay: '0s' }} />
+              <span className="w-1 h-1 rounded-full bg-primary/60 animate-pulse" style={{ animationDelay: '0.2s' }} />
+              <span className="w-1 h-1 rounded-full bg-primary/60 animate-pulse" style={{ animationDelay: '0.4s' }} />
+            </div>
+          </div>
         </div>
       </div>
     );
