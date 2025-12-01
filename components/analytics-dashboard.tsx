@@ -156,7 +156,7 @@ export function AnalyticsDashboard({
             const rewardAmount = parseFloat(formatUnits(BigInt(dist.claim.amount), 8));
             const distTimestamp = new Date(dist.metadata.generated).getTime();
             const now = Date.now();
-            const claimWindowEnd = distTimestamp + (10 * 60 * 60 * 1000); // 10-hour claim window
+            const claimWindowEnd = distTimestamp + (365 * 24 * 60 * 60 * 1000); // 365-day claim window
             const isExpired = now > claimWindowEnd;
             const isClaimed = dist.claimedOnChain || false;
             
@@ -234,9 +234,9 @@ export function AnalyticsDashboard({
   };
 
   // Current reward projection for next 6 weeks (based on current tier)
-  // Note: weeklyRewardGrowth represents per-distribution rewards (testnet: 7-hour cycle, mainnet: weekly)
+  // Note: weeklyRewardGrowth represents per-distribution rewards (7-day cycle)
   const weeklyRewardGrowth = Array.from({ length: 6 }, (_, i) => ({
-    week: `Dist ${i + 1}`, // Distribution cycle (7 hours in testnet, 7 days in mainnet)
+    week: `Week ${i + 1}`, // Distribution cycle (7 days)
     earned: userBalance * weeklyReward,
     currentBalance: userBalance + (userBalance * weeklyReward * i),
   }));
@@ -546,7 +546,7 @@ export function AnalyticsDashboard({
           <Card className="bg-gray-800/30 border-gray-700">
             <CardHeader>
               <CardTitle className="text-white">Distribution Reward Projection</CardTitle>
-              <CardDescription className="text-gray-400">Estimated earnings based on current tier and balance (7-hour cycle)</CardDescription>
+              <CardDescription className="text-gray-400">Estimated earnings based on current tier and balance (weekly cycle)</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>

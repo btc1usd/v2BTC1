@@ -156,16 +156,16 @@ export default function DistributionAdmin({ collateralRatio, totalSupply }: Dist
         <CardHeader>
           <CardTitle className="text-white text-sm flex items-center gap-2">
             <AlertCircle className="h-4 w-4" />
-            Distribution Schedule (Testing Mode: 7 Hours)
+            Weekly Distribution Schedule
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-gray-300">
           <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
             <div className="font-semibold text-blue-400 mb-2">When do distributions happen?</div>
             <div className="space-y-1 text-xs">
-              <div>• Distributions occur every <strong>7 hours</strong> (testing mode)</div>
-              <div>• Once 7 hours pass, admin can execute <strong>immediately</strong></div>
-              <div>• No day/time restrictions during testing</div>
+              <div>• Distributions occur every <strong>7 days</strong> (weekly)</div>
+              <div>• Once 7 days pass, admin can execute distribution</div>
+              <div>• Typically executed on Fridays at 14:00 UTC</div>
               <div>• Requires collateral ratio <strong>≥ 112%</strong> to proceed</div>
             </div>
           </div>
@@ -184,10 +184,10 @@ export default function DistributionAdmin({ collateralRatio, totalSupply }: Dist
       {/* Admin Instructions */}
       <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-xl">
         <CardHeader>
-          <CardTitle className="text-white text-sm">Admin Instructions (Testing Mode)</CardTitle>
+          <CardTitle className="text-white text-sm">Admin Instructions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-gray-400">
-          <div>• <strong>Distribution Window:</strong> Opens immediately after 7 hours from last distribution. Execute anytime once available.</div>
+          <div>• <strong>Distribution Window:</strong> Opens 7 days after last distribution. Execute anytime once available.</div>
           <div>• <strong>Requirements Check:</strong> Verify collateral ratio ≥ 112% and admin wallet connected</div>
           <div>• <strong>Execute Distribution:</strong> Mints new BTC1 tokens based on reward tier</div>
           <div>• <strong>Generate Merkle Tree:</strong> Create distribution data after execution</div>

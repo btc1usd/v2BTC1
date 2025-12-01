@@ -45,7 +45,7 @@ async function main() {
 
   // Configuration for Base Sepolia - Using verified Chainlink BTC/USD feed
   const config = {
-    admin: deployer.address,
+    admin: "0x0c8852280df8ef9fcb2a24e9d76f1ee4779773e9",
     emergencyCouncil: process.env.EMERGENCY_COUNCIL || deployer.address,
     // Verified Base Sepolia Chainlink BTC/USD feed address
     chainlinkBtcUsdFeed: "0x0FB99723Aee6f420beAD13e6bBB79b7E6F034298",
@@ -211,34 +211,34 @@ async function main() {
   // ==================== STEP 3: DEPLOY CORE CONTRACTS ====================
   console.log("\n🏗️  STEP 3: Deploying core contracts...\n");
 
-  // Deploy BTC1USD token
+  // Deploy BTC1USD token (deployer as initial admin for setup)
   const BTC1USD = await ethers.getContractFactory("BTC1USD");
   const { contract: btc1usd, address: btc1usdAddress } = await deployContract(
     "BTC1USD",
     BTC1USD,
-    config.admin
+    deployer.address
   );
 
   await new Promise(resolve => setTimeout(resolve, 5000)); // Delay between deployments
 
-  // Deploy Chainlink BTC Oracle (uses live Chainlink BTC/USD feed)
+  // Deploy Chainlink BTC Oracle (deployer as initial admin for setup)
   const ChainlinkBTCOracle = await ethers.getContractFactory("ChainlinkBTCOracle");
   const { contract: priceOracle, address: priceOracleAddress } = await deployContract(
     "ChainlinkBTCOracle",
     ChainlinkBTCOracle,
-    config.admin
+    deployer.address
   );
 
   await new Promise(resolve => setTimeout(resolve, 5000)); // Delay between deployments
 
-  // Deploy Vault
+  // Deploy Vault (deployer as initial admin for setup)
   const Vault = await ethers.getContractFactory("Vault");
   const { contract: vault, address: vaultAddress } = await deployContract(
     "Vault",
     Vault,
     btc1usdAddress,
     priceOracleAddress,
-    config.admin,
+    deployer.address,
     devWalletAddress, // Use the deployed DevWallet address
     endowmentWalletAddress, // Use the deployed EndowmentWallet address
   );
@@ -265,13 +265,13 @@ async function main() {
 
   console.log("  📝 Note: Resolving circular dependency between contracts...");
 
-  // Deploy MerkleDistributor FIRST with zero address (temporary)
+  // Deploy MerkleDistributor FIRST with zero address (deployer as initial admin for setup)
   const MerkleDistributor = await ethers.getContractFactory("MerkleDistributor");
   const { contract: merkleDistributor, address: merkleDistributorAddress } = await deployContract(
     "MerkleDistributor",
     MerkleDistributor,
     btc1usdAddress,
-    config.admin,
+    deployer.address,
     ethers.ZeroAddress // Temporary zero address - will be updated in STEP 6
   );
 
@@ -290,14 +290,14 @@ async function main() {
   console.log(`    merklFeeCollectorAddress: ${merklFeeCollectorAddress}`);
   console.log(`    merkleDistributorAddress: ${merkleDistributorAddress}`);
 
-  // Deploy WeeklyDistribution SECOND with actual MerkleDistributor address
+  // Deploy WeeklyDistribution SECOND with actual MerkleDistributor address (deployer as initial admin for setup)
   const WeeklyDistribution = await ethers.getContractFactory("WeeklyDistribution");
   const { contract: weeklyDistribution, address: weeklyDistributionAddress } = await deployContract(
     "WeeklyDistribution",
     WeeklyDistribution,
     btc1usdAddress,
     vaultAddress,
-    config.admin,
+    deployer.address,
     devWalletAddress, // Use the deployed DevWallet address
     endowmentWalletAddress, // Use the deployed EndowmentWallet address
     merklFeeCollectorAddress, // Use the deployed MerkleFeeCollector address
@@ -314,24 +314,24 @@ async function main() {
   // ==================== STEP 5: DEPLOY GOVERNANCE ====================
   console.log("\n🏛️  STEP 5: Deploying governance system...\n");
 
-  // Deploy Endowment Manager
+  // Deploy Endowment Manager (deployer as initial admin for setup)
   const EndowmentManager = await ethers.getContractFactory("EndowmentManager");
   const { contract: endowmentManager, address: endowmentManagerAddress } = await deployContract(
     "EndowmentManager",
     EndowmentManager,
     btc1usdAddress,
-    config.admin,
+    deployer.address,
     endowmentWalletAddress // Use the deployed EndowmentWallet address
   );
 
   await new Promise(resolve => setTimeout(resolve, 5000)); // Delay between deployments
 
-  // Deploy Protocol Governance
+  // Deploy Protocol Governance (deployer as initial admin for setup)
   const ProtocolGovernance = await ethers.getContractFactory("ProtocolGovernance");
   const { contract: protocolGovernance, address: protocolGovernanceAddress } = await deployContract(
     "ProtocolGovernance",
     ProtocolGovernance,
-    config.admin,
+    deployer.address,
     config.emergencyCouncil
   );
 
@@ -490,8 +490,73 @@ async function main() {
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 9: VERIFY CHAINLINK ORACLE ====================
-  console.log("\n📈 STEP 9: Verifying Chainlink price oracle...\n");
+  // ==================== STEP 9: TRANSFER ADMIN ROLES ====================
+  console.log("\n👑 STEP 9: Transferring admin roles to configured admin...\n");
+  console.log(`  ℹ️  Transferring admin roles from deployer (${deployer.address}) to ${config.admin}`);
+
+  // Transfer admin role for BTC1USD (uses setAdmin)
+  await sendTransaction(
+    "BTC1USD admin transferred",
+    () => btc1usd.setAdmin(config.admin)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer admin role for Vault (uses setAdmin)
+  await sendTransaction(
+    "Vault admin transferred",
+    () => vault.setAdmin(config.admin)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer admin role for ChainlinkBTCOracle (uses transferAdmin)
+  await sendTransaction(
+    "ChainlinkBTCOracle admin transferred",
+    () => priceOracle.transferAdmin(config.admin)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer admin role for MerkleDistributor (uses setAdmin)
+  await sendTransaction(
+    "MerkleDistributor admin transferred",
+    () => merkleDistributor.setAdmin(config.admin)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer admin role for WeeklyDistribution (uses setAdmin)
+  await sendTransaction(
+    "WeeklyDistribution admin transferred",
+    () => weeklyDistribution.setAdmin(config.admin)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer admin role for EndowmentManager (uses setAdmin)
+  await sendTransaction(
+    "EndowmentManager admin transferred",
+    () => endowmentManager.setAdmin(config.admin)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer admin role for ProtocolGovernance (uses setAdmin)
+  await sendTransaction(
+    "ProtocolGovernance admin transferred",
+    () => protocolGovernance.setAdmin(config.admin)
+  );
+
+  console.log("\n  ✅ All admin roles successfully transferred to:", config.admin);
+  console.log("  ℹ️  Deployer can no longer perform admin operations");
+  console.log("  ℹ️  Future admin changes should use the secure two-step transfer process");
+
+  console.log("\n  ⏳ Waiting for confirmations...");
+  await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
+
+  // ==================== STEP 10: VERIFY CHAINLINK ORACLE ====================
+  console.log("\n📈 STEP 10: Verifying Chainlink price oracle...\n");
 
   try {
     const feedAddress = await priceOracle.getPriceFeedAddress();
@@ -516,8 +581,8 @@ async function main() {
     console.log("  ⚠️  Oracle verification failed:", error.message);
   }
 
-  // ==================== STEP 10: VERIFY DEPLOYMENT ====================
-  console.log("\n✅ STEP 10: Verifying deployment...\n");
+  // ==================== STEP 11: VERIFY DEPLOYMENT ====================
+  console.log("\n✅ STEP 11: Verifying deployment...\n");
 
   try {
     // Verify DAO configuration

@@ -3,16 +3,7 @@ pragma solidity ^0.8.19;
 
 import "./interfaces/IBTC1USD.sol";
 import "./libraries/SafeMath.sol";
-/**
- * @title BTC1USD - Fixed Version
- * @notice Bitcoin-backed stablecoin with security fixes applied
- * 
- * AUDIT FIXES APPLIED:
- * - CRITICAL-01: Fixed onlyVaultOrDistribution modifier to check weeklyDistribution != 0 first
- * - HIGH-05: Added zero address validation in setVault, setWeeklyDistribution, setAdmin
- * - MEDIUM-01: Added WeeklyDistributionChanged event
- * - MEDIUM-07: Added whenNotPaused to approve function
- */
+
 contract BTC1USD is IBTC1USD {
     using SafeMath for uint256;
 
@@ -34,11 +25,9 @@ contract BTC1USD is IBTC1USD {
         _;
     }
 
-    // FIXED: Check weeklyDistribution != 0 BEFORE the OR condition
     modifier onlyVaultOrDistribution() {
+        require(msg.sender == vault || msg.sender == weeklyDistribution, "BTC1USD: caller is not authorized minter");
         require(weeklyDistribution != address(0), "BTC1USD: weekly distribution not set");
-        require(msg.sender == vault || msg.sender == weeklyDistribution, 
-            "BTC1USD: caller is not authorized minter");
         _;
     }
 
@@ -54,34 +43,24 @@ contract BTC1USD is IBTC1USD {
 
     event VaultChanged(address indexed oldVault, address indexed newVault);
     event AdminChanged(address indexed oldAdmin, address indexed newAdmin);
-    event WeeklyDistributionChanged(address indexed oldDistribution, address indexed newDistribution);
     event Paused();
     event Unpaused();
 
     constructor(address _admin) {
-        require(_admin != address(0), "BTC1USD: admin is zero address");
         admin = _admin;
     }
 
-    // FIXED: Added zero address check
     function setVault(address _vault) external onlyAdmin {
-        require(_vault != address(0), "BTC1USD: vault is zero address");
         address oldVault = vault;
         vault = _vault;
         emit VaultChanged(oldVault, _vault);
     }
 
-    // FIXED: Added zero address check and event emission
     function setWeeklyDistribution(address _weeklyDistribution) external onlyAdmin {
-        require(_weeklyDistribution != address(0), "BTC1USD: weekly distribution is zero address");
-        address oldDistribution = weeklyDistribution;
         weeklyDistribution = _weeklyDistribution;
-        emit WeeklyDistributionChanged(oldDistribution, _weeklyDistribution);
     }
 
-    // FIXED: Added zero address check
     function setAdmin(address _admin) external onlyAdmin {
-        require(_admin != address(0), "BTC1USD: admin is zero address");
         address oldAdmin = admin;
         admin = _admin;
         emit AdminChanged(oldAdmin, _admin);
@@ -114,8 +93,7 @@ contract BTC1USD is IBTC1USD {
         return _allowances[owner][spender];
     }
 
-    // FIXED: Added whenNotPaused modifier for consistency
-    function approve(address spender, uint256 amount) external override whenNotPaused returns (bool) {
+    function approve(address spender, uint256 amount) external override returns (bool) {
         _approve(msg.sender, spender, amount);
         return true;
     }

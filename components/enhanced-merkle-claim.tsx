@@ -347,9 +347,9 @@ const DistributionItem = ({
   const hasUserClaimForDist = !!userClaimForDist;
   const isReclaimed = metadata?.reclaimed || false;
   
-  // Check if the claim has expired (10 hours = 36000000 milliseconds)
+  // Check if the claim has expired (365 days = 31536000000 milliseconds)
   const isExpired = metadata?.generated
-    ? (Date.now() - new Date(metadata.generated).getTime()) > 36000000
+    ? (Date.now() - new Date(metadata.generated).getTime()) > 31536000000
     : false;
 
   // Only create isClaimed hook if user has a claim for this distribution
@@ -681,9 +681,9 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
   const isAlreadyClaimed = !!isClaimedData;
   const isReclaimed = distributionData?.metadata?.reclaimed || false;
 
-  // Check if the claim has expired (10 hours = 36000000 milliseconds)
+  // Check if the claim has expired (365 days = 31536000000 milliseconds)
   const isExpired = distributionData?.metadata?.generated
-    ? (Date.now() - new Date(distributionData.metadata.generated).getTime()) > 36000000
+    ? (Date.now() - new Date(distributionData.metadata.generated).getTime()) > 31536000000
     : false;
   
   const canUserClaim =
@@ -831,7 +831,7 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
             Merkle Rewards
           </CardTitle>
           <CardDescription className="text-gray-400">
-            Claim your BTC1USD rewards (7-hour distribution cycle)
+            Claim your BTC1USD rewards (7-day distribution cycle)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -1254,13 +1254,13 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
             • If the vault collateral ratio {'>'} 1.12% then
           </div>
           <div>
-            • rewards are distributed every 7 hours based on your BTC1USD balance.
+            • rewards are distributed every 7 days based on your BTC1USD balance.
           </div>
           <div>
-            • You can claim your rewards within 10 hours.
+            • You can claim your rewards within 365 days.
           </div>
           <div>
-            • After 10 hours, unclaimed rewards expire.
+            • After 365 days, unclaimed rewards expire.
           </div>
           <div>• The system is fully decentralized, permissionless and automated.</div>
         </CardContent>

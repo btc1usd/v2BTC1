@@ -117,7 +117,7 @@ export default function AutomatedDistribution() {
     {
       id: 'execute',
       title: 'Execute Distribution',
-      description: 'Trigger the reward distribution (7-hour cycle)',
+      description: 'Trigger the reward distribution (7-day cycle)',
       status: 'pending'
     },
     {

@@ -36,7 +36,7 @@ export function LandingPage() {
     {
       icon: <TrendingUp className="h-8 w-8 text-orange-500" />,
       title: "Yield Generation",
-      description: "Earn rewards from protocol fees and donations (7-hour distribution cycle)"
+      description: "Earn rewards from protocol fees and donations (7-day distribution cycle)"
     },
     {
       icon: <Users className="h-8 w-8 text-orange-500" />,
@@ -240,7 +240,7 @@ export function LandingPage() {
             {
               step: 3,
               title: "Earn Rewards",
-              description: "Earn yield from protocol fees and donations (7-hour cycle)"
+              description: "Earn yield from protocol fees and donations (weekly distributions)"
             }
           ].map((item, index) => (
             <motion.div

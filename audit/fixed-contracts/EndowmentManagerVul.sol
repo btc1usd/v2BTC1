@@ -3,18 +3,8 @@ pragma solidity ^0.8.19;
 
 import "./interfaces/IBTC1USD.sol";
 import "./libraries/SafeMath.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-/**
- * @title EndowmentManager - Fixed Version
- * @notice Manages non-profit endowments with security fixes
- * 
- * AUDIT FIXES APPLIED:
- * - HIGH-02: Added ReentrancyGuard and nonReentrant modifier to executeMonthlyDistribution
- * - MEDIUM-08: Fixed PROPOSAL_THRESHOLD to use 8 decimals instead of 18
- * - HIGH-05: Added zero address checks in constructor
- */
-contract EndowmentManager is ReentrancyGuard {
+contract EndowmentManager {
     using SafeMath for uint256;
 
     IBTC1USD public btc1usd;
@@ -42,14 +32,16 @@ contract EndowmentManager is ReentrancyGuard {
         NonProfitCategory category;
         uint256 addedTimestamp;
         bool verified;
-        uint256 allocationWeight;
+        uint256 allocationWeight;  // For weighted distribution (100 = 1x, 200 = 2x, etc.)
     }
 
     mapping(address => NonProfit) public nonProfits;
     address[] public approvedNonProfits;
 
+    // Category tracking
     mapping(NonProfitCategory => uint256) public categoryCount;
 
+    // Proposal system for community-driven non-profit additions
     struct NonProfitProposal {
         address proposer;
         address wallet;
@@ -69,13 +61,11 @@ contract EndowmentManager is ReentrancyGuard {
     mapping(uint256 => mapping(address => bool)) public hasVoted;
     uint256 public proposalCount;
     uint256 public constant VOTING_PERIOD = 7 days;
-    
-    // FIXED: Corrected to 8 decimals (was 18)
-    uint256 public constant PROPOSAL_THRESHOLD = 1000 * 10**8; // 1000 BTC1USD with 8 decimals
+    uint256 public constant PROPOSAL_THRESHOLD = 1000 * 10**18; // 1000 BTC1USD to propose
     
     uint256 public totalEndowmentBalance;
     uint256 public lastDistributionTime;
-    uint256 public constant DISTRIBUTION_INTERVAL = 7 days;
+    uint256 public constant DISTRIBUTION_INTERVAL = 30 days; // Monthly distribution
     
     struct MonthlyDistribution {
         uint256 timestamp;
@@ -121,11 +111,6 @@ contract EndowmentManager is ReentrancyGuard {
     }
     
     constructor(address _btc1usd, address _admin, address _endowmentWallet) {
-        // FIXED: Added zero address checks
-        require(_btc1usd != address(0), "EndowmentManager: btc1usd is zero address");
-        require(_admin != address(0), "EndowmentManager: admin is zero address");
-        require(_endowmentWallet != address(0), "EndowmentManager: endowment wallet is zero address");
-        
         btc1usd = IBTC1USD(_btc1usd);
         admin = _admin;
         endowmentWallet = _endowmentWallet;
@@ -157,7 +142,7 @@ contract EndowmentManager is ReentrancyGuard {
             category: category,
             addedTimestamp: block.timestamp,
             verified: false,
-            allocationWeight: 100
+            allocationWeight: 100  // Default 1x weight
         });
 
         approvedNonProfits.push(wallet);
@@ -172,6 +157,7 @@ contract EndowmentManager is ReentrancyGuard {
         nonProfits[wallet].approved = false;
         categoryCount[category]--;
 
+        // Remove from approved list
         for (uint i = 0; i < approvedNonProfits.length; i++) {
             if (approvedNonProfits[i] == wallet) {
                 approvedNonProfits[i] = approvedNonProfits[approvedNonProfits.length - 1];
@@ -202,8 +188,7 @@ contract EndowmentManager is ReentrancyGuard {
                btc1usd.balanceOf(endowmentWallet) > 0;
     }
     
-    // FIXED: Added nonReentrant modifier to prevent reentrancy attacks
-    function executeMonthlyDistribution() external onlyAdminOrDAO nonReentrant {
+    function executeMonthlyDistribution() external onlyAdminOrDAO {
         require(canDistribute(), "EndowmentManager: cannot distribute now");
 
         uint256 totalBalance = btc1usd.balanceOf(endowmentWallet);
@@ -228,12 +213,13 @@ contract EndowmentManager is ReentrancyGuard {
             address recipient = approvedNonProfits[i];
             uint256 weight = nonProfits[recipient].allocationWeight;
 
+            // Calculate weighted allocation
             uint256 allocation = totalBalance.mul(weight).div(totalWeight);
 
             // Transfer tokens from endowment wallet to non-profit
             btc1usd.transferFrom(endowmentWallet, recipient, allocation);
 
-            // Update records after successful transfer
+            // Update records
             nonProfits[recipient].totalReceived = nonProfits[recipient].totalReceived.add(allocation);
             distribution.allocations[recipient] = allocation;
 
@@ -244,6 +230,7 @@ contract EndowmentManager is ReentrancyGuard {
         emit MonthlyDistributionExecuted(distributionCount, totalBalance, recipientCount);
     }
 
+    // Community proposal system
     function proposeNonProfit(
         address wallet,
         string memory name,
@@ -304,9 +291,11 @@ contract EndowmentManager is ReentrancyGuard {
 
         proposal.executed = true;
 
+        // Proposal passes if votesFor > votesAgainst
         if (proposal.votesFor > proposal.votesAgainst) {
             proposal.approved = true;
 
+            // Add non-profit
             nonProfits[proposal.wallet] = NonProfit({
                 name: proposal.name,
                 wallet: proposal.wallet,
@@ -357,6 +346,77 @@ contract EndowmentManager is ReentrancyGuard {
         );
     }
 
+    function getAllNonProfitsByCategory(NonProfitCategory category) external view returns (address[] memory) {
+        uint256 count = 0;
+        for (uint i = 0; i < approvedNonProfits.length; i++) {
+            if (nonProfits[approvedNonProfits[i]].category == category) {
+                count++;
+            }
+        }
+
+        address[] memory result = new address[](count);
+        uint256 index = 0;
+        for (uint i = 0; i < approvedNonProfits.length; i++) {
+            if (nonProfits[approvedNonProfits[i]].category == category) {
+                result[index] = approvedNonProfits[i];
+                index++;
+            }
+        }
+
+        return result;
+    }
+
+    function getProposalInfo(uint256 proposalId) external view returns (
+        address proposer,
+        address wallet,
+        string memory name,
+        string memory description,
+        string memory website,
+        NonProfitCategory category,
+        uint256 votesFor,
+        uint256 votesAgainst,
+        bool executed,
+        bool approved,
+        uint256 proposalTimestamp,
+        uint256 votingDeadline
+    ) {
+        NonProfitProposal memory p = proposals[proposalId];
+        return (
+            p.proposer,
+            p.wallet,
+            p.name,
+            p.description,
+            p.website,
+            p.category,
+            p.votesFor,
+            p.votesAgainst,
+            p.executed,
+            p.approved,
+            p.proposalTimestamp,
+            p.votingDeadline
+        );
+    }
+
+    function getActiveProposals() external view returns (uint256[] memory) {
+        uint256 count = 0;
+        for (uint256 i = 1; i <= proposalCount; i++) {
+            if (!proposals[i].executed && block.timestamp <= proposals[i].votingDeadline) {
+                count++;
+            }
+        }
+
+        uint256[] memory result = new uint256[](count);
+        uint256 index = 0;
+        for (uint256 i = 1; i <= proposalCount; i++) {
+            if (!proposals[i].executed && block.timestamp <= proposals[i].votingDeadline) {
+                result[index] = i;
+                index++;
+            }
+        }
+
+        return result;
+    }
+    
     function getDistributionAllocation(uint256 distributionId, address recipient) external view returns (uint256) {
         return monthlyDistributions[distributionId].allocations[recipient];
     }
@@ -370,12 +430,63 @@ contract EndowmentManager is ReentrancyGuard {
     }
     
     function setEndowmentWallet(address _endowmentWallet) external onlyAdmin {
-        require(_endowmentWallet != address(0), "EndowmentManager: endowment wallet is zero address");
         endowmentWallet = _endowmentWallet;
     }
 
-    function setAdmin(address _admin) external onlyAdmin {
-        require(_admin != address(0), "EndowmentManager: admin is zero address");
-        admin = _admin;
+    // Additional view functions for frontend
+    function getAllNonProfits() external view returns (address[] memory) {
+        return approvedNonProfits;
+    }
+
+    function getTotalDistributed() external view returns (uint256) {
+        uint256 total = 0;
+        for (uint256 i = 1; i <= distributionCount; i++) {
+            total = total.add(monthlyDistributions[i].totalAmount);
+        }
+        return total;
+    }
+
+    function getDistributionHistory(uint256 limit) external view returns (
+        uint256[] memory distributionIds,
+        uint256[] memory timestamps,
+        uint256[] memory amounts,
+        uint256[] memory recipientCounts
+    ) {
+        uint256 count = distributionCount > limit ? limit : distributionCount;
+
+        distributionIds = new uint256[](count);
+        timestamps = new uint256[](count);
+        amounts = new uint256[](count);
+        recipientCounts = new uint256[](count);
+
+        for (uint256 i = 0; i < count; i++) {
+            uint256 distId = distributionCount - i; // Get latest first
+            distributionIds[i] = distId;
+            timestamps[i] = monthlyDistributions[distId].timestamp;
+            amounts[i] = monthlyDistributions[distId].totalAmount;
+            recipientCounts[i] = monthlyDistributions[distId].recipientCount;
+        }
+
+        return (distributionIds, timestamps, amounts, recipientCounts);
+    }
+
+    function getAllProposals() external view returns (uint256[] memory) {
+        uint256[] memory result = new uint256[](proposalCount);
+        for (uint256 i = 0; i < proposalCount; i++) {
+            result[i] = i + 1;
+        }
+        return result;
+    }
+
+    function canUserVoteOnProposal(uint256 proposalId, address user) external view returns (bool) {
+        if (proposalId == 0 || proposalId > proposalCount) return false;
+        NonProfitProposal storage proposal = proposals[proposalId];
+
+        if (proposal.executed) return false;
+        if (block.timestamp > proposal.votingDeadline) return false;
+        if (hasVoted[proposalId][user]) return false;
+        if (btc1usd.balanceOf(user) == 0) return false;
+
+        return true;
     }
 }

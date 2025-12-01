@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTC1USD Protocol - Smart Contract Security Audit Report</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background: white;
+            padding: 40px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            border-bottom: 3px solid #d32f2f;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        h1 { 
+            color: #d32f2f; 
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        h2 { 
+            color: #c62828; 
+            margin: 30px 0 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        h3 { 
+            color: #424242; 
+            margin: 20px 0 10px;
+        }
+        .info-box {
+            background: #f5f5f5;
+            padding: 20px;
+            border-left: 4px solid #2196F3;
+            margin: 20px 0;
+        }
+        .critical { 
+            background: #ffebee; 
+            border-left-color: #d32f2f;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .high { 
+            background: #fff3e0; 
+            border-left-color: #ff6f00;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .medium { 
+            background: #fff9c4; 
+            border-left-color: #fbc02d;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .low { 
+            background: #e8f5e9; 
+            border-left-color: #388e3c;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .severity-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 3px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .badge-critical { background: #d32f2f; color: white; }
+        .badge-high { background: #ff6f00; color: white; }
+        .badge-medium { background: #fbc02d; color: #000; }
+        .badge-low { background: #388e3c; color: white; }
+        .code-block {
+            background: #263238;
+            color: #aed581;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .summary-table th,
+        .summary-table td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        .summary-table th {
+            background: #424242;
+            color: white;
+        }
+        .summary-table tr:nth-child(even) {
+            background: #f5f5f5;
+        }
+        .recommendation {
+            background: #e3f2fd;
+            border-left: 4px solid #1976d2;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .page-break {
+            page-break-after: always;
+        }
+        @media print {
+            body { background: white; }
+            .container { box-shadow: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔒 Smart Contract Security Audit Report</h1>
+            <h2 style="border: none; color: #666;">BTC1USD Protocol</h2>
+            <p><strong>Audit Date:</strong> November 22, 2025</p>
+            <p><strong>Auditor:</strong> Senior Web3/Smart Contract Security Specialist</p>
+            <p><strong>Protocol Version:</strong> v1.0</p>
+        </div>
+
+        <div class="info-box">
+            <h3>Executive Summary</h3>
+            <p>This comprehensive security audit examines the BTC1USD Protocol smart contracts, a decentralized stablecoin system backed by Bitcoin collateral. The audit identified <strong>23 findings</strong> across multiple severity levels, ranging from critical security vulnerabilities to gas optimization opportunities.</p>
+        </div>
+
+        <h2>📊 Audit Overview</h2>
+        <table class="summary-table">
+            <tr>
+                <th>Contracts Audited</th>
+                <th>Lines of Code</th>
+                <th>Findings</th>
+            </tr>
+            <tr>
+                <td>BTC1USD.sol</td>
+                <td>149</td>
+                <td>4</td>
+            </tr>
+            <tr>
+                <td>Vault.sol</td>
+                <td>318</td>
+                <td>5</td>
+            </tr>
+            <tr>
+                <td>MerkleDistributor.sol</td>
+                <td>655</td>
+                <td>6</td>
+            </tr>
+            <tr>
+                <td>DAO.sol</td>
+                <td>495</td>
+                <td>3</td>
+            </tr>
+            <tr>
+                <td>GovernanceDAO.sol</td>
+                <td>682</td>
+                <td>2</td>
+            </tr>
+            <tr>
+                <td>EndowmentManager.sol</td>
+                <td>493</td>
+                <td>2</td>
+            </tr>
+            <tr>
+                <td>WeeklyDistribution.sol</td>
+                <td>405</td>
+                <td>1</td>
+            </tr>
+            <tr>
+                <td>PriceOracle.sol</td>
+                <td>111</td>
+                <td>0</td>
+            </tr>
+            <tr>
+                <th>Total</th>
+                <th>3,308</th>
+                <th>23</th>
+            </tr>
+        </table>
+
+        <h2>🎯 Severity Distribution</h2>
+        <table class="summary-table">
+            <tr>
+                <th>Severity</th>
+                <th>Count</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td><span class="severity-badge badge-critical">CRITICAL</span></td>
+                <td>3</td>
+                <td>Issues that can lead to loss of funds or complete system compromise</td>
+            </tr>
+            <tr>
+                <td><span class="severity-badge badge-high">HIGH</span></td>
+                <td>6</td>
+                <td>Issues that can significantly impact protocol security or functionality</td>
+            </tr>
+            <tr>
+                <td><span class="severity-badge badge-medium">MEDIUM</span></td>
+                <td>8</td>
+                <td>Issues with moderate impact on security or functionality</td>
+            </tr>
+            <tr>
+                <td><span class="severity-badge badge-low">LOW</span></td>
+                <td>6</td>
+                <td>Minor issues, best practices, and optimizations</td>
+            </tr>
+        </table>
+
+        <div class="page-break"></div>
+
+        <h2>🚨 CRITICAL FINDINGS</h2>
+
+        <div class="critical">
+            <h3><span class="severity-badge badge-critical">CRITICAL-01</span> Missing Access Control on Mint Function</h3>
+            <p><strong>Contract:</strong> BTC1USD.sol</p>
+            <p><strong>Location:</strong> Lines 111-118</p>
+            <p><strong>Description:</strong> The mint function only checks if caller is vault or weeklyDistribution, but the weeklyDistribution check is performed AFTER the OR condition, making it ineffective. An attacker could potentially mint unlimited tokens if weeklyDistribution is not set.</p>
+            
+            <div class="code-block">
+modifier onlyVaultOrDistribution() {
+    require(msg.sender == vault || msg.sender == weeklyDistribution, 
+        "BTC1USD: caller is not authorized minter");
+    require(weeklyDistribution != address(0), 
+        "BTC1USD: weekly distribution not set");
+    _;
+}</div>
+            
+            <p><strong>Impact:</strong> If weeklyDistribution is address(0), the first require passes when msg.sender == vault, but the second require fails. However, if vault is also address(0), this could allow unauthorized minting.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong>
+                <div class="code-block">
+modifier onlyVaultOrDistribution() {
+    require(weeklyDistribution != address(0), 
+        "BTC1USD: weekly distribution not set");
+    require(msg.sender == vault || msg.sender == weeklyDistribution, 
+        "BTC1USD: caller is not authorized minter");
+    _;
+}</div>
+            </div>
+        </div>
+
+        <div class="critical">
+            <h3><span class="severity-badge badge-critical">CRITICAL-02</span> Vault Collateral Ratio Check Disabled</h3>
+            <p><strong>Contract:</strong> Vault.sol</p>
+            <p><strong>Location:</strong> Lines 204-210</p>
+            <p><strong>Description:</strong> The collateral ratio check after minting is commented out with a note "AUqib Want to Dive Deep here". This allows minting below minimum collateral ratio, potentially leading to undercollateralization.</p>
+            
+            <div class="code-block">
+// --- 7) Enforce post-mint CR >= MIN_CR (except first mint) ---
+// if (prevTotalSupply > 0) {
+//     uint256 newTotalUSD    = prevTotalUSD.add(usdValue);
+//     uint256 newTotalSupply = prevTotalSupply.add(totalToMint);
+//     uint256 newCR          = newTotalUSD.multiply(DECIMALS).divide(newTotalSupply);
+//}
+</div>
+            
+            <p><strong>Impact:</strong> System can become undercollateralized, risking user funds and protocol solvency.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Re-enable the collateral ratio check:
+                <div class="code-block">
+if (prevTotalSupply > 0) {
+    uint256 newTotalUSD = prevTotalUSD.add(usdValue);
+    uint256 newTotalSupply = prevTotalSupply.add(totalToMint);
+    uint256 newCR = newTotalUSD.multiply(DECIMALS).divide(newTotalSupply);
+    require(newCR >= MIN_COLLATERAL_RATIO, 
+        "Vault: would break minimum collateral ratio");
+}</div>
+            </div>
+        </div>
+
+        <div class="critical">
+            <h3><span class="severity-badge badge-critical">CRITICAL-03</span> Missing Return Value Check in Batch Transfer</h3>
+            <p><strong>Contract:</strong> MerkleDistributor.sol</p>
+            <p><strong>Location:</strong> Lines 589-602</p>
+            <p><strong>Description:</strong> The batchTransfer function uses low-level call without properly checking return values for all token types. Some tokens don't return a value on transfer.</p>
+            
+            <div class="code-block">
+(bool success, bytes memory data) = address(tokenToDistribute).call(
+    abi.encodeWithSelector(tokenToDistribute.transfer.selector, to, amount)
+);
+
+if (success && (data.length == 0 || abi.decode(data, (bool)))) {
+    emit IndividualTransfer(address(tokenToDistribute), to, amount);
+    totalSent += amount;
+} else {
+    emit TransferFailed(address(tokenToDistribute), to, amount);
+    totalFailed++;
+}</div>
+            
+            <p><strong>Impact:</strong> Silent failures could occur with non-standard ERC20 tokens, leading to incorrect accounting.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Use SafeERC20's safeTransfer consistently or improve the checking logic to handle all token types correctly.
+            </div>
+        </div>
+
+        <div class="page-break"></div>
+
+        <h2>⚠️ HIGH SEVERITY FINDINGS</h2>
+
+        <div class="high">
+            <h3><span class="severity-badge badge-high">HIGH-01</span> Centralization Risk - Single Admin Control</h3>
+            <p><strong>Contracts:</strong> BTC1USD.sol, Vault.sol, MerkleDistributor.sol, EndowmentManager.sol</p>
+            <p><strong>Description:</strong> All critical contracts have a single admin with extensive privileges including pausing, changing parameters, and recovering funds.</p>
+            
+            <p><strong>Impact:</strong> Single point of failure; compromised admin key = compromised protocol.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong>
+                <ul>
+                    <li>Implement multi-signature wallet for admin functions</li>
+                    <li>Add timelock delays for critical operations</li>
+                    <li>Implement role-based access control (RBAC)</li>
+                    <li>Consider using OpenZeppelin's AccessControl</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="high">
+            <h3><span class="severity-badge badge-high">HIGH-02</span> Reentrancy Risk in EndowmentManager</h3>
+            <p><strong>Contract:</strong> EndowmentManager.sol</p>
+            <p><strong>Location:</strong> Lines 191-231</p>
+            <p><strong>Description:</strong> The executeMonthlyDistribution function uses transferFrom in a loop without reentrancy protection.</p>
+            
+            <div class="code-block">
+for (uint i = 0; i < approvedNonProfits.length; i++) {
+    address recipient = approvedNonProfits[i];
+    uint256 allocation = totalBalance.mul(weight).div(totalWeight);
+    btc1usd.transferFrom(endowmentWallet, recipient, allocation);
+    // State update AFTER external call
+    nonProfits[recipient].totalReceived = 
+        nonProfits[recipient].totalReceived.add(allocation);
+}</div>
+            
+            <p><strong>Impact:</strong> Potential reentrancy attack if BTC1USD token has hooks or if malicious recipient contracts are added.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Add ReentrancyGuard and follow checks-effects-interactions pattern:
+                <div class="code-block">
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+function executeMonthlyDistribution() 
+    external onlyAdminOrDAO nonReentrant {
+    // Update state first, then transfer
+}</div>
+            </div>
+        </div>
+
+        <div class="high">
+            <h3><span class="severity-badge badge-high">HIGH-03</span> Signature Replay Attack Vulnerability</h3>
+            <p><strong>Contracts:</strong> DAO.sol, GovernanceDAO.sol</p>
+            <p><strong>Location:</strong> DAO.sol lines 178-211, GovernanceDAO.sol (delegateBySig not implemented)</p>
+            <p><strong>Description:</strong> The castVoteBySig and delegateBySig functions don't use nonces to prevent replay attacks.</p>
+            
+            <p><strong>Impact:</strong> Signatures could be replayed to cast votes or delegate tokens multiple times.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Implement nonce tracking:
+                <div class="code-block">
+mapping(address => uint256) public nonces;
+
+function castVoteBySig(..., uint256 nonce, ...) external {
+    require(nonce == nonces[signatory], "Invalid nonce");
+    nonces[signatory]++;
+    // ... rest of logic
+}</div>
+            </div>
+        </div>
+
+        <div class="high">
+            <h3><span class="severity-badge badge-high">HIGH-04</span> Oracle Price Staleness Not Enforced in Vault</h3>
+            <p><strong>Contract:</strong> Vault.sol</p>
+            <p><strong>Location:</strong> Lines 144, 190, 247</p>
+            <p><strong>Description:</strong> The Vault contract calls priceOracle.getPrice() but doesn't verify if the price is stale before using it for critical operations.</p>
+            
+            <p><strong>Impact:</strong> Stale prices could allow arbitrage or unfair minting/redemption rates.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong>
+                <div class="code-block">
+uint256 tokenPrice = priceOracle.getPrice(collateralToken);
+require(!priceOracle.isStale(), "Vault: oracle price is stale");</div>
+            </div>
+        </div>
+
+        <div class="high">
+            <h3><span class="severity-badge badge-high">HIGH-05</span> Missing Zero Address Validation</h3>
+            <p><strong>Contracts:</strong> Multiple</p>
+            <p><strong>Description:</strong> Several critical functions don't validate that addresses are not zero before setting them.</p>
+            
+            <p><strong>Locations:</strong></p>
+            <ul>
+                <li>BTC1USD.sol: setVault, setWeeklyDistribution (lines 53-61)</li>
+                <li>Vault.sol: constructor doesn't validate devWallet and endowmentWallet</li>
+                <li>WeeklyDistribution.sol: constructor validation incomplete</li>
+            </ul>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Add zero address checks:
+                <div class="code-block">
+function setVault(address _vault) external onlyAdmin {
+    require(_vault != address(0), "BTC1USD: vault is zero address");
+    address oldVault = vault;
+    vault = _vault;
+    emit VaultChanged(oldVault, _vault);
+}</div>
+            </div>
+        </div>
+
+        <div class="high">
+            <h3><span class="severity-badge badge-high">HIGH-06</span> Unbounded Loop in Distribution Functions</h3>
+            <p><strong>Contracts:</strong> MerkleDistributor.sol, EndowmentManager.sol</p>
+            <p><strong>Location:</strong> Multiple view functions with loops</p>
+            <p><strong>Description:</strong> Functions like getAllDistributions(), getIncompleteDistributionIds() iterate over unbounded arrays.</p>
+            
+            <div class="code-block">
+function getAllDistributions() public view returns (Distribution[] memory) {
+    Distribution[] memory allDists = new Distribution[](currentDistributionId);
+    for (uint256 i = 1; i <= currentDistributionId; i++) {
+        allDists[i-1] = distributions[i];
+    }
+    return allDists;
+}</div>
+            
+            <p><strong>Impact:</strong> Could exceed block gas limit, causing DoS.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Implement pagination:
+                <div class="code-block">
+function getDistributions(uint256 offset, uint256 limit) 
+    public view returns (Distribution[] memory) {
+    uint256 end = offset + limit > currentDistributionId 
+        ? currentDistributionId : offset + limit;
+    // ... paginated logic
+}</div>
+            </div>
+        </div>
+
+        <div class="page-break"></div>
+
+        <h2>⚡ MEDIUM SEVERITY FINDINGS</h2>
+
+        <div class="medium">
+            <h3><span class="severity-badge badge-medium">MEDIUM-01</span> Lack of Event Emission for Critical State Changes</h3>
+            <p><strong>Contract:</strong> BTC1USD.sol</p>
+            <p><strong>Location:</strong> Line 59-61</p>
+            <p><strong>Description:</strong> setWeeklyDistribution doesn't emit an event.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Add event:
+                <div class="code-block">
+event WeeklyDistributionChanged(
+    address indexed oldDistribution, 
+    address indexed newDistribution
+);
+
+function setWeeklyDistribution(address _weeklyDistribution) external onlyAdmin {
+    address oldDistribution = weeklyDistribution;
+    weeklyDistribution = _weeklyDistribution;
+    emit WeeklyDistributionChanged(oldDistribution, _weeklyDistribution);
+}</div>
+            </div>
+        </div>
+
+        <div class="medium">
+            <h3><span class="severity-badge badge-medium">MEDIUM-02</span> Dangerous Array Element Deletion Pattern</h3>
+            <p><strong>Contracts:</strong> Multiple</p>
+            <p><strong>Description:</strong> Array elements are deleted by swapping with the last element and popping. This changes order and could break assumptions.</p>
+            
+            <div class="code-block">
+// In removeWallet (MerkleDistributor.sol:515-520)
+for (uint256 i = 0; i < walletAddresses.length; i++) {
+    if (walletAddresses[i] == wallet) {
+        walletAddresses[i] = walletAddresses[walletAddresses.length - 1];
+        walletAddresses.pop();
+        break;
+    }
+}</div>
+            
+            <p><strong>Impact:</strong> Unpredictable array ordering could affect off-chain integrations.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Document this behavior clearly or use EnumerableSet from OpenZeppelin.
+            </div>
+        </div>
+
+        <div class="medium">
+            <h3><span class="severity-badge badge-medium">MEDIUM-03</span> Floating Pragma</h3>
+            <p><strong>Contracts:</strong> All contracts</p>
+            <p><strong>Description:</strong> All contracts use ^0.8.19 which allows any version >= 0.8.19 and < 0.9.0</p>
+            
+            <p><strong>Impact:</strong> Different compiler versions could produce different bytecode, leading to unexpected behavior.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Lock to specific version:
+                <div class="code-block">
+pragma solidity 0.8.19;</div>
+            </div>
+        </div>
+
+        <div class="medium">
+            <h3><span class="severity-badge badge-medium">MEDIUM-04</span> Missing Input Validation</h3>
+            <p><strong>Contract:</strong> Vault.sol</p>
+            <p><strong>Location:</strong> mint and redeem functions</p>
+            <p><strong>Description:</strong> No maximum limit on mint/redeem amounts.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Add reasonable limits:
+                <div class="code-block">
+uint256 public constant MAX_MINT_AMOUNT = 1000000e8; // 1M tokens
+
+function mint(address collateralToken, uint256 depositAmount) external {
+    require(depositAmount <= MAX_MINT_AMOUNT, "Vault: exceeds max mint");
+    // ... rest of logic
+}</div>
+            </div>
+        </div>
+
+        <div class="medium">
+            <h3><span class="severity-badge badge-medium">MEDIUM-05</span> Governance Voting Power Calculation Issues</h3>
+            <p><strong>Contract:</strong> DAO.sol</p>
+            <p><strong>Location:</strong> Lines 377-385</p>
+            <p><strong>Description:</strong> getVotes function doesn't snapshot balances at proposal creation, allowing vote manipulation.</p>
+            
+            <div class="code-block">
+function getVotes(address account) public view returns (uint256) {
+    uint256 delegatedVotes = delegates[account].delegatedVotes;
+    if (delegatedVotes > 0) {
+        return delegatedVotes;
+    }
+    return btc1usd.balanceOf(account); // Current balance, not snapshotted
+}</div>
+            
+            <p><strong>Impact:</strong> Users could transfer tokens after voting or buy voting power during active proposals.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Implement checkpoint/snapshot mechanism like OpenZeppelin's ERC20Votes.
+            </div>
+        </div>
+
+        <div class="medium">
+            <h3><span class="severity-badge badge-medium">MEDIUM-06</span> Merkle Proof Claim Period Too Short for Testing</h3>
+            <p><strong>Contract:</strong> MerkleDistributor.sol</p>
+            <p><strong>Location:</strong> Line 31</p>
+            <p><strong>Description:</strong> CLAIM_PERIOD is 10 hours for testnet but hardcoded.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Make it configurable:
+                <div class="code-block">
+uint256 public claimPeriod;
+
+constructor(...) {
+    claimPeriod = 365 days; // or set via parameter
+}</div>
+            </div>
+        </div>
+
+        <div class="medium">
+            <h3><span class="severity-badge badge-medium">MEDIUM-07</span> Emergency Pause Doesn't Affect All Critical Functions</h3>
+            <p><strong>Contract:</strong> BTC1USD.sol</p>
+            <p><strong>Description:</strong> The pause only affects transfer and transferFrom, not approve.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Consider whether approve should also be paused:
+                <div class="code-block">
+function approve(address spender, uint256 amount) 
+    external override whenNotPaused returns (bool) {
+    _approve(msg.sender, spender, amount);
+    return true;
+}</div>
+            </div>
+        </div>
+
+        <div class="medium">
+            <h3><span class="severity-badge badge-medium">MEDIUM-08</span> Incorrect Decimal Handling</h3>
+            <p><strong>Contract:</strong> EndowmentManager.sol</p>
+            <p><strong>Location:</strong> Line 33 (PROPOSAL_THRESHOLD)</p>
+            <p><strong>Description:</strong> PROPOSAL_THRESHOLD uses 1e18 but BTC1USD uses 8 decimals.</p>
+            
+            <div class="code-block">
+uint256 public constant PROPOSAL_THRESHOLD = 1000 * 10**18; // Wrong!</div>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong>
+                <div class="code-block">
+uint256 public constant PROPOSAL_THRESHOLD = 1000 * 10**8; // Correct for 8 decimals</div>
+            </div>
+        </div>
+
+        <div class="page-break"></div>
+
+        <h2>ℹ️ LOW SEVERITY / INFORMATIONAL FINDINGS</h2>
+
+        <div class="low">
+            <h3><span class="severity-badge badge-low">LOW-01</span> Solidity 0.8+ Built-in Overflow Protection Makes SafeMath Redundant</h3>
+            <p><strong>Contracts:</strong> All contracts using SafeMath</p>
+            <p><strong>Description:</strong> Solidity 0.8.0+ has built-in overflow/underflow protection.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Remove SafeMath library and use native arithmetic operations for gas savings.
+            </div>
+        </div>
+
+        <div class="low">
+            <h3><span class="severity-badge badge-low">LOW-02</span> Unused Function Parameters</h3>
+            <p><strong>Contract:</strong> DAO.sol</p>
+            <p><strong>Location:</strong> Line 456</p>
+            
+            <div class="code-block">
+function getQuorum(uint8 /* category */) external view returns (uint256) {
+    return quorumVotes();
+}</div>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Either use the parameter or remove the function if not needed.
+            </div>
+        </div>
+
+        <div class="low">
+            <h3><span class="severity-badge badge-low">LOW-03</span> Magic Numbers Should Be Constants</h3>
+            <p><strong>Contracts:</strong> Multiple</p>
+            <p><strong>Description:</strong> Hard-coded values like 100, 12, 2 weeks appear in code without clear meaning.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Define as named constants:
+                <div class="code-block">
+uint256 private constant PERCENTAGE_DENOMINATOR = 100;
+uint256 private constant BLOCKS_PER_SECOND = 12;
+uint256 private constant GRACE_PERIOD = 2 weeks;</div>
+            </div>
+        </div>
+
+        <div class="low">
+            <h3><span class="severity-badge badge-low">LOW-04</span> Inconsistent Function Ordering</h3>
+            <p><strong>Description:</strong> Functions are not consistently ordered (external, public, internal, private).</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Follow Solidity style guide ordering.
+            </div>
+        </div>
+
+        <div class="low">
+            <h3><span class="severity-badge badge-low">LOW-05</span> Missing NatSpec Documentation</h3>
+            <p><strong>Description:</strong> Many functions lack comprehensive NatSpec comments.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Add complete NatSpec:
+                <div class="code-block">
+/**
+ * @notice Mints new BTC1USD tokens backed by collateral
+ * @param to Recipient address
+ * @param amount Amount of tokens to mint (8 decimals)
+ * @dev Only callable by Vault or WeeklyDistribution contracts
+ */
+function mint(address to, uint256 amount) external override;</div>
+            </div>
+        </div>
+
+        <div class="low">
+            <h3><span class="severity-badge badge-low">LOW-06</span> Consider Using Custom Errors</h3>
+            <p><strong>Description:</strong> Using require with string messages is gas-inefficient.</p>
+            
+            <div class="recommendation">
+                <strong>Recommendation:</strong> Use custom errors (Solidity 0.8.4+):
+                <div class="code-block">
+error Unauthorized(address caller);
+error InsufficientBalance(uint256 required, uint256 available);
+
+if (msg.sender != admin) revert Unauthorized(msg.sender);</div>
+            </div>
+        </div>
+
+        <div class="page-break"></div>
+
+        <h2>🛠️ GAS OPTIMIZATION OPPORTUNITIES</h2>
+
+        <div class="info-box">
+            <h3>1. Remove SafeMath Library</h3>
+            <p>Solidity 0.8+ has built-in overflow protection. Removing SafeMath can save ~100-200 gas per operation.</p>
+            <p><strong>Estimated Savings:</strong> 10-20% on arithmetic operations</p>
+        </div>
+
+        <div class="info-box">
+            <h3>2. Use Custom Errors Instead of Require Strings</h3>
+            <p>Custom errors save approximately 13,000 gas on deployment and 2,000 gas on runtime.</p>
+            <p><strong>Estimated Savings:</strong> ~30-50% on error handling</p>
+        </div>
+
+        <div class="info-box">
+            <h3>3. Pack Struct Variables</h3>
+            <p>Optimize struct packing to reduce storage slots.</p>
+            <p><strong>Example:</strong> In NonProfit struct, bool verified and uint256 allocationWeight could be packed better.</p>
+        </div>
+
+        <div class="info-box">
+            <h3>4. Use Immutable for Contract References</h3>
+            <p>Many contract addresses could be marked as immutable for gas savings.</p>
+            <p><strong>Estimated Savings:</strong> 200-2,100 gas per SLOAD</p>
+        </div>
+
+        <h2>🎓 BEST PRACTICE RECOMMENDATIONS</h2>
+
+        <div class="recommendation">
+            <h3>1. Implement Comprehensive Testing</h3>
+            <ul>
+                <li>Add fuzzing tests for all mathematical operations</li>
+                <li>Test edge cases (zero values, maximum values, overflow scenarios)</li>
+                <li>Implement integration tests for cross-contract interactions</li>
+                <li>Add stress tests for gas limits in loops</li>
+            </ul>
+        </div>
+
+        <div class="recommendation">
+            <h3>2. Add Circuit Breakers</h3>
+            <ul>
+                <li>Implement automatic pause triggers for anomalous activity</li>
+                <li>Add daily/weekly mint/redeem limits</li>
+                <li>Monitor collateral ratio and pause if it drops below threshold</li>
+            </ul>
+        </div>
+
+        <div class="recommendation">
+            <h3>3. Improve Access Control</h3>
+            <ul>
+                <li>Implement OpenZeppelin's AccessControl for role management</li>
+                <li>Use multi-signature wallet for admin operations</li>
+                <li>Add timelock delays for sensitive parameter changes</li>
+                <li>Consider DAO governance for critical decisions</li>
+            </ul>
+        </div>
+
+        <div class="recommendation">
+            <h3>4. Oracle Security</h3>
+            <ul>
+                <li>Implement multiple oracle sources (Chainlink + backup)</li>
+                <li>Add circuit breaker for price deviation > 10%</li>
+                <li>Time-weighted average price (TWAP) for critical operations</li>
+                <li>Automatic fallback to backup oracle if primary fails</li>
+            </ul>
+        </div>
+
+        <div class="recommendation">
+            <h3>5. Upgradeability Considerations</h3>
+            <ul>
+                <li>Current contracts are not upgradeable</li>
+                <li>Consider using proxy pattern (UUPS or Transparent)</li>
+                <li>Ensure storage layout compatibility if upgrading</li>
+                <li>Add emergency migration functions</li>
+            </ul>
+        </div>
+
+        <h2>📋 DETAILED FINDINGS SUMMARY</h2>
+
+        <table class="summary-table">
+            <tr>
+                <th>ID</th>
+                <th>Severity</th>
+                <th>Title</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td>CRITICAL-01</td>
+                <td><span class="severity-badge badge-critical">CRITICAL</span></td>
+                <td>Missing Access Control on Mint Function</td>
+                <td>❌ Open</td>
+            </tr>
+            <tr>
+                <td>CRITICAL-02</td>
+                <td><span class="severity-badge badge-critical">CRITICAL</span></td>
+                <td>Vault Collateral Ratio Check Disabled</td>
+                <td>❌ Open</td>
+            </tr>
+            <tr>
+                <td>CRITICAL-03</td>
+                <td><span class="severity-badge badge-critical">CRITICAL</span></td>
+                <td>Missing Return Value Check in Batch Transfer</td>
+                <td>❌ Open</td>
+            </tr>
+            <tr>
+                <td>HIGH-01</td>
+                <td><span class="severity-badge badge-high">HIGH</span></td>
+                <td>Centralization Risk - Single Admin Control</td>
+                <td>❌ Open</td>
+            </tr>
+            <tr>
+                <td>HIGH-02</td>
+                <td><span class="severity-badge badge-high">HIGH</span></td>
+                <td>Reentrancy Risk in EndowmentManager</td>
+                <td>❌ Open</td>
+            </tr>
+            <tr>
+                <td>HIGH-03</td>
+                <td><span class="severity-badge badge-high">HIGH</span></td>
+                <td>Signature Replay Attack Vulnerability</td>
+                <td>❌ Open</td>
+            </tr>
+            <tr>
+                <td>HIGH-04</td>
+                <td><span class="severity-badge badge-high">HIGH</span></td>
+                <td>Oracle Price Staleness Not Enforced</td>
+                <td>❌ Open</td>
+            </tr>
+            <tr>
+                <td>HIGH-05</td>
+                <td><span class="severity-badge badge-high">HIGH</span></td>
+                <td>Missing Zero Address Validation</td>
+                <td>❌ Open</td>
+            </tr>
+            <tr>
+                <td>HIGH-06</td>
+                <td><span class="severity-badge badge-high">HIGH</span></td>
+                <td>Unbounded Loop in Distribution Functions</td>
+                <td>❌ Open</td>
+            </tr>
+        </table>
+
+        <h2>✅ CONCLUSION</h2>
+
+        <div class="info-box">
+            <p>The BTC1USD Protocol demonstrates a well-structured approach to creating a Bitcoin-backed stablecoin. However, the audit has identified several critical and high-severity issues that must be addressed before deployment to mainnet:</p>
+            
+            <h4>Priority Actions Required:</h4>
+            <ol>
+                <li><strong>IMMEDIATE:</strong> Re-enable collateral ratio check in Vault.sol (CRITICAL-02)</li>
+                <li><strong>IMMEDIATE:</strong> Fix access control in BTC1USD mint function (CRITICAL-01)</li>
+                <li><strong>HIGH PRIORITY:</strong> Implement multi-signature admin control</li>
+                <li><strong>HIGH PRIORITY:</strong> Add reentrancy guards where needed</li>
+                <li><strong>HIGH PRIORITY:</strong> Enforce oracle staleness checks</li>
+            </ol>
+
+            <h4>Overall Risk Assessment:</h4>
+            <p><strong>Current State:</strong> <span class="severity-badge badge-critical">HIGH RISK</span></p>
+            <p><strong>Post-Fixes:</strong> <span class="severity-badge badge-medium">MEDIUM RISK</span> (with recommended improvements)</p>
+
+            <h4>Recommendations Before Mainnet Deployment:</h4>
+            <ul>
+                <li>Address all CRITICAL and HIGH severity findings</li>
+                <li>Conduct additional external audit</li>
+                <li>Implement comprehensive testing suite</li>
+                <li>Deploy on testnet for extended period (3+ months)</li>
+                <li>Implement bug bounty program</li>
+                <li>Add formal verification for critical components</li>
+            </ul>
+        </div>
+
+        <h2>📞 CONTACT & FOLLOW-UP</h2>
+        <div class="info-box">
+            <p>This audit was conducted as a comprehensive review of the BTC1USD Protocol smart contracts. For questions, clarifications, or to discuss remediation strategies, please contact the audit team.</p>
+            
+            <p><strong>Audit Completion Date:</strong> November 22, 2025</p>
+            <p><strong>Report Version:</strong> 1.0</p>
+            <p><strong>Next Steps:</strong> Schedule remediation review after fixes are implemented</p>
+        </div>
+
+        <div style="text-align: center; margin-top: 50px; padding-top: 20px; border-top: 2px solid #e0e0e0;">
+            <p><strong>END OF AUDIT REPORT</strong></p>
+            <p style="color: #666;">This document is confidential and intended solely for the BTC1USD Protocol team.</p>
+        </div>
+    </div>
+</body>
+</html>

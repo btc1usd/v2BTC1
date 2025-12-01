@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "./interfaces/IMerkleDistributor.sol";
+import "../../interfaces/IMerkleDistributor.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -22,7 +22,7 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
     address public admin;
     address public weeklyDistribution;
 
-    uint256 public constant CLAIM_PERIOD = 365 days;
+    uint256 public constant CLAIM_PERIOD = 10 hours; // TESTNET: 10 hours | MAINNET: 365 days
     
     uint256 public currentDistributionId;
     uint256 public totalTokensInCurrentDistribution;
@@ -461,7 +461,7 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         return result;
     }
 
-    function hasUnclaimedRewards(address account) public view returns (bool) {
+    function hasUnclaimedRewards(address account) public view override returns (bool) {
         uint256[] memory incompleteDists = getIncompleteDistributionIds();
         return incompleteDists.length > 0 && account != address(0);
     }
@@ -472,7 +472,7 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         address account,
         uint256 amount,
         bytes32[] calldata merkleProof
-    ) external view returns (bool) {
+    ) external view override returns (bool) {
         if (distributionId > currentDistributionId || isDistributionComplete(distributionId)) {
             return false;
         }
@@ -491,6 +491,7 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
     function getDistributionInfo(uint256 distributionId)
         external
         view
+        override
         returns (
             bytes32 root,
             uint256 totalTokens,

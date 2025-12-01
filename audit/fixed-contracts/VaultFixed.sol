@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "./interfaces/IBTC1USD.sol";
-import "./interfaces/IPriceOracle.sol";
-import "./libraries/SafeMath.sol";
-import "./libraries/FixedPoint8.sol";
+import "../../interfaces/IBTC1USD.sol";
+import "../../interfaces/IPriceOracle.sol";
+import "../../libraries/SafeMath.sol";
+import "../../libraries/FixedPoint8.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
@@ -151,11 +151,6 @@ contract Vault {
         require(_endowmentWallet != address(0), "Vault: endowment wallet is zero address");
         endowmentWallet = _endowmentWallet;
         emit EndowmentWalletSet(_endowmentWallet);
-    }
-
-    function setAdmin(address _admin) external onlyAdmin {
-        require(_admin != address(0), "Vault: admin is zero address");
-        admin = _admin;
     }
 
     // ===== Core utility: dynamic vault valuation =====

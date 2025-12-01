@@ -147,7 +147,13 @@ contract ProtocolGovernance {
         adminTransferTimestamp = 0;
         emit AdminTransferCancelled();
     }
-    
+
+    // Simple admin transfer for initial deployment (no time delay)
+    function setAdmin(address _admin) external onlyAdmin {
+        require(_admin != address(0), "ProtocolGovernance: admin is zero address");
+        admin = _admin;
+    }
+
     // Emergency controls
     function emergencyPause() external onlyEmergencyCouncil {
         emergencyPaused = true;

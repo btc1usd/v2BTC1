@@ -59,11 +59,10 @@ contract WeeklyDistribution {
     uint256 public lastDistributionTime;
 
     // ============================================
-    // CONFIGURATION: TESTNET vs MAINNET
+    // CONFIGURATION: MAINNET
     // ============================================
-    // TESTNET (current): 7 hours - for rapid testing
-    // MAINNET: Change to "7 days" for weekly distributions
-    uint256 public constant DISTRIBUTION_INTERVAL = 7 hours;
+    // Weekly distributions - 7 days interval
+    uint256 public constant DISTRIBUTION_INTERVAL = 7 days;
 
     uint256 public constant FRIDAY_14_UTC = 14 * 3600; // 14:00 UTC in seconds
 
@@ -131,12 +130,12 @@ contract WeeklyDistribution {
     }
 
     function canDistribute() public view returns (bool) {
-        // TESTNET MODE: Simple 7-hour interval check
-        // MAINNET MODE: Uncomment the code below for Friday 14:00 UTC restriction
+        // MAINNET MODE: Friday 14:00 UTC restriction enabled
+        // Distributions occur weekly, but only on/after Friday 14:00 UTC
 
         bool intervalPassed = block.timestamp >= lastDistributionTime.add(DISTRIBUTION_INTERVAL);
 
-        /* MAINNET: Uncomment this block for Friday 14:00 UTC check
+        // MAINNET: Friday 14:00 UTC check enabled
         if (!intervalPassed) return false;
 
         // Once interval passed, check if we've reached Friday 14:00 UTC
@@ -151,9 +150,9 @@ contract WeeklyDistribution {
 
         // If it's Friday 14:00+ or any day after Friday (Sat, Sun, Mon, etc.), allowed
         return true;
-        */
 
-        return intervalPassed;
+        // TESTNET MODE (disabled): Uncomment line below for simple interval check without Friday restriction
+        // return intervalPassed;
     }
 
     function getRewardPerToken(uint256 collateralRatio) public pure returns (uint256) {
@@ -386,6 +385,11 @@ contract WeeklyDistribution {
      */
     function includeAddress(address account) external onlyAdmin {
         _includeAddress(account);
+    }
+
+    function setAdmin(address _admin) external onlyAdmin {
+        require(_admin != address(0), "WeeklyDistribution: admin is zero address");
+        admin = _admin;
     }
 
     /**

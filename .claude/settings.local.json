@@ -57,7 +57,8 @@
       "Bash(ping:*)",
       "Bash(nul)",
       "Bash(npx kill-port 3000)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

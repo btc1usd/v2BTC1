@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "./interfaces/IBTC1USD.sol";
-import "./libraries/SafeMath.sol";
+import "../../interfaces/IBTC1USD.sol";
+import "../../libraries/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
@@ -75,7 +75,7 @@ contract EndowmentManager is ReentrancyGuard {
     
     uint256 public totalEndowmentBalance;
     uint256 public lastDistributionTime;
-    uint256 public constant DISTRIBUTION_INTERVAL = 7 days;
+    uint256 public constant DISTRIBUTION_INTERVAL = 30 days;
     
     struct MonthlyDistribution {
         uint256 timestamp;
@@ -372,10 +372,5 @@ contract EndowmentManager is ReentrancyGuard {
     function setEndowmentWallet(address _endowmentWallet) external onlyAdmin {
         require(_endowmentWallet != address(0), "EndowmentManager: endowment wallet is zero address");
         endowmentWallet = _endowmentWallet;
-    }
-
-    function setAdmin(address _admin) external onlyAdmin {
-        require(_admin != address(0), "EndowmentManager: admin is zero address");
-        admin = _admin;
     }
 }

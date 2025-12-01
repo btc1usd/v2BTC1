@@ -239,7 +239,7 @@ function Dashboard() {
 
     if (!canExecuteDistribution) {
       setTransactionStatus(
-        "Distribution cannot be executed at this time. Check: ratio ≥ 112%, 7 hours since last distribution"
+        "Distribution cannot be executed at this time. Check: ratio ≥ 112%, 7 days since last distribution"
       );
       setTimeout(() => setTransactionStatus(""), 8000);
       return;
@@ -945,7 +945,7 @@ function Dashboard() {
         // Calculate total ACTUALLY claimable rewards (filter out claimed, expired, not ready)
         let totalClaimable = 0;
         let claimableCount = 0; // Count of claimable distributions
-        const TEN_HOURS_MS = 10 * 60 * 60 * 1000; // 10 hours in milliseconds
+        const CLAIM_PERIOD_MS = 365 * 24 * 60 * 60 * 1000; // 365 days in milliseconds
 
         if (data.userDistributions && data.userDistributions.length > 0) {
           for (const dist of data.userDistributions) {
@@ -961,11 +961,11 @@ function Dashboard() {
               continue;
             }
 
-            // Check if expired (10 hours from generation)
+            // Check if expired (365 days from generation)
             if (dist.metadata?.generated) {
               const generatedTime = new Date(dist.metadata.generated).getTime();
               const now = Date.now();
-              const isExpired = (now - generatedTime) > TEN_HOURS_MS;
+              const isExpired = (now - generatedTime) > CLAIM_PERIOD_MS;
 
               if (isExpired) {
                 console.log(`⏭️ Skipping expired distribution #${dist.id}`);
@@ -1237,8 +1237,7 @@ function Dashboard() {
   const isHealthy = healthMetrics.isHealthy;
   const protocolCanDistribute = healthMetrics.canDistribute;
 
-  // TESTNET: Per-distribution reward (7-hour cycle)
-  // MAINNET: weeklyReward (7-day cycle)
+  // Per-distribution reward (7-day cycle)
   // Reward is in DOLLARS (not cents), matching contract's getRewardPerToken() which returns cents with 8 decimals
   // Contract: 0.01e8 = 1 cent = $0.01, so we divide by 100 to get dollar amount
   let weeklyReward = 0;
@@ -3069,7 +3068,7 @@ function Dashboard() {
                         : "Loading..."}
                     </div>
                     <p className="text-xs text-gray-400 mt-1">
-                      Until next distribution (7-hour cycle)
+                      Until next distribution (weekly cycle)
                     </p>
                   </CardContent>
                 </Card>
@@ -4274,7 +4273,7 @@ function Dashboard() {
                   Claim Your Rewards
                 </h2>
                 <p className="text-muted-foreground">
-                  Claim your BTC1 rewards from multiple distributions (7-hour cycle, 10-hour claim window)
+                  Claim your BTC1 rewards from multiple distributions (7-day cycle, 365-day claim window)
                 </p>
               </div>
               <EnhancedMerkleClaim isAdmin={!!isAdminUser} />
@@ -4287,7 +4286,7 @@ function Dashboard() {
                   Distribution Administration
                 </h2>
                 <p className="text-muted-foreground">
-                  Manage distributions (7-hour cycle) and merkle tree operations
+                  Manage distributions (weekly cycle) and merkle tree operations
                 </p>
               </div>
               <DistributionAdmin

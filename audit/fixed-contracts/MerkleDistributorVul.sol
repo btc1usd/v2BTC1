@@ -3,18 +3,19 @@ pragma solidity ^0.8.19;
 
 import "./interfaces/IMerkleDistributor.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+// Add ReentrancyGuard
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
- * @title MerkleDistributor - Fixed Version
- * @notice Merkle-based token distributor with security fixes
- * 
- * AUDIT FIXES APPLIED:
- * - CRITICAL-03: Improved batch transfer with better return value checking
- * - Already has ReentrancyGuard and nonReentrant modifiers (good practice)
+ * @title MerkleDistributorFixed
+ * @dev Distributes tokens using merkle proofs
+ * Based on Uniswap's merkle distributor pattern with enhancements for recurring distributions
+ * Fixed version that properly handles overlapping distributions and ensures tokens are available
  */
+// Add ReentrancyGuard inheritance
 contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
+    // Remove SafeMath import since Solidity 0.8+ has built-in overflow protection
     using SafeERC20 for IERC20;
 
     address public immutable override token;
@@ -22,31 +23,46 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
     address public admin;
     address public weeklyDistribution;
 
-    uint256 public constant CLAIM_PERIOD = 365 days;
+    // ============================================
+    // CONFIGURATION: TESTNET vs MAINNET
+    // ============================================
+    // TESTNET (current): 10 hours - for rapid testing
+    // MAINNET: Change to "365 days" for full claim window
+    uint256 public constant CLAIM_PERIOD = 10 hours;
     
+    // Current distribution information
     uint256 public currentDistributionId;
     uint256 public totalTokensInCurrentDistribution;
     uint256 public totalClaimedInCurrentDistribution;
     
+    // Wallet management for batch transfers
     struct WalletInfo {
         string name;
         string description;
         bool isActive;
     }
 
+    // Mapping of wallet addresses to their information
     mapping(address => WalletInfo) public walletInfos;
+
+    // List of all wallet addresses
     address[] public walletAddresses;
 
+    // Distribution tracking
     struct DistributionStats {
-        uint256 totalDistributions;
-        uint256 totalAmountDistributed;
-        uint256 totalRecipients;
-        uint256 totalFailed;
+        uint256 totalDistributions;      // Total number of batch distributions
+        uint256 totalAmountDistributed;  // Total amount distributed (in token decimals)
+        uint256 totalRecipients;         // Total recipients across all distributions
+        uint256 totalFailed;             // Total failed transfers
     }
 
+    // Per-token distribution statistics
     mapping(address => DistributionStats) public distributionStats;
+
+    // Global distribution count (across all tokens)
     uint256 public totalDistributionCount;
     
+    // Historical distributions
     struct Distribution {
         bytes32 merkleRoot;
         uint256 totalTokens;
@@ -56,11 +72,17 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
     }
     
     mapping(uint256 => Distribution) public distributions;
+    
+    // Track claims across all distributions: distributionId => index => claimed
     mapping(uint256 => mapping(uint256 => bool)) public claimedByDistribution;
+    
+    // Track total claimed by user across all distributions
     mapping(address => uint256) public totalClaimedByUser;
     
+    // Emergency pause functionality
     bool public paused;
     
+    // Events for wallet management
     event IndividualTransfer(address indexed token, address indexed to, uint256 amount);
     event TransferFailed(address indexed token, address indexed to, uint256 amount);
     event BatchTransferCompleted(address indexed token, uint256 totalRecipients, uint256 totalSent, uint256 totalFailed);
@@ -91,14 +113,24 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         weeklyDistribution = weeklyDistribution_;
     }
 
-    function isClaimed(uint256 distributionId, uint256 index) public view override returns (bool) {
+    // Check if index of a distribution has been claimed
+    function isClaimed(uint256 distributionId, uint256 index) public view returns (bool) {
         return claimedByDistribution[distributionId][index];
     }
 
+    // Mark index as claimed for a distribution
     function _setClaimed(uint256 distributionId, uint256 index) private {
         claimedByDistribution[distributionId][index] = true;
     }
 
+    /**
+     * @notice Claim tokens for a particular distribution.
+     * @param distributionId The distribution id to claim from
+     * @param index The index in the merkle tree
+     * @param account The account to receive tokens (should match leaf)
+     * @param amount The amount for the leaf (should match leaf)
+     * @param merkleProof The merkle proof for the leaf
+     */
     function claim(
         uint256 distributionId,
         uint256 index,
@@ -109,33 +141,42 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         require(distributionId > 0 && distributionId <= currentDistributionId, "MerkleDistributor: Invalid distributionId");
         require(!isClaimed(distributionId, index), "MerkleDistributor: Drop already claimed");
 
+        // Check if claim period has expired (10 hours for testing)
         require(
             block.timestamp <= distributions[distributionId].timestamp + CLAIM_PERIOD,
             "MerkleDistributor: Claim period expired"
         );
 
+        // Get the merkle root for this distribution (authoritative)
         bytes32 root = distributions[distributionId].merkleRoot;
         require(root != bytes32(0), "MerkleDistributor: No root for distribution");
 
+        // Verify the merkle proof (leaf encoding must match off-chain generator)
         bytes32 node = keccak256(abi.encodePacked(index, account, amount));
         require(verify(merkleProof, root, node), "MerkleDistributor: Invalid proof");
 
+        // Mark claimed and update totals (distribution-specific canonical total)
         _setClaimed(distributionId, index);
         distributions[distributionId].totalClaimed += amount;
         totalClaimedByUser[account] += amount;
 
+        // If claiming current distribution, keep live stat synced
         if (distributionId == currentDistributionId) {
             totalClaimedInCurrentDistribution += amount;
+            // keep global merkleRoot mirror in sync (optional)
             merkleRoot = distributions[currentDistributionId].merkleRoot;
         }
 
+        // Check that we have enough tokens before transferring
         require(IERC20(token).balanceOf(address(this)) >= amount, "MerkleDistributor: Insufficient token balance");
         
+        // Transfer tokens using SafeERC20
         IERC20(token).safeTransfer(account, amount);
 
         emit Claimed(index, account, amount);
     }
 
+    // Merkle proof verification (expects sorted pair hashing)
     function verify(bytes32[] memory proof, bytes32 root, bytes32 leaf) public pure returns (bool) {
         bytes32 computedHash = leaf;
 
@@ -152,9 +193,14 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         return computedHash == root;
     }
 
-    function startNewDistribution(bytes32 newMerkleRoot, uint256 totalTokens) external override onlyWeeklyDistribution {
+    /**
+     * @dev Start a new distribution (called by WeeklyDistribution contract)
+     * This version does NOT finalize the previous distribution, allowing overlapping distributions
+     */
+    function startNewDistribution(bytes32 newMerkleRoot, uint256 totalTokens) external onlyWeeklyDistribution {
         currentDistributionId = currentDistributionId + 1;
 
+        // Keep a mirror (optional) of global merkleRoot for compatibility
         bytes32 oldRoot = merkleRoot;
         merkleRoot = newMerkleRoot;
 
@@ -173,7 +219,10 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         emit DistributionStarted(currentDistributionId, newMerkleRoot, totalTokens);
     }
 
-    function startNewDistributionWithFinalization(bytes32 newMerkleRoot, uint256 totalTokens) external override onlyWeeklyDistribution {
+    /**
+     * @dev Start a new distribution with finalization of previous (legacy behavior)
+     */
+    function startNewDistributionWithFinalization(bytes32 newMerkleRoot, uint256 totalTokens) external onlyWeeklyDistribution {
         if (currentDistributionId > 0) {
             finalizeCurrentDistribution();
         }
@@ -196,12 +245,17 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         emit DistributionStarted(currentDistributionId, newMerkleRoot, totalTokens);
     }
 
-    function updateMerkleRoot(uint256 distributionId, bytes32 newMerkleRoot) external override onlyWeeklyDistribution {
+    /**
+     * @dev Update the merkle root for a specific distribution
+     * This allows for updating the root after it has been initially set
+     */
+    function updateMerkleRoot(uint256 distributionId, bytes32 newMerkleRoot) external onlyWeeklyDistribution {
         require(distributionId > 0 && distributionId <= currentDistributionId, "MerkleDistributor: Invalid distributionId");
         
         bytes32 oldRoot = distributions[distributionId].merkleRoot;
         distributions[distributionId].merkleRoot = newMerkleRoot;
         
+        // If updating current distribution, update the global merkleRoot
         if (distributionId == currentDistributionId) {
             merkleRoot = newMerkleRoot;
         }
@@ -209,6 +263,9 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         emit MerkleRootUpdated(oldRoot, newMerkleRoot, distributionId);
     }
 
+    /**
+     * @dev Finalize current distribution and return unclaimed tokens
+     */
     function finalizeCurrentDistribution() public onlyAdmin {
         require(currentDistributionId > 0, "MerkleDistributor: No distribution to finalize");
         require(!distributions[currentDistributionId].finalized, "MerkleDistributor: Distribution already finalized");
@@ -225,6 +282,143 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         emit DistributionFinalized(currentDistributionId, dist.totalClaimed, unclaimedTokens);
     }
 
+    /**
+     * @dev Check if a distribution is complete (all claims have been made)
+     */
+    function isDistributionComplete(uint256 distributionId) public view returns (bool) {
+        Distribution memory dist = distributions[distributionId];
+        return dist.totalClaimed == dist.totalTokens && dist.totalTokens > 0;
+    }
+
+    /**
+     * @dev Get all distribution IDs
+     */
+    function getAllDistributionIds() public view returns (uint256[] memory) {
+        uint256[] memory ids = new uint256[](currentDistributionId);
+        for (uint256 i = 1; i <= currentDistributionId; i++) {
+            ids[i-1] = i;
+        }
+        return ids;
+    }
+
+    /**
+     * @dev Get distribution statistics for all distributions
+     */
+    function getAllDistributions() public view returns (Distribution[] memory) {
+        Distribution[] memory allDists = new Distribution[](currentDistributionId);
+        for (uint256 i = 1; i <= currentDistributionId; i++) {
+            allDists[i-1] = distributions[i];
+        }
+        return allDists;
+    }
+
+    /**
+     * @dev Get all incomplete distribution IDs
+     */
+    function getIncompleteDistributionIds() public view returns (uint256[] memory) {
+        uint256[] memory allIds = getAllDistributionIds();
+        uint256[] memory incompleteIds = new uint256[](allIds.length);
+        uint256 count = 0;
+
+        for (uint256 i = 0; i < allIds.length; i++) {
+            if (!this.isDistributionComplete(allIds[i])) {
+                incompleteIds[count] = allIds[i];
+                count++;
+            }
+        }
+
+        uint256[] memory result = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            result[i] = incompleteIds[i];
+        }
+
+        return result;
+    }
+
+    /**
+     * @dev Check if user can claim from any incomplete distribution
+     * NOTE: on-chain full check by membership is expensive; prefer off-chain helpers.
+     */
+    function hasUnclaimedRewards(address account) public view returns (bool) {
+        uint256[] memory incompleteDists = getIncompleteDistributionIds();
+        return incompleteDists.length > 0 && account != address(0);
+    }
+
+    /**
+     * @dev Check if user can claim for a specific distribution
+     */
+    function canClaim(
+        uint256 distributionId,
+        uint256 index,
+        address account,
+        uint256 amount,
+        bytes32[] calldata merkleProof
+    ) external view returns (bool) {
+        if (distributionId > currentDistributionId || this.isDistributionComplete(distributionId)) {
+            return false;
+        }
+
+        if (isClaimed(distributionId, index)) {
+            return false;
+        }
+
+        bytes32 root = distributions[distributionId].merkleRoot;
+        if (root == bytes32(0)) return false;
+
+        bytes32 node = keccak256(abi.encodePacked(index, account, amount));
+        return verify(merkleProof, root, node);
+    }
+
+    /**
+     * @dev Get distribution information
+     */
+    function getDistributionInfo(uint256 distributionId)
+        external
+        view
+        returns (
+            bytes32 root,
+            uint256 totalTokens,
+            uint256 totalClaimed,
+            uint256 timestamp,
+            bool finalized
+        )
+    {
+        Distribution memory dist = distributions[distributionId];
+        return (dist.merkleRoot, dist.totalTokens, dist.totalClaimed, dist.timestamp, dist.finalized);
+    }
+
+    /**
+     * @dev Get current distribution stats
+     */
+    function getCurrentDistributionStats()
+        external
+        view
+        returns (
+            uint256 distributionId,
+            uint256 totalTokens,
+            uint256 totalClaimed,
+            uint256 percentageClaimed
+        )
+    {
+        distributionId = currentDistributionId;
+        totalTokens = totalTokensInCurrentDistribution;
+        totalClaimed = totalClaimedInCurrentDistribution;
+
+        if (totalTokens > 0) {
+            percentageClaimed = (totalClaimed * 10000) / totalTokens; // Basis points (100 = 1%)
+        } else {
+            percentageClaimed = 0;
+        }
+    }
+
+    /**
+     * @dev Get token balance of this contract
+     */
+    function getContractTokenBalance() external view returns (uint256) {
+        return IERC20(token).balanceOf(address(this));
+    }
+
+    // Admin functions
     function setAdmin(address newAdmin) external onlyAdmin {
         require(newAdmin != address(0), "MerkleDistributor: Invalid admin address");
         address oldAdmin = admin;
@@ -249,76 +443,22 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         emit EmergencyPause(false);
     }
 
+    /**
+     * @dev Emergency function to recover tokens (only admin)
+     */
     function emergencyRecoverTokens(address tokenAddress, uint256 amount) external onlyAdmin {
         require(paused, "MerkleDistributor: Contract must be paused");
         IERC20(tokenAddress).safeTransfer(admin, amount);
     }
     
-    // FIXED: Improved batch transfer with better error handling
-    /**
-     * @notice Batch transfer tokens (best-effort, non-reverting)
-     * FIXED: Better handling of non-standard ERC20 tokens
-     */
-    function batchTransfer(
-        IERC20 tokenToDistribute,
-        address[] calldata recipients,
-        uint256[] calldata amounts
-    ) external nonReentrant onlyOwner {
-        require(recipients.length == amounts.length, "length mismatch");
-        require(recipients.length > 0, "no recipients");
-
-        uint256 totalSent = 0;
-        uint256 totalFailed = 0;
-
-        for (uint256 i = 0; i < recipients.length; ++i) {
-            address to = recipients[i];
-            uint256 amount = amounts[i];
-
-            // Use low-level call for best-effort transfer
-            (bool success, bytes memory data) = address(tokenToDistribute).call(
-                abi.encodeWithSelector(tokenToDistribute.transfer.selector, to, amount)
-            );
-
-            // Handle both standard (returns bool) and non-standard (returns nothing) tokens
-            bool transferSucceeded = false;
-            if (success) {
-                if (data.length == 0) {
-                    // Non-standard token that doesn't return a value
-                    transferSucceeded = true;
-                } else if (data.length == 32) {
-                    // Standard token that returns bool
-                    transferSucceeded = abi.decode(data, (bool));
-                }
-            }
-
-            if (transferSucceeded) {
-                emit IndividualTransfer(address(tokenToDistribute), to, amount);
-                totalSent += amount;
-            } else {
-                emit TransferFailed(address(tokenToDistribute), to, amount);
-                totalFailed++;
-            }
-        }
-
-        // Update distribution statistics
-        address tokenAddress = address(tokenToDistribute);
-        DistributionStats storage stats = distributionStats[tokenAddress];
-        stats.totalDistributions++;
-        stats.totalAmountDistributed += totalSent;
-        stats.totalRecipients += recipients.length;
-        stats.totalFailed += totalFailed;
-
-        totalDistributionCount++;
-
-        emit BatchTransferCompleted(tokenAddress, recipients.length, totalSent, totalFailed);
-    }
-
-    function withdrawToken(IERC20 tokenToWithdraw, address to, uint256 amount) external onlyOwner {
-        tokenToWithdraw.safeTransfer(to, amount);
-    }
-
-    // ===== Wallet Management Functions =====
+    // Wallet management functions for batch transfers
     
+    /**
+     * @notice Add a new wallet to the distribution list
+     * @param wallet Wallet address to add
+     * @param name Name of the wallet
+     * @param description Description of the wallet
+     */
     function addWallet(
         address wallet,
         string memory name,
@@ -339,6 +479,12 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         emit WalletAdded(wallet, name);
     }
 
+    /**
+     * @notice Update an existing wallet's information
+     * @param wallet Wallet address to update
+     * @param name New name of the wallet
+     * @param description New description of the wallet
+     */
     function updateWallet(
         address wallet,
         string memory name,
@@ -354,12 +500,18 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         emit WalletUpdated(wallet, name);
     }
 
+    /**
+     * @notice Remove a wallet from the distribution list
+     * @param wallet Wallet address to remove
+     */
     function removeWallet(address wallet) external onlyOwner {
         require(wallet != address(0), "MerkleDistributor: invalid wallet address");
         require(walletInfos[wallet].isActive, "MerkleDistributor: wallet does not exist");
         
+        // Remove wallet from mapping
         delete walletInfos[wallet];
         
+        // Remove wallet from array
         for (uint256 i = 0; i < walletAddresses.length; i++) {
             if (walletAddresses[i] == wallet) {
                 walletAddresses[i] = walletAddresses[walletAddresses.length - 1];
@@ -371,6 +523,10 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         emit WalletRemoved(wallet);
     }
 
+    /**
+     * @notice Activate a wallet
+     * @param wallet Wallet address to activate
+     */
     function activateWallet(address wallet) external onlyOwner {
         require(wallet != address(0), "MerkleDistributor: invalid wallet address");
         require(walletInfos[wallet].isActive == false, "MerkleDistributor: wallet already active");
@@ -379,6 +535,10 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         emit WalletActivated(wallet);
     }
 
+    /**
+     * @notice Deactivate a wallet
+     * @param wallet Wallet address to deactivate
+     */
     function deactivateWallet(address wallet) external onlyOwner {
         require(wallet != address(0), "MerkleDistributor: invalid wallet address");
         require(walletInfos[wallet].isActive, "MerkleDistributor: wallet not active");
@@ -387,10 +547,15 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         emit WalletDeactivated(wallet);
     }
 
+    /**
+     * @notice Get all wallet addresses
+     * @return Array of wallet addresses
+     */
     function getWalletAddresses() external view returns (address[] memory) {
         return walletAddresses;
     }
 
+   
     function getWalletInfo(address wallet) external view returns (
         string memory name,
         string memory description,
@@ -400,134 +565,64 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         return (info.name, info.description, info.isActive);
     }
 
-    // ===== Distribution View Functions =====
+    /**
+     * @notice Batch transfer tokens (non-reverting best-effort mode).
+     * @param tokenToDistribute ERC20 token address to distribute.
+     * @param recipients List of recipient wallet addresses.
+     * @param amounts List of token amounts corresponding to each recipient.
+     */
+    function batchTransfer(
+        IERC20 tokenToDistribute,
+        address[] calldata recipients,
+        uint256[] calldata amounts
+    ) external nonReentrant onlyOwner {
+        require(recipients.length == amounts.length, "length mismatch");
+        require(recipients.length > 0, "no recipients");
 
-    function isDistributionComplete(uint256 distributionId) public view override returns (bool) {
-        Distribution memory dist = distributions[distributionId];
-        return dist.totalClaimed == dist.totalTokens && dist.totalTokens > 0;
-    }
+        uint256 totalSent = 0;
+        uint256 totalFailed = 0;
 
-    function getAllDistributionIds() public view override returns (uint256[] memory) {
-        uint256[] memory ids = new uint256[](currentDistributionId);
-        for (uint256 i = 1; i <= currentDistributionId; i++) {
-            ids[i-1] = i;
-        }
-        return ids;
-    }
+        for (uint256 i = 0; i < recipients.length; ++i) {
+            address to = recipients[i];
+            uint256 amount = amounts[i];
 
-    function getAllDistributions() public view returns (
-        uint256[] memory ids,
-        bytes32[] memory roots,
-        uint256[] memory totalTokensArray,
-        uint256[] memory totalClaimedArray,
-        uint256[] memory timestamps,
-        bool[] memory finalizedArray
-    ) {
-        ids = new uint256[](currentDistributionId);
-        roots = new bytes32[](currentDistributionId);
-        totalTokensArray = new uint256[](currentDistributionId);
-        totalClaimedArray = new uint256[](currentDistributionId);
-        timestamps = new uint256[](currentDistributionId);
-        finalizedArray = new bool[](currentDistributionId);
+            // attempt safeTransfer in low-level call to catch reverts
+            (bool success, bytes memory data) = address(tokenToDistribute).call(
+                abi.encodeWithSelector(tokenToDistribute.transfer.selector, to, amount)
+            );
 
-        for (uint256 i = 1; i <= currentDistributionId; i++) {
-            Distribution storage dist = distributions[i];
-            ids[i-1] = i;
-            roots[i-1] = dist.merkleRoot;
-            totalTokensArray[i-1] = dist.totalTokens;
-            totalClaimedArray[i-1] = dist.totalClaimed;
-            timestamps[i-1] = dist.timestamp;
-            finalizedArray[i-1] = dist.finalized;
-        }
-    }
-
-    function getIncompleteDistributionIds() public view override returns (uint256[] memory) {
-        uint256[] memory allIds = getAllDistributionIds();
-        uint256[] memory incompleteIds = new uint256[](allIds.length);
-        uint256 count = 0;
-
-        for (uint256 i = 0; i < allIds.length; i++) {
-            if (!isDistributionComplete(allIds[i])) {
-                incompleteIds[count] = allIds[i];
-                count++;
+            // Some tokens return false instead of reverting — check that too
+            if (success && (data.length == 0 || abi.decode(data, (bool)))) {
+                emit IndividualTransfer(address(tokenToDistribute), to, amount);
+                totalSent += amount;
+            } else {
+                emit TransferFailed(address(tokenToDistribute), to, amount);
+                totalFailed++;
             }
         }
 
-        uint256[] memory result = new uint256[](count);
-        for (uint256 i = 0; i < count; i++) {
-            result[i] = incompleteIds[i];
-        }
+        // Update distribution statistics
+        address tokenAddress = address(tokenToDistribute);
+        DistributionStats storage stats = distributionStats[tokenAddress];
+        stats.totalDistributions++;
+        stats.totalAmountDistributed += totalSent;
+        stats.totalRecipients += recipients.length;
+        stats.totalFailed += totalFailed;
 
-        return result;
+        // Increment global distribution count
+        totalDistributionCount++;
+
+        emit BatchTransferCompleted(tokenAddress, recipients.length, totalSent, totalFailed);
     }
 
-    function hasUnclaimedRewards(address account) public view returns (bool) {
-        uint256[] memory incompleteDists = getIncompleteDistributionIds();
-        return incompleteDists.length > 0 && account != address(0);
-    }
-
-    function canClaim(
-        uint256 distributionId,
-        uint256 index,
-        address account,
-        uint256 amount,
-        bytes32[] calldata merkleProof
-    ) external view returns (bool) {
-        if (distributionId > currentDistributionId || isDistributionComplete(distributionId)) {
-            return false;
-        }
-
-        if (isClaimed(distributionId, index)) {
-            return false;
-        }
-
-        bytes32 root = distributions[distributionId].merkleRoot;
-        if (root == bytes32(0)) return false;
-
-        bytes32 node = keccak256(abi.encodePacked(index, account, amount));
-        return verify(merkleProof, root, node);
-    }
-
-    function getDistributionInfo(uint256 distributionId)
-        external
-        view
-        returns (
-            bytes32 root,
-            uint256 totalTokens,
-            uint256 totalClaimed,
-            uint256 timestamp,
-            bool finalized
-        )
-    {
-        Distribution memory dist = distributions[distributionId];
-        return (dist.merkleRoot, dist.totalTokens, dist.totalClaimed, dist.timestamp, dist.finalized);
-    }
-
-    function getCurrentDistributionStats()
-        external
-        view
-        returns (
-            uint256 distributionId,
-            uint256 totalTokens,
-            uint256 totalClaimed,
-            uint256 percentageClaimed
-        )
-    {
-        distributionId = currentDistributionId;
-        totalTokens = totalTokensInCurrentDistribution;
-        totalClaimed = totalClaimedInCurrentDistribution;
-
-        if (totalTokens > 0) {
-            percentageClaimed = (totalClaimed * 10000) / totalTokens;
-        } else {
-            percentageClaimed = 0;
-        }
-    }
-
-    function getContractTokenBalance() external view returns (uint256) {
-        return IERC20(token).balanceOf(address(this));
-    }
-
+    /**
+     * @notice Get distribution statistics for a specific token
+     * @param tokenToCheck Token address to query
+     * @return totalDistributions Total number of batch distributions
+     * @return totalAmountDistributed Total amount distributed
+     * @return totalRecipients Total recipients across all distributions
+     * @return totalFailed Total failed transfers
+     */
     function getDistributionStats(address tokenToCheck) external view returns (
         uint256 totalDistributions,
         uint256 totalAmountDistributed,
@@ -543,7 +638,18 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         );
     }
 
+    /**
+     * @notice Get total distribution count across all tokens
+     * @return Total number of distributions
+     */
     function getTotalDistributionCount() external view returns (uint256) {
         return totalDistributionCount;
+    }
+
+    /**
+     * @notice Allows owner to recover any ERC20 tokens mistakenly sent to this contract.
+     */
+    function withdrawToken(IERC20 tokenToWithdraw, address to, uint256 amount) external onlyOwner {
+        tokenToWithdraw.safeTransfer(to, amount);
     }
 }

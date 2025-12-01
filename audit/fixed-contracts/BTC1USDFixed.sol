@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "./interfaces/IBTC1USD.sol";
-import "./libraries/SafeMath.sol";
+import "../../interfaces/IBTC1USD.sol";
+import "../../libraries/SafeMath.sol";
+
 /**
  * @title BTC1USD - Fixed Version
  * @notice Bitcoin-backed stablecoin with security fixes applied

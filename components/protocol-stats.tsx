@@ -93,7 +93,7 @@ export function ProtocolStats({
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{weeklyRewards}¢</div>
-          <div className="text-sm text-muted-foreground">Per token (7-hour cycle)</div>
+          <div className="text-sm text-muted-foreground">Per token (weekly)</div>
         </CardContent>
       </Card>
     </div>
