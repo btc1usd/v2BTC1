@@ -24,7 +24,7 @@ export default function DistributionAdmin({ collateralRatio, totalSupply }: Dist
   
   // Admin check
   const isAdmin = () => {
-    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"; // From deployment
+    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835"; // From deployment
     return address && address.toLowerCase() === adminAddress.toLowerCase();
   };
 

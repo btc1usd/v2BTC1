@@ -92,18 +92,30 @@ export async function GET(request: NextRequest) {
     }
 
     console.log("☁️ Loading distributions from Supabase...");
+    console.log("Supabase configured:", isSupabaseConfigured());
+    console.log("Supabase client:", supabase ? "initialized" : "null");
 
     let data: any[] = [];
+    let supabaseError: Error | null = null;
 
     try {
+      console.log("Attempting Supabase query...");
       const { data: supabaseData, error } = await supabase
         .from("merkle_distributions")
         .select("id, merkle_root, claims, total_rewards, metadata")
         .order("id", { ascending: false })
         .limit(10);
 
+      console.log("Supabase response:", { 
+        hasData: !!supabaseData, 
+        dataLength: supabaseData?.length,
+        hasError: !!error,
+        errorDetails: error 
+      });
+
       if (error) {
-        throw new Error(`Supabase query error: ${error.message}`);
+        supabaseError = new Error(`Supabase query error: ${error.message}`);
+        throw supabaseError;
       }
 
       if (supabaseData && supabaseData.length > 0) {
@@ -117,23 +129,76 @@ export async function GET(request: NextRequest) {
         }));
       }
     } catch (err) {
-      console.error('Failed to read distribution data from Supabase:', (err as Error).message);
-      return NextResponse.json(
-        {
-          error: "Failed to load distribution data from Supabase",
-          details: err instanceof Error ? err.message : "Unknown error",
-          count: 0,
-          userDistributions: []
-        },
-        {
-          status: 500,
-          headers: {
-            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-          },
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      
+      // Check if it's a Cloudflare/HTML error (not JSON)
+      if (errorMessage.includes('<html>') || errorMessage.includes('cloudflare')) {
+        console.error('❌ Supabase service appears to be down (received HTML instead of JSON)');
+        supabaseError = new Error('Supabase service unavailable. The database service may be experiencing issues.');
+      } else {
+        console.error('Failed to read distribution data from Supabase:', errorMessage);
+        supabaseError = err instanceof Error ? err : new Error(errorMessage);
+      }
+
+      // Try to load from local files as fallback
+      console.log('⚠️ Attempting to load from local distribution files as fallback...');
+      try {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+        
+        const distributionsDir = path.join(process.cwd(), 'merkle-distributions');
+        const files = await fs.readdir(distributionsDir);
+        
+        const distributionFiles = files
+          .filter(f => f.startsWith('distribution-') && f.endsWith('.json'))
+          .sort((a, b) => {
+            const idA = parseInt(a.match(/distribution-(\d+)\.json/)?.[1] || '0');
+            const idB = parseInt(b.match(/distribution-(\d+)\.json/)?.[1] || '0');
+            return idB - idA; // Descending order
+          })
+          .slice(0, 10); // Get latest 10
+
+        for (const file of distributionFiles) {
+          const filePath = path.join(distributionsDir, file);
+          const content = await fs.readFile(filePath, 'utf-8');
+          const distData = JSON.parse(content);
+          
+          data.push({
+            id: distData.id,
+            merkle_root: distData.merkleRoot,
+            claims: distData.claims,
+            total_rewards: distData.totalRewards,
+            metadata: distData.metadata || {
+              generated: new Date().toISOString(),
+              activeHolders: Object.keys(distData.claims || {}).length
+            }
+          });
         }
-      );
+
+        if (data.length > 0) {
+          console.log(`✅ Loaded ${data.length} distributions from local files as fallback`);
+        }
+      } catch (fileErr) {
+        console.error('Failed to load from local files:', fileErr instanceof Error ? fileErr.message : 'Unknown error');
+        // Return the Supabase error since fallback also failed
+        return NextResponse.json(
+          {
+            error: "Failed to load distribution data",
+            details: `Supabase error: ${supabaseError.message}. Local fallback also failed.`,
+            supabaseDown: true,
+            count: 0,
+            userDistributions: []
+          },
+          {
+            status: 500,
+            headers: {
+              'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+              'Pragma': 'no-cache',
+              'Expires': '0',
+            },
+          }
+        );
+      }
     }
 
     if (!data?.length) {
@@ -289,13 +354,95 @@ export async function GET(request: NextRequest) {
       name: err.name
     });
 
+    // Check if we have any local distribution files as final fallback
+    console.log('⚠️ Main error handler - attempting final fallback to local files...');
+    try {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      
+      const distributionsDir = path.join(process.cwd(), 'merkle-distributions');
+      console.log('Checking directory:', distributionsDir);
+      
+      const files = await fs.readdir(distributionsDir);
+      console.log('Found files:', files);
+      
+      const distributionFiles = files
+        .filter(f => f.startsWith('distribution-') && f.endsWith('.json'))
+        .sort((a, b) => {
+          const idA = parseInt(a.match(/distribution-(\d+)\.json/)?.[1] || '0');
+          const idB = parseInt(b.match(/distribution-(\d+)\.json/)?.[1] || '0');
+          return idB - idA;
+        })
+        .slice(0, 10);
+
+      console.log('Distribution files found:', distributionFiles);
+
+      const localData: any[] = [];
+      for (const file of distributionFiles) {
+        const filePath = path.join(distributionsDir, file);
+        const content = await fs.readFile(filePath, 'utf-8');
+        const distData = JSON.parse(content);
+        
+        localData.push({
+          id: distData.id,
+          merkleRoot: distData.merkleRoot,
+          totalRewards: distData.totalRewards,
+          claims: distData.claims,
+          metadata: distData.metadata || {
+            generated: new Date().toISOString(),
+            activeHolders: Object.keys(distData.claims || {}).length
+          }
+        });
+      }
+
+      // Filter for user distributions
+      const userDists = localData
+        .map(dist => {
+          const claim = dist.claims?.[userAddress];
+          if (!claim) return null;
+          
+          return {
+            id: dist.id,
+            merkleRoot: dist.merkleRoot,
+            totalRewards: dist.totalRewards,
+            metadata: dist.metadata,
+            claim,
+            claimedOnChain: false // Can't check without RPC
+          };
+        })
+        .filter(Boolean);
+
+      if (userDists.length > 0) {
+        console.log(`✅ Final fallback successful: Loaded ${userDists.length} distributions for user`);
+        return NextResponse.json(
+          {
+            address: userAddress,
+            count: userDists.length,
+            userDistributions: userDists,
+            fallbackMode: true,
+            message: "Loaded from local files (Supabase unavailable)"
+          },
+          {
+            headers: {
+              'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+              'Pragma': 'no-cache',
+              'Expires': '0',
+            },
+          }
+        );
+      }
+    } catch (fallbackErr) {
+      console.error('Final fallback also failed:', fallbackErr);
+    }
+
     // Return empty result on error
     return NextResponse.json(
       {
         address: userAddress,
         count: 0,
         userDistributions: [],
-        error: "Failed to load distributions. Please try again later."
+        error: "Failed to load distributions. Please try again later.",
+        details: err.message
       },
       {
         status: 500,

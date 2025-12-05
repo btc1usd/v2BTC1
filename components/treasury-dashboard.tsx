@@ -727,6 +727,8 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
       address,
       isPending,
       isConfirming,
+      isAdmin,
+      adminAddress: CONTRACT_ADDRESSES.ADMIN,
     })
 
     // Validation: Check wallet connection
@@ -741,6 +743,15 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
       setTimeout(() => setTransactionStatus(""), 3000)
       return
     }
+
+    // Debug: Check admin status
+    console.log("🔍 Admin Check:", {
+      connectedAddress: address,
+      configuredAdmin: CONTRACT_ADDRESSES.ADMIN,
+      addressesMatch: address?.toLowerCase() === CONTRACT_ADDRESSES.ADMIN?.toLowerCase(),
+      isAdmin: isAdmin,
+      devWalletContract: CONTRACT_ADDRESSES.DEV_WALLET,
+    })
 
     // Validation: Check required fields
     if (!newDevPayee.name?.trim()) {
@@ -802,10 +813,20 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
           newDevPayee.description || "",
         ],
       })
+      
+      console.log("✅ writeContract call initiated successfully")
     } catch (error) {
-      console.error("Failed to initiate transaction:", error)
-      setTransactionStatus(`❌ ${getSimpleErrorMessage(error)}`)
-      setTimeout(() => setTransactionStatus(""), 5000)
+      console.error("❌ Failed to initiate transaction:", error)
+      
+      // Enhanced error handling
+      const errorMessage = getSimpleErrorMessage(error)
+      if (errorMessage.includes("Not authorized")) {
+        setTransactionStatus(`❌ ${errorMessage}. Connected wallet: ${address?.slice(0, 6)}...${address?.slice(-4)}. Required owner of DevWallet contract.`)
+      } else {
+        setTransactionStatus(`❌ ${errorMessage}`)
+      }
+      
+      setTimeout(() => setTransactionStatus(""), 8000)
     }
   }
 

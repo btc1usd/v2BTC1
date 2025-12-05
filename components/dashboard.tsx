@@ -930,6 +930,16 @@ function Dashboard() {
 
         if (!response.ok) {
           console.error("Failed to fetch distributions:", response.status);
+          
+          // Try to get error details from response
+          try {
+            const errorData = await response.json();
+            if (errorData.supabaseDown) {
+              console.warn("⚠️ Supabase service is currently unavailable. Using local fallback if available.");
+            }
+          } catch (e) {
+            // Response wasn't JSON, ignore
+          }
           return;
         }
 
@@ -937,6 +947,7 @@ function Dashboard() {
           address: string;
           count: number;
           userDistributions: UserDistribution[];
+          supabaseDown?: boolean;
         } = await response.json();
 
         console.log("Distributions data:", data);
@@ -2453,10 +2464,14 @@ function Dashboard() {
     { id: "mint", label: "Buy & Sell", icon: Plus },
     { id: "merkle-claim", label: "Claim Rewards", icon: Gift },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
-    { id: "governance", label: "Vote", icon: Users },
     // Admin-only sections
     ...(isAdminUser
       ? [
+          {
+            id: "governance",
+            label: "Vote",
+            icon: Users,
+          },
           {
             id: "wbtc-mint",
             label: "Collateral Minting",
@@ -2487,10 +2502,10 @@ function Dashboard() {
     { id: "mint", icon: Plus },
     { id: "merkle-claim", icon: Gift },
     { id: "analytics", icon: BarChart3 },
-    { id: "governance", icon: Users },
     // Admin-only sections
     ...(isAdminUser
       ? [
+          { id: "governance", icon: Users },
           { id: "wbtc-mint", icon: Bitcoin },
           { id: "distribution-admin", icon: Calendar },
           { id: "treasury", icon: DollarSign },
@@ -3989,7 +4004,10 @@ function Dashboard() {
                         : "Not connected"}
                     </p>
                     <p className="text-gray-400 text-sm">
-                      Expected admin: 0xf39Fd...92266 (from deployment)
+                      Expected admin:{" "}
+                      {CONTRACT_ADDRESSES.ADMIN
+                        ? `${CONTRACT_ADDRESSES.ADMIN.slice(0, 6)}...${CONTRACT_ADDRESSES.ADMIN.slice(-4)}`
+                        : "Not configured"}
                     </p>
                   </div>
 

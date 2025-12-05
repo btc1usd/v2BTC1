@@ -9,20 +9,29 @@ let isInitialized = false;
 
 // Create a single supabase client for interacting with your database
 try {
-  supabaseClient = supabaseUrl && supabaseAnonKey 
-    ? createClient(supabaseUrl, supabaseAnonKey, {
-        auth: {
-          persistSession: false,
-          detectSessionInUrl: false,
-        },
-        global: {
-          headers: {
-            'x-application-name': 'btc1usd-frontend'
-          }
+  if (supabaseUrl && supabaseAnonKey) {
+    console.log('ℹ️ Initializing Supabase client...');
+    console.log('  URL:', supabaseUrl);
+    console.log('  Key:', supabaseAnonKey ? `${supabaseAnonKey.substring(0, 20)}...` : 'not set');
+    
+    supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: false,
+        detectSessionInUrl: false,
+      },
+      global: {
+        headers: {
+          'x-application-name': 'btc1usd-frontend'
         }
-      })
-    : null;
-  isInitialized = true;
+      }
+    });
+    isInitialized = true;
+    console.log('✅ Supabase client initialized successfully');
+  } else {
+    console.warn('⚠️ Supabase credentials not found in environment variables');
+    supabaseClient = null;
+    isInitialized = false;
+  }
 } catch (error) {
   console.warn('⚠️ Failed to initialize Supabase client:', (error as Error).message);
   supabaseClient = null;

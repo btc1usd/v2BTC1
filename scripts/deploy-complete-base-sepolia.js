@@ -548,8 +548,38 @@ async function main() {
     () => protocolGovernance.setAdmin(config.admin)
   );
 
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // ==================== TRANSFER OWNERSHIP OF WALLET CONTRACTS ====================
+  console.log("\n💳 Transferring ownership of wallet contracts...\n");
+  console.log(`  ℹ️  Transferring ownership from deployer (${deployer.address}) to ${config.admin}`);
+
+  // Transfer ownership of DevWallet (uses transferOwnership from Ownable)
+  await sendTransaction(
+    "DevWallet ownership transferred",
+    () => devWallet.transferOwnership(config.admin)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer ownership of EndowmentWallet (uses transferOwnership from Ownable)
+  await sendTransaction(
+    "EndowmentWallet ownership transferred",
+    () => endowmentWallet.transferOwnership(config.admin)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer ownership of MerkleFeeCollector (uses transferOwnership from Ownable)
+  await sendTransaction(
+    "MerkleFeeCollector ownership transferred",
+    () => merklFeeCollector.transferOwnership(config.admin)
+  );
+
   console.log("\n  ✅ All admin roles successfully transferred to:", config.admin);
+  console.log("  ✅ All wallet contract ownerships successfully transferred to:", config.admin);
   console.log("  ℹ️  Deployer can no longer perform admin operations");
+  console.log("  ℹ️  Admin can now manage wallet contracts (add/remove wallets, distribute funds)");
   console.log("  ℹ️  Future admin changes should use the secure two-step transfer process");
 
   console.log("\n  ⏳ Waiting for confirmations...");
@@ -645,6 +675,36 @@ async function main() {
       console.log(`  ✅ EndowmentWallet excluded from holder rewards`);
     } else {
       console.log(`  ❌ EndowmentWallet NOT excluded!`);
+    }
+
+    // Verify wallet contract ownership transfers
+    console.log("\n  📝 Verifying wallet contract ownerships...");
+    
+    const devWalletOwner = await devWallet.owner();
+    if (devWalletOwner.toLowerCase() === config.admin.toLowerCase()) {
+      console.log(`  ✅ DevWallet owner correctly set to ${devWalletOwner}`);
+    } else {
+      console.log(`  ❌ DevWallet owner mismatch!`);
+      console.log(`     Expected: ${config.admin}`);
+      console.log(`     Got: ${devWalletOwner}`);
+    }
+
+    const endowmentWalletOwner = await endowmentWallet.owner();
+    if (endowmentWalletOwner.toLowerCase() === config.admin.toLowerCase()) {
+      console.log(`  ✅ EndowmentWallet owner correctly set to ${endowmentWalletOwner}`);
+    } else {
+      console.log(`  ❌ EndowmentWallet owner mismatch!`);
+      console.log(`     Expected: ${config.admin}`);
+      console.log(`     Got: ${endowmentWalletOwner}`);
+    }
+
+    const merklFeeCollectorOwner = await merklFeeCollector.owner();
+    if (merklFeeCollectorOwner.toLowerCase() === config.admin.toLowerCase()) {
+      console.log(`  ✅ MerkleFeeCollector owner correctly set to ${merklFeeCollectorOwner}`);
+    } else {
+      console.log(`  ❌ MerkleFeeCollector owner mismatch!`);
+      console.log(`     Expected: ${config.admin}`);
+      console.log(`     Got: ${merklFeeCollectorOwner}`);
     }
 
   } catch (error) {
@@ -965,11 +1025,13 @@ async function main() {
 
   console.log("\n📝 Next Steps:");
   console.log("  1. ✅ Contract addresses automatically updated in all files!");
-  console.log("  2. Verify contracts on BaseScan (optional)");
-  console.log("  3. ✅ Chainlink price oracle configured with live BTC/USD feed!");
-  console.log("  4. Test the frontend with new contracts");
-  console.log("  5. Set up multi-sig for admin/emergency council (production)");
-  console.log("  6. Transfer ownership to DAO (after thorough testing)\n");
+  console.log("  2. ✅ Wallet contract ownerships transferred to admin!");
+  console.log("  3. Verify contracts on BaseScan (optional)");
+  console.log("  4. ✅ Chainlink price oracle configured with live BTC/USD feed!");
+  console.log("  5. Test the frontend with new contracts");
+  console.log("  6. Test admin operations (add dev wallets, distribute funds)");
+  console.log("  7. Set up multi-sig for admin/emergency council (production)");
+  console.log("  8. Transfer ownership to DAO (after thorough testing)\n");
 
   return deploymentInfo;
 }

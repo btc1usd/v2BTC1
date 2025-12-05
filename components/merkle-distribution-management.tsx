@@ -570,7 +570,7 @@ Network: ${provider.chainId}`);
       // 3. Time interval passed
       // 4. User is admin
       
-      const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+      const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
       const prerequisiteInfo = `📋 Distribution Prerequisites:
 
 ✅ Time Interval: ${canDistribute ? 'Passed' : 'Not yet'}
@@ -586,7 +586,7 @@ Note: Additional checks (token supply, collateral ratio) are performed during ex
 
   // Helper to check if user is admin
   const isAdmin = () => {
-    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
     return address && address.toLowerCase() === adminAddress.toLowerCase();
   };
 
@@ -655,7 +655,7 @@ Please add more collateral to the vault before executing distribution.`);
     }
     
     // Check if user is admin (optional - remove if not needed)
-    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
     if (address?.toLowerCase() !== adminAddress.toLowerCase()) {
       alert(`Access Denied: Only admin can execute distributions.\n\nAdmin address: ${adminAddress}\nYour address: ${address}`);
       return;
