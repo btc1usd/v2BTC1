@@ -1047,15 +1047,6 @@ function Dashboard() {
   }, [btcPrice]);
 
   useEffect(() => {
-    if (wbtcBalance !== undefined) {
-      // WBTC has 8 decimals
-      const formattedBalance = wbtcBalance ? formatUnits(wbtcBalance as bigint, 8) : "0";
-      console.log("WBTC balance updated:", formattedBalance);
-      setUserWbtcBalance(formattedBalance);
-    }
-  }, [wbtcBalance]);
-
-  useEffect(() => {
     if (isConnected && address) {
       setAccount(address);
       // Fetch the actual user balance from the contract

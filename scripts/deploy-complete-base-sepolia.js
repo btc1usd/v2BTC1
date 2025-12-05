@@ -576,10 +576,40 @@ async function main() {
     () => merklFeeCollector.transferOwnership(config.admin)
   );
 
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // ==================== TRANSFER ADMIN OF MOCK TOKENS ====================
+  console.log("\n🪙 Transferring admin of mock collateral tokens...\n");
+  console.log(`  ℹ️  Transferring admin from deployer (${deployer.address}) to ${config.admin}`);
+
+  // Transfer admin of MockWBTC (uses setAdmin)
+  await sendTransaction(
+    "MockWBTC admin transferred",
+    () => mockWBTC.setAdmin(config.admin)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer admin of MockCBTC (uses setAdmin)
+  await sendTransaction(
+    "MockCBTC admin transferred",
+    () => mockCBTC.setAdmin(config.admin)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer admin of MockTBTC (uses setAdmin)
+  await sendTransaction(
+    "MockTBTC admin transferred",
+    () => mockTBTC.setAdmin(config.admin)
+  );
+
   console.log("\n  ✅ All admin roles successfully transferred to:", config.admin);
   console.log("  ✅ All wallet contract ownerships successfully transferred to:", config.admin);
+  console.log("  ✅ All mock token admins successfully transferred to:", config.admin);
   console.log("  ℹ️  Deployer can no longer perform admin operations");
   console.log("  ℹ️  Admin can now manage wallet contracts (add/remove wallets, distribute funds)");
+  console.log("  ℹ️  Admin can now mint mock collateral tokens (WBTC, cbBTC, tBTC) for testing");
   console.log("  ℹ️  Future admin changes should use the secure two-step transfer process");
 
   console.log("\n  ⏳ Waiting for confirmations...");
@@ -705,6 +735,36 @@ async function main() {
       console.log(`  ❌ MerkleFeeCollector owner mismatch!`);
       console.log(`     Expected: ${config.admin}`);
       console.log(`     Got: ${merklFeeCollectorOwner}`);
+    }
+
+    // Verify mock token admin transfers
+    console.log("\n  📝 Verifying mock token admins...");
+    
+    const mockWBTCAdmin = await mockWBTC.admin();
+    if (mockWBTCAdmin.toLowerCase() === config.admin.toLowerCase()) {
+      console.log(`  ✅ MockWBTC admin correctly set to ${mockWBTCAdmin}`);
+    } else {
+      console.log(`  ❌ MockWBTC admin mismatch!`);
+      console.log(`     Expected: ${config.admin}`);
+      console.log(`     Got: ${mockWBTCAdmin}`);
+    }
+
+    const mockCBTCAdmin = await mockCBTC.admin();
+    if (mockCBTCAdmin.toLowerCase() === config.admin.toLowerCase()) {
+      console.log(`  ✅ MockCBTC admin correctly set to ${mockCBTCAdmin}`);
+    } else {
+      console.log(`  ❌ MockCBTC admin mismatch!`);
+      console.log(`     Expected: ${config.admin}`);
+      console.log(`     Got: ${mockCBTCAdmin}`);
+    }
+
+    const mockTBTCAdmin = await mockTBTC.admin();
+    if (mockTBTCAdmin.toLowerCase() === config.admin.toLowerCase()) {
+      console.log(`  ✅ MockTBTC admin correctly set to ${mockTBTCAdmin}`);
+    } else {
+      console.log(`  ❌ MockTBTC admin mismatch!`);
+      console.log(`     Expected: ${config.admin}`);
+      console.log(`     Got: ${mockTBTCAdmin}`);
     }
 
   } catch (error) {
