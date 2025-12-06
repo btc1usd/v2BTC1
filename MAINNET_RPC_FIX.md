@@ -1,13 +1,17 @@
 # Base Mainnet RPC Configuration Fix
 
 **Date**: December 6, 2025  
-**Issue**: RPC providers were still using Base Sepolia URLs instead of Base Mainnet  
+**Issue**: RPC providers and API routes were still using Base Sepolia URLs and Chain ID (84532) instead of Base Mainnet (8453)  
 **Status**: ✅ FIXED
 
 ## Problem
 
-The application was configured to expect Base Mainnet (Chain ID 8453) but was attempting to connect to Base Sepolia RPC endpoints, causing chain ID mismatch errors:
+The application was configured to expect Base Mainnet (Chain ID 8453) but:
+1. RPC providers were attempting to connect to Base Sepolia endpoints
+2. API routes were using wrong chain ID (84532)
+3. UI components had hardcoded Sepolia fallback values
 
+This caused chain ID mismatch errors:
 ```
 Wrong chain ID: expected 8453 (Base Mainnet), got 84532
 ```
@@ -110,6 +114,87 @@ endpoints.push(
 **Before**: `deployment-base-sepolia.json (2025-12-05)`  
 **After**: `deployment-base-mainnet.json (2025-12-06)`
 
+### 9. `app/api/rpc-health/route.ts`
+**Changes**:
+- Updated chain ID parameter
+
+**Before**: `executeWithProviderFallback(..., 84532, ...)`  
+**After**: `executeWithProviderFallback(..., 8453, ...)`
+
+### 10. `app/api/holders-count/route.ts`
+**Changes**:
+- Updated chain ID for provider creation
+
+**Before**: `createProviderWithFallback(84532, ...)`  
+**After**: `createProviderWithFallback(8453, ...)`
+
+### 11. `app/api/generate-merkle-tree/route.ts`
+**Changes**:
+- Updated chain ID for provider creation
+
+**Before**: `createProviderWithFallback(84532, ...)`  
+**After**: `createProviderWithFallback(8453, ...)`
+
+### 12. `app/api/governance/endowment/route.ts`
+**Changes**:
+- Updated chain ID in 2 locations (stats endpoint and main handler)
+
+**Before**: `createProviderWithFallback(84532, ...)`  
+**After**: `createProviderWithFallback(8453, ...)`
+
+### 13. `app/api/governance/proposals/route.ts`
+**Changes**:
+- Updated chain ID for provider creation
+
+**Before**: `createProviderWithFallback(84532, ...)`  
+**After**: `createProviderWithFallback(8453, ...)`
+
+### 14. `app/api/governance/vote/route.ts`
+**Changes**:
+- Updated chain ID in 2 locations (GET and POST handlers)
+
+**Before**: `createProviderWithFallback(84532, ...)`  
+**After**: `createProviderWithFallback(8453, ...)`
+
+### 15. `app/api/merkle-distributions/history/route.ts`
+**Changes**:
+- Updated chain ID in 2 locations (current distribution ID and distribution info queries)
+- Updated comments from "Base Sepolia chain ID" to "Base Mainnet chain ID"
+
+**Before**: `executeWithProviderFallback(..., 84532, { // Base Sepolia chain ID`  
+**After**: `executeWithProviderFallback(..., 8453, { // Base Mainnet chain ID`
+
+### 16. `components/automated-distribution.tsx`
+**Changes**:
+- Updated default chain ID fallback
+
+**Before**: `parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532')`  
+**After**: `parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '8453')`
+
+### 17. `components/dashboard.tsx`
+**Changes**:
+- Removed Base Sepolia (84532) from network name switch statement
+- Now only recognizes Base Mainnet (8453)
+
+### 18. `components/enhanced-merkle-management.tsx`
+**Changes**:
+- Updated default chain ID fallback
+
+**Before**: `parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532')`  
+**After**: `parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '8453')`
+
+### 19. `components/merkle-distribution-management.tsx`
+**Changes**:
+- Updated default chain ID fallback
+
+**Before**: `parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532')`  
+**After**: `parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '8453')`
+
+### 20. `components/network-guard.tsx`
+**Changes**:
+- Updated comments to clarify testnet deployment option
+- Kept Base Sepolia reference in fallback error message for clarity
+
 ## Base Mainnet RPC Endpoints (Priority Order)
 
 1. **Primary**: Environment variables from `.env.production`
@@ -152,8 +237,19 @@ Check browser console for:
 - `lib/web3.ts` - Uses Chain ID 8453
 - `components/network-guard.tsx` - Validates Chain ID 8453
 
-## Notes
+## Summary
 
-- Hardhat configuration (`hardhat.config.ts`) still contains Base Sepolia networks for testing purposes
-- These are only used for development and testing, not for production deployment
-- All frontend/UI components now exclusively use Base Mainnet
+**Total Files Updated**: 20 files
+
+**Categories**:
+- RPC Provider Configuration: 2 files
+- API Routes: 8 files
+- UI Components: 7 files  
+- Block Explorer Links: 3 files
+- Documentation: 2 files
+
+**All Sepolia References Removed**: Yes ✅
+- No more chain ID 84532 references in production code
+- All RPC URLs point to Base Mainnet
+- All block explorer links use basescan.org (not sepolia.basescan.org)
+- Hardhat config still contains Sepolia networks for development/testing only

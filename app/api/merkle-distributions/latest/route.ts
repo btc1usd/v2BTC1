@@ -231,7 +231,7 @@ export async function GET(request: NextRequest) {
                 provider
               );
               return await contract.getDistributionInfo(BigInt(dist.id));
-            }, 84532, { // Base Sepolia chain ID
+            }, 8453, { // Base Mainnet chain ID
               timeout: 15000, // Increased timeout
               maxRetries: 3,
               retryDelay: 2000,
@@ -490,7 +490,7 @@ async function checkClaimStatusCached(
         // Return false as default if we can't determine claim status
         return false;
       }
-    }, 84532, { // Base Sepolia chain ID
+    }, 8453, { // Base Mainnet chain ID
       timeout: 15000, // Increased timeout
       maxRetries: 3,
       retryDelay: 2000,

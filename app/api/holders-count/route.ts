@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Create provider to check balances
-    const provider = await createProviderWithFallback(84532, {
+    const provider = await createProviderWithFallback(8453, {
       timeout: 15000,
       maxRetries: 3,
       retryDelay: 2000,

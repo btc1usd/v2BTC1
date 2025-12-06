@@ -254,7 +254,7 @@ export default function AutomatedDistribution() {
 
     // Check network
     const chainId = (window as any).ethereum?.chainId;
-    const expectedChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532');
+    const expectedChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '8453');
     const chainIdHex = `0x${expectedChainId.toString(16)}`;
 
     // Accept both decimal and hex format

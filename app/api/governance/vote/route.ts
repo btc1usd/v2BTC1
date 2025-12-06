@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Use robust provider with fallback
-    const provider = await createProviderWithFallback(84532, {
+    const provider = await createProviderWithFallback(8453, {
       timeout: 15000, // Increased timeout
       maxRetries: 3,
       retryDelay: 2000, // Increased delay
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use robust provider with fallback
-    const provider = await createProviderWithFallback(84532, {
+    const provider = await createProviderWithFallback(8453, {
       timeout: 15000, // Increased timeout
       maxRetries: 3,
       retryDelay: 2000, // Increased delay

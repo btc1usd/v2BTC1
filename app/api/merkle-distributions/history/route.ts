@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
 
         // Get current distribution ID
         return await merkleDistributor.currentDistributionId();
-      }, 84532, { // Base Sepolia chain ID
+      }, 8453, { // Base Mainnet chain ID
         timeout: 15000, // Increased timeout
         maxRetries: 3,
         retryDelay: 2000,
@@ -240,7 +240,7 @@ export async function GET(request: NextRequest) {
             );
             
             return await merkleDistributor.getDistributionInfo(i);
-          }, 84532, { // Base Sepolia chain ID
+          }, 8453, { // Base Mainnet chain ID
             timeout: 15000, // Increased timeout
             maxRetries: 3,
             retryDelay: 2000,

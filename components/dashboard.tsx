@@ -164,8 +164,6 @@ function Dashboard() {
     if (!chainId) return "Unknown Network";
 
     switch (chainId) {
-      case 84532:
-        return "Base Sepolia";
       case 8453:
         return "Base";
       case 1:

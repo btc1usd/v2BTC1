@@ -135,7 +135,7 @@ const getProvider = async () => {
     console.log('🔄 Initializing RPC provider with fallback mechanism...');
     
     // Use robust provider with fallback mechanism
-    const provider = await createProviderWithFallback(84532, {
+    const provider = await createProviderWithFallback(8453, {
       timeout: 15000, // Increased timeout
       maxRetries: 3,
       retryDelay: 2000, // Increased initial delay
