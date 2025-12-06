@@ -31,6 +31,7 @@ import { TreasuryDashboard } from "@/components/treasury-dashboard";
 import DistributionAdmin from "@/components/distribution-admin";
 import FixedMerkleClaim from "@/components/fixed-merkle-claim";
 import EnhancedMerkleClaim from "@/components/enhanced-merkle-claim";
+import CollateralManagement from "@/components/collateral-management";
 
 import { useTheme } from "next-themes";
 import { useWeb3 } from "@/lib/web3-provider";
@@ -2464,8 +2465,8 @@ function Dashboard() {
             icon: Users,
           },
           {
-            id: "wbtc-mint",
-            label: "Collateral Minting",
+            id: "collateral-management",
+            label: "Collateral & Testing",
             icon: Bitcoin,
           },
           {
@@ -2497,7 +2498,7 @@ function Dashboard() {
     ...(isAdminUser
       ? [
           { id: "governance", icon: Users },
-          { id: "wbtc-mint", icon: Bitcoin },
+          { id: "collateral-management", icon: Bitcoin },
           { id: "distribution-admin", icon: Calendar },
           { id: "treasury", icon: DollarSign },
           { id: "security", icon: Shield },
@@ -3070,7 +3071,7 @@ function Dashboard() {
                                 </div>
                                 {activity.txHash && (
                                   <a
-                                    href={`https://sepolia.basescan.org/tx/${activity.txHash}`}
+                                    href={`https://basescan.org/tx/${activity.txHash}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-xs text-orange-500 hover:underline"
@@ -3968,187 +3969,20 @@ function Dashboard() {
             </div>
           )}
 
-          {activeTab === "wbtc-mint" && isAdminUser && (
+          {activeTab === "collateral-management" && isAdminUser && (
             <div className="space-y-6">
-              <Card className="bg-gray-800 border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-foreground">
-                    Collateral Minting (Admin Only)
-                  </CardTitle>
-                  <CardDescription className="text-muted-foreground">
-                    Mint collateral tokens for testing purposes - Admin access
-                    required
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="bg-blue-900/20 border border-blue-500/30 rounded p-4">
-                    <div className="flex items-center space-x-2">
-                      <AlertCircle className="h-4 w-4 text-blue-500" />
-                      <span className="text-blue-400 text-sm font-medium">
-                        Admin Information
-                      </span>
-                    </div>
-                    <p className="text-gray-400 text-sm mt-2">
-                      Current user:{" "}
-                      {address
-                        ? `${address.slice(0, 6)}...${address.slice(-4)}`
-                        : "Not connected"}
-                    </p>
-                    <p className="text-gray-400 text-sm">
-                      Expected admin:{" "}
-                      {CONTRACT_ADDRESSES.ADMIN
-                        ? `${CONTRACT_ADDRESSES.ADMIN.slice(0, 6)}...${CONTRACT_ADDRESSES.ADMIN.slice(-4)}`
-                        : "Not configured"}
-                    </p>
-                  </div>
-
-                  {/* Collateral Type Selector */}
-                  <div className="space-y-2">
-                    <Label className="text-gray-300">
-                      Select Collateral Type
-                    </Label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {["WBTC", "cbBTC", "tBTC"].map((token) => (
-                        <Button
-                          key={token}
-                          variant={
-                            selectedMintCollateral === token
-                              ? "default"
-                              : "outline"
-                          }
-                          onClick={() => setSelectedMintCollateral(token)}
-                          className={
-                            selectedMintCollateral === token
-                              ? "bg-orange-500 hover:bg-orange-600"
-                              : "border-gray-600 text-gray-300 hover:bg-gray-600"
-                          }
-                        >
-                          {token}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="collateral-mint-amount"
-                      className="text-gray-300"
-                    >
-                      {selectedMintCollateral} Amount to Mint
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="collateral-mint-amount"
-                        type="number"
-                        placeholder="10.0"
-                        value={wbtcMintAmount}
-                        onChange={(e) => setWbtcMintAmount(e.target.value)}
-                        className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-400 pr-20"
-                      />
-                      <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                        <span className="text-gray-400 text-sm">
-                          {selectedMintCollateral}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-400">
-                      Mint {selectedMintCollateral} tokens for testing
-                    </p>
-                  </div>
-
-                  {/* Quick amount buttons */}
-                  <div className="flex gap-2">
-                    {[1, 5, 10, 50].map((amount) => (
-                      <Button
-                        key={amount}
-                        variant="outline"
-                        size="sm"
-                        className="text-xs border-gray-600 text-gray-300 hover:bg-gray-600"
-                        onClick={() => setWbtcMintAmount(amount.toString())}
-                      >
-                        {amount} {selectedMintCollateral}
-                      </Button>
-                    ))}
-                  </div>
-
-                  <div className="pt-4">
-                    <Button
-                      onClick={handleWbtcMint}
-                      disabled={
-                        !isConnected ||
-                        !wbtcMintAmount ||
-                        isPending ||
-                        isConfirming
-                      }
-                      className="w-full bg-orange-500 hover:bg-orange-600 text-white"
-                    >
-                      {isPending || isConfirming ? (
-                        <div className="flex items-center space-x-2">
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          <span>
-                            {isPending
-                              ? "Confirming in wallet..."
-                              : "Processing transaction..."}
-                          </span>
-                        </div>
-                      ) : (
-                        `Mint ${selectedMintCollateral} (Admin Only)`
-                      )}
-                    </Button>
-                  </div>
-
-                  {/* Status and Progress */}
-                  {transactionStatus && (
-                    <Alert
-                      className={`${
-                        transactionStatus.includes("Error")
-                          ? "bg-red-900/20 border-red-500/30"
-                          : transactionStatus.includes("successful")
-                          ? "bg-green-900/20 border-green-500/30"
-                          : "bg-gray-700 border-gray-600"
-                      }`}
-                    >
-                      <AlertCircle
-                        className={`h-4 w-4 ${
-                          transactionStatus.includes("Error")
-                            ? "text-red-500"
-                            : transactionStatus.includes("successful")
-                            ? "text-green-500"
-                            : "text-orange-500"
-                        }`}
-                      />
-                      <AlertDescription
-                        className={`${
-                          transactionStatus.includes("Error")
-                            ? "text-red-300"
-                            : transactionStatus.includes("successful")
-                            ? "text-green-300"
-                            : "text-gray-300"
-                        }`}
-                      >
-                        {transactionStatus}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  {/* Alternative script method */}
-                  <div className="border-t border-gray-600 pt-4">
-                    <div className="bg-gray-700/50 rounded p-3">
-                      <div className="text-sm font-medium text-gray-300 mb-2">
-                        Alternative: Use Script
-                      </div>
-                      <code className="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400 block">
-                        npx hardhat run scripts/mint-wbtc-for-testing.js
-                        --network localhost
-                      </code>
-                      <p className="text-xs text-gray-500 mt-2">
-                        The script will mint 10 WBTC to the second account (user
-                        account) for testing.
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-foreground mb-2">
+                  Collateral Management & Testing
+                </h2>
+                <p className="text-muted-foreground">
+                  Manage protocol collateral tokens and mint test tokens for development
+                </p>
+              </div>
+              <CollateralManagement 
+                isAdmin={!!isAdminUser} 
+                protocolState={protocolState}
+              />
             </div>
           )}
 

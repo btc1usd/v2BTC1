@@ -162,7 +162,7 @@ const getHoldersFromAlchemy = async (tokenAddress: string): Promise<string[]> =>
     console.log('Fetching holders from Alchemy API...');
 
     // Use Alchemy's Transfers API to get all unique addresses
-    const alchemyUrl = `https://base-sepolia.g.alchemy.com/v2/${alchemyApiKey}`;
+    const alchemyUrl = `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
 
     // Get asset transfers for the token
     const response = await fetch(alchemyUrl, {

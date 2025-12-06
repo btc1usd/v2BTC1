@@ -242,7 +242,7 @@ function DistributionEventCard({ event }: { event: DistributionEvent }) {
             <div className="flex items-center gap-2 text-xs">
               <span className="text-muted-foreground">Tx:</span>
               <a
-                href={`https://sepolia.basescan.org/tx/${event.transactionHash}`}
+                href={`https://basescan.org/tx/${event.transactionHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-mono text-blue-500 hover:underline truncate max-w-xs"

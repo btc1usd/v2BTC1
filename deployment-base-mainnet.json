@@ -1,0 +1,55 @@
+{
+  "network": "base-mainnet",
+  "chainId": 8453,
+  "timestamp": "2025-12-06T18:24:12.589Z",
+  "deployer": "0x2c1AfDDAE90EE3Bf03f3AB6ba494bCD5a7bD4bcA",
+  "collateralTokens": {
+    "wbtc": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+    "cbbtc": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+    "tbtc": "0x236aa50979D5f3De3Bd1Eeb40E81137F22ab794b"
+  },
+  "wallets": {
+    "devWallet": "0x7044d853050cd089B4A796fA8eADa581c205D106",
+    "endowmentWallet": "0x3C8B5837A184ef87543fDd7401ed575F5CEb170e",
+    "merklFeeCollector": "0x108eFCe368DB385a7FDa8F3A8266d6CD16a3B282"
+  },
+  "core": {
+    "btc1usd": "0x6dC9C43278AeEa063c01d97505f215ECB6da4a21",
+    "vault": "0x529964221630CebB4167BdcE670cCAB65769E89d",
+    "chainlinkBTCOracle": "0xFAa3E07505405b3A69Cd30f31Aa484ca2580c03b",
+    "chainlinkFeed": "0x64c911996D3c6aC71f9b455B1E8E7266BcbD848F"
+  },
+  "distribution": {
+    "merkleDistributor": "0x9Ba818c20198936D0CF3d9683c3095541ceC366A",
+    "weeklyDistribution": "0x51D622A533C56256c5E318f5aB9844334523dFe0"
+  },
+  "governance": {
+    "endowmentManager": "0x757348F6bf09546Acc94eCA41834E0bF739500E1",
+    "protocolGovernance": "0x0037BB334484dFfba7eeEC986972fD2BB12e25f6",
+    "dao": "0xC9C2e35055Ed2eB6B216bB9b42EEA68A7D0a915F"
+  },
+  "config": {
+    "admin": "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835",
+    "devWallet": "0x7044d853050cd089B4A796fA8eADa581c205D106",
+    "endowmentWallet": "0x3C8B5837A184ef87543fDd7401ed575F5CEb170e",
+    "merklFeeCollector": "0x108eFCe368DB385a7FDa8F3A8266d6CD16a3B282",
+    "emergencyCouncil": "0x2c1AfDDAE90EE3Bf03f3AB6ba494bCD5a7bD4bcA",
+    "liveBTCPrice": "89704.66"
+  },
+  "explorerUrls": {
+    "wbtc": "https://basescan.org/address/0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+    "cbbtc": "https://basescan.org/address/0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+    "tbtc": "https://basescan.org/address/0x236aa50979D5f3De3Bd1Eeb40E81137F22ab794b",
+    "devWallet": "https://basescan.org/address/0x7044d853050cd089B4A796fA8eADa581c205D106",
+    "endowmentWallet": "https://basescan.org/address/0x3C8B5837A184ef87543fDd7401ed575F5CEb170e",
+    "merklFeeCollector": "https://basescan.org/address/0x108eFCe368DB385a7FDa8F3A8266d6CD16a3B282",
+    "btc1usd": "https://basescan.org/address/0x6dC9C43278AeEa063c01d97505f215ECB6da4a21",
+    "vault": "https://basescan.org/address/0x529964221630CebB4167BdcE670cCAB65769E89d",
+    "chainlinkBTCOracle": "https://basescan.org/address/0xFAa3E07505405b3A69Cd30f31Aa484ca2580c03b",
+    "merkleDistributor": "https://basescan.org/address/0x9Ba818c20198936D0CF3d9683c3095541ceC366A",
+    "weeklyDistribution": "https://basescan.org/address/0x51D622A533C56256c5E318f5aB9844334523dFe0",
+    "endowmentManager": "https://basescan.org/address/0x757348F6bf09546Acc94eCA41834E0bF739500E1",
+    "protocolGovernance": "https://basescan.org/address/0x0037BB334484dFfba7eeEC986972fD2BB12e25f6",
+    "dao": "https://basescan.org/address/0xC9C2e35055Ed2eB6B216bB9b42EEA68A7D0a915F"
+  }
+}

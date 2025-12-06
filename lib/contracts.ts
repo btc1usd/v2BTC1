@@ -1,39 +1,39 @@
 // Contract addresses and ABIs for BTC1USD Protocol
 export const CONTRACT_ADDRESSES = {
-  // Updated from deployment-base-sepolia.json (2025-12-05T16:46:37.980Z)
+  // Updated from deployment-base-mainnet.json (2025-12-06T18:24:12.589Z)
   BTC1USD:
     process.env.NEXT_PUBLIC_BTC1USD_CONTRACT ||
-    "0xfe68537D62008C9953cda36E1E43390Daa434520",
+    "0x6dC9C43278AeEa063c01d97505f215ECB6da4a21",
   BTC1USD_CONTRACT:
     process.env.NEXT_PUBLIC_BTC1USD_CONTRACT ||
-    "0xfe68537D62008C9953cda36E1E43390Daa434520",
+    "0x6dC9C43278AeEa063c01d97505f215ECB6da4a21",
   VAULT:
     process.env.NEXT_PUBLIC_VAULT_CONTRACT ||
-    "0xb4698aC4b60F4E15a4b6b912A4FE193D9dE2552F",
+    "0x529964221630CebB4167BdcE670cCAB65769E89d",
   CHAINLINK_BTC_ORACLE:
     process.env.NEXT_PUBLIC_PRICE_ORACLE_CONTRACT ||
-    "0x4614E5D56f07F89Ff6627F684334Ec598B097D8d",
+    "0xFAa3E07505405b3A69Cd30f31Aa484ca2580c03b",
   PRICE_ORACLE_CONTRACT:
     process.env.NEXT_PUBLIC_PRICE_ORACLE_CONTRACT ||
-    "0x4614E5D56f07F89Ff6627F684334Ec598B097D8d",
+    "0xFAa3E07505405b3A69Cd30f31Aa484ca2580c03b",
   CHAINLINK_FEED:
     process.env.NEXT_PUBLIC_CHAINLINK_FEED ||
     "0x0FB99723Aee6f420beAD13e6bBB79b7E6F034298",
   WEEKLY_DISTRIBUTION:
     process.env.NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT ||
-    "0xe8Ba64eE14be3c9c50610D8F707361c154a4905e",
+    "0x51D622A533C56256c5E318f5aB9844334523dFe0",
   MERKLE_DISTRIBUTOR:
     process.env.NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT ||
-    "0x2b37e550584d70B4E58ABAED8a1C699BfcDfA2Ce",
+    "0x9Ba818c20198936D0CF3d9683c3095541ceC366A",
   ENDOWMENT_MANAGER:
     process.env.NEXT_PUBLIC_ENDOWMENT_MANAGER_CONTRACT ||
-    "0xceC51486E1D70816d22062c47701626f8D00D4F6",
+    "0x757348F6bf09546Acc94eCA41834E0bF739500E1",
   PROTOCOL_GOVERNANCE:
     process.env.NEXT_PUBLIC_PROTOCOL_GOVERNANCE_CONTRACT ||
-    "0x0a212eae63Fc4DCA032b215178FFA22317666354",
+    "0x0037BB334484dFfba7eeEC986972fD2BB12e25f6",
   GOVERNANCE_DAO:
     process.env.NEXT_PUBLIC_DAO_CONTRACT ||
-    "0x842EE0b619f60DDb8A2315E73b47Cff7a052710E",
+    "0xC9C2e35055Ed2eB6B216bB9b42EEA68A7D0a915F",
   PROXY_ADMIN:
     process.env.NEXT_PUBLIC_PROXY_ADMIN_CONTRACT ||
     "0x0000000000000000000000000000000000000000",
@@ -41,16 +41,16 @@ export const CONTRACT_ADDRESSES = {
   // Wallet Smart Contract addresses (with on-chain distribution tracking)
   DEV_WALLET:
     process.env.NEXT_PUBLIC_DEV_WALLET_CONTRACT ||
-    "0xdfB43140982a8bf281C70Bab03b9830E8AB7E354",
+    "0x7044d853050cd089B4A796fA8eADa581c205D106",
   ENDOWMENT_WALLET:
     process.env.NEXT_PUBLIC_ENDOWMENT_WALLET_CONTRACT ||
-    "0xB6216bd95274E8BA5f94A1341494dC6aB73B3839",
+    "0x3C8B5837A184ef87543fDd7401ed575F5CEb170e",
   MERKLE_FEE_COLLECTOR:
     process.env.NEXT_PUBLIC_MERKLE_FEE_COLLECTOR_CONTRACT ||
-    "0x3D8898fD448fC5599AC1DB9b318DB2C314809951",
+    "0x108eFCe368DB385a7FDa8F3A8266d6CD16a3B282",
   MERKLE_DISTRIBUTOR_WALLET:
     process.env.NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT ||
-    "0x2b37e550584d70B4E58ABAED8a1C699BfcDfA2Ce",
+    "0x9Ba818c20198936D0CF3d9683c3095541ceC366A",
 
   // Collateral Token addresses
   WBTC_TOKEN:
@@ -94,8 +94,14 @@ export const ABIS = {
     "function getTotalCollateralValue() view returns (uint256)",
     "function isHealthy() view returns (bool)",
     "function getSupportedCollateral() view returns (address[])",
+    "function addCollateral(address token)",
+    "function removeCollateral(address token)",
+    "function supportedCollateral(address token) view returns (bool)",
+    "function collateralBalances(address token) view returns (uint256)",
     "event Mint(address indexed user, uint256 btcAmount, uint256 tokensIssued, address collateralToken)",
     "event Redeem(address indexed user, uint256 tokensRedeemed, uint256 btcAmount, address collateralToken)",
+    "event CollateralAdded(address indexed token)",
+    "event CollateralRemoved(address indexed token)",
   ],
 
   CHAINLINK_BTC_ORACLE: [
@@ -838,7 +844,7 @@ export const NETWORK_CONFIG = {
   },
 };
 
-// Collateral token configuration - updated from deployment-base-sepolia.json (2025-10-19)
+// Collateral token configuration - updated from deployment-base-mainnet.json (2025-12-06)
 export const COLLATERAL_TOKENS = [
   {
     symbol: "WBTC",

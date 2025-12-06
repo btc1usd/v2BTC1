@@ -2,19 +2,19 @@
 
 import { useEffect, useState } from 'react'
 import { useAccount, useChainId, useSwitchChain } from 'wagmi'
-import { baseSepolia } from 'wagmi/chains'
+import { base } from 'wagmi/chains'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { AlertTriangle, RefreshCw, X } from 'lucide-react'
 
 // Network configuration - easily switch between testnet and mainnet
 const NETWORK_CONFIG = {
-  // Current: Base Sepolia (Testnet)
-  chainId: 84532,
-  name: 'Base Sepolia',
-  // For Mainnet deployment: Change to 8453 and 'Base'
-  // chainId: 8453,
-  // name: 'Base',
+  // Current: Base Mainnet (Production)
+  chainId: 8453,
+  name: 'Base',
+  // For Testnet deployment: Change to 84532 and 'Base Sepolia'
+  // chainId: 84532,
+  // name: 'Base Sepolia',
 }
 
 export function NetworkGuard() {

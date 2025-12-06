@@ -135,8 +135,8 @@ async function testProviderHealth(provider: JsonRpcProvider, timeout: number): P
     ]);
     
     // Validate we're on the correct network
-    if (networkResult.chainId !== BigInt(84532)) {
-      throw new Error(`Wrong chain ID: expected 84532, got ${networkResult.chainId}`);
+    if (networkResult.chainId !== BigInt(8453)) {
+      throw new Error(`Wrong chain ID: expected 8453 (Base Mainnet), got ${networkResult.chainId}`);
     }
     
     console.log(`🌐 Network verified: chainId=${chainIdResult}`);
@@ -161,16 +161,16 @@ export function getPrioritizedRpcUrls(): string[] {
   // Add Alchemy if configured
   const alchemyKey = process.env.ALCHEMY_API_KEY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
   if (alchemyKey) {
-    urls.push(`https://base-sepolia.g.alchemy.com/v2/${alchemyKey}`);
+    urls.push(`https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`);
   }
 
   // Add fallback public RPC endpoints (verified working ones first)
   urls.push(
-    "https://sepolia.base.org",  // Official Base Sepolia endpoint
-    "https://base-sepolia.gateway.pokt.network/v1/lb/62547375086761003a4a5695", // Pokt Network (from your .env)
-    "https://base-sepolia.publicnode.com",  // Public node
-    "https://base-sepolia.blockpi.network/v1/rpc/public",  // BlockPI
-    "https://base-sepolia-rpc.publicnode.com" // Alternative public node
+    "https://mainnet.base.org",  // Official Base Mainnet endpoint
+    "https://base.publicnode.com",  // Public node
+    "https://base.blockpi.network/v1/rpc/public",  // BlockPI
+    "https://base-pokt.nodies.app",  // Nodies (Pokt Network)
+    "https://base-rpc.publicnode.com" // Alternative public node
   );
 
   // Remove duplicates
@@ -321,7 +321,7 @@ export async function createProviderWithFallback(
  */
 export async function executeWithProviderFallback<T>(
   executor: (provider: JsonRpcProvider) => Promise<T>,
-  chainId: number = 84532,
+  chainId: number = 8453,
   config: RpcProviderConfig = {}
 ): Promise<T> {
   const urls = getPrioritizedRpcUrls();

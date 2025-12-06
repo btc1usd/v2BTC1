@@ -22,7 +22,7 @@ export const getProvider = async () => {
   
   // For server-side usage, use fallback RPC providers
   try {
-    return await createProviderWithFallback(84532, {
+    return await createProviderWithFallback(8453, {
       timeout: 15000, // Increased timeout
       maxRetries: 3,
       retryDelay: 2000, // Increased delay
@@ -31,7 +31,7 @@ export const getProvider = async () => {
   } catch (error) {
     console.error("Failed to create provider with fallback:", error);
     // Final fallback to default provider
-    return new JsonRpcProvider("https://sepolia.base.org", 84532);
+    return new JsonRpcProvider("https://mainnet.base.org", 8453);
   }
 }
 
@@ -85,7 +85,7 @@ export const connectWallet = async () => {
   try {
     await window.ethereum.request({ method: "eth_requestAccounts" })
 
-    // Switch to Base Sepolia if not already connected
+    // Switch to Base Mainnet if not already connected
     try {
       await window.ethereum.request({
         method: "wallet_switchEthereumChain",
@@ -178,7 +178,7 @@ export const getProtocolStats = async () => {
         canDistribute,
         nextDistribution: Number(nextDistribution),
       }
-    }, 84532, { // Base Sepolia chain ID
+    }, 8453, { // Base Mainnet chain ID
       timeout: 15000, // Increased timeout
       maxRetries: 3,
       retryDelay: 2000,

@@ -71,9 +71,10 @@ const config: HardhatUserConfig = {
       url: process.env.ALCHEMY_API_KEY
         ? `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
         : "https://mainnet.base.org",
-      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      accounts: process.env.DEPLOYER_PRIVATE_KEY ? [process.env.DEPLOYER_PRIVATE_KEY] : [],
       chainId: 8453,
-      timeout: 60000,
+      timeout: 120000, // Increased timeout for mainnet
+      gasPrice: "auto", // Let the network determine gas price
     },
   },
   etherscan: {

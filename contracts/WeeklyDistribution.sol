@@ -59,10 +59,10 @@ contract WeeklyDistribution {
     uint256 public lastDistributionTime;
 
     // ============================================
-    // CONFIGURATION: TESTING
+    // CONFIGURATION: PRODUCTION
     // ============================================
-    // Weekly distributions - 7 hours for testing (TODO: Change back to 7 days for production)
-    uint256 public constant DISTRIBUTION_INTERVAL = 7 hours;
+    // Weekly distributions - 7 days (production)
+    uint256 public constant DISTRIBUTION_INTERVAL = 7 days;
 
     uint256 public constant FRIDAY_14_UTC = 14 * 3600; // 14:00 UTC in seconds
 

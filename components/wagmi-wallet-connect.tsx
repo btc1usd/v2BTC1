@@ -107,8 +107,8 @@ function WagmiWalletConnectInner({
 
   const openInExplorer = () => {
     if (address) {
-      // Using Base Sepolia explorer as per the project requirements
-      window.open(`https://sepolia.basescan.org/address/${address}`, "_blank");
+      // Using Base Mainnet explorer
+      window.open(`https://basescan.org/address/${address}`, "_blank");
     }
   };
 

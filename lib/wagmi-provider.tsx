@@ -13,13 +13,13 @@ const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "";
 // ============================================
 // NETWORK CONFIGURATION
 // ============================================
-// Current: Base Sepolia (Testnet)
-const TARGET_CHAIN = baseSepolia;
-const ALCHEMY_ENDPOINT = 'base-sepolia';
+// Current: Base Mainnet (Production)
+const TARGET_CHAIN = base;
+const ALCHEMY_ENDPOINT = 'base-mainnet';
 
-// For Mainnet deployment, uncomment these lines:
-// const TARGET_CHAIN = base;
-// const ALCHEMY_ENDPOINT = 'base-mainnet';
+// For Testnet deployment, uncomment these lines:
+// const TARGET_CHAIN = baseSepolia;
+// const ALCHEMY_ENDPOINT = 'base-sepolia';
 // ============================================
 
 // Create a react-query client once
@@ -93,14 +93,15 @@ const createWagmiConfig = () => {
   transportUrls.push(...rpcUrls);
 
   // Add additional public fallbacks as last resort
-  const publicFallbacks = TARGET_CHAIN.id === 84532
+  const publicFallbacks = TARGET_CHAIN.id === 8453
     ? [
-        'https://base-sepolia.blockpi.network/v1/rpc/public',
-        'https://base-sepolia.publicnode.com',
-      ]
-    : [
         'https://mainnet.base.org',
         'https://base.publicnode.com',
+        'https://base.blockpi.network/v1/rpc/public',
+      ]
+    : [
+        'https://sepolia.base.org',
+        'https://base-sepolia.publicnode.com',
       ];
 
   publicFallbacks.forEach(url => {
@@ -130,11 +131,11 @@ const createWagmiConfig = () => {
 
   return createConfig({
     // Include multiple chains so wagmi can detect when user is on wrong network
-    chains: [TARGET_CHAIN, base, mainnet, polygon, arbitrum, optimism, bsc, avalanche],
+    chains: [TARGET_CHAIN, baseSepolia, mainnet, polygon, arbitrum, optimism, bsc, avalanche],
     transports: {
       [TARGET_CHAIN.id]: transport,
       // Add minimal transports for other chains (just for detection)
-      [base.id]: http(),
+      [baseSepolia.id]: http(),
       [mainnet.id]: http(),
       [polygon.id]: http(),
       [arbitrum.id]: http(),

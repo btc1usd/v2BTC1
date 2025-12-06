@@ -9,9 +9,10 @@ import "./interfaces/IPriceOracle.sol";
  * @notice Enhanced Chainlink price oracle supporting multiple collateral tokens
  * @dev Uses Chainlink Data Feeds for BTC/USD pricing all Bitcoin-backed collateral tokens
  *
- * Network: Base Sepolia
+ * Network: Base Mainnet
  * Aggregator: BTC/USD
- * Address: 0xB842f535a88021F95e1a94245Fa549a7f75084Dc
+ * Feed Address: 0x64c911996D3c6aC71f9b455B1E8E7266BcbD848F
+ * Feed Documentation: https://data.chain.link/feeds/base/base/btc-usd
  */
 contract ChainlinkBTCOracle is IPriceOracle {
     // Main BTC/USD price feed (used for all Bitcoin-backed tokens)
@@ -36,16 +37,18 @@ contract ChainlinkBTCOracle is IPriceOracle {
     }
 
     /**
-     * @notice Constructor - Initializes with Base Sepolia BTC/USD feed
+     * @notice Constructor - Initializes with Base Mainnet BTC/USD feed
      * @param _admin Admin address for managing the oracle
      *
-     * Network: Base Sepolia
-     * BTC/USD Feed: 0x0FB99723Aee6f420beAD13e6bBB79b7E6F034298 (ACTIVE & VERIFIED ✅)
+     * Network: Base Mainnet
+     * BTC/USD Feed: 0x64c911996D3c6aC71f9b455B1E8E7266BcbD848F (VERIFIED ✅)
+     * Documentation: https://data.chain.link/feeds/base/base/btc-usd
      */
     constructor(address _admin) {
         admin = _admin;
-        // Base Sepolia BTC/USD Price Feed - VERIFIED WORKING
-        btcPriceFeed = AggregatorV3Interface(0x0FB99723Aee6f420beAD13e6bBB79b7E6F034298);
+        // Base Mainnet BTC/USD Price Feed - VERIFIED WORKING
+        // Standard feed: https://data.chain.link/feeds/base/base/btc-usd
+        btcPriceFeed = AggregatorV3Interface(0x64c911996D3c6aC71f9b455B1E8E7266BcbD848F);
     }
 
     /**

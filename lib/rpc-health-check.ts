@@ -85,15 +85,17 @@ export async function checkAllRPCs(): Promise<RPCHealthStatus[]> {
   const endpoints: string[] = [];
 
   if (alchemyApiKey) {
-    endpoints.push(`https://base-sepolia.g.alchemy.com/v2/${alchemyApiKey}`);
+    endpoints.push(`https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`);
   }
 
   endpoints.push(...rpcUrls);
 
   // Add public fallbacks
   endpoints.push(
-    'https://base-sepolia.blockpi.network/v1/rpc/public',
-    'https://base-sepolia.publicnode.com'
+    'https://mainnet.base.org',
+    'https://base.publicnode.com',
+    'https://base.blockpi.network/v1/rpc/public',
+    'https://base-pokt.nodies.app'
   );
 
   // Remove duplicates

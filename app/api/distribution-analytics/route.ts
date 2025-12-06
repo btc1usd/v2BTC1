@@ -36,7 +36,7 @@ interface DistributionAnalytics {
 }
 
 // RPC endpoints for redundancy
-const RPC_ENDPOINTS = process.env.NEXT_PUBLIC_RPC_URL?.split(',') || ['https://sepolia.base.org'];
+const RPC_ENDPOINTS = process.env.NEXT_PUBLIC_RPC_URL?.split(',') || ['https://mainnet.base.org'];
 
 // Create public client with fallback
 function createClientWithFallback() {
