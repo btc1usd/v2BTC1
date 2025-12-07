@@ -68,7 +68,6 @@
     "dotenv": "16.6.1",
     "embla-carousel-react": "8.5.1",
     "ethers": "6.15.0",
-    "firebase": "12.5.0",
     "framer-motion": "12.23.21",
     "geist": "1.5.1",
     "hardhat": "2.26.3",

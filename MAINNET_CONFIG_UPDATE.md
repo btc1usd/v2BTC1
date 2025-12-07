@@ -301,7 +301,6 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 3. **Deploy to Hosting**:
    - Vercel: `vercel --prod`
    - Netlify: `netlify deploy --prod`
-   - Firebase: `firebase deploy`
 
 4. **Verify Deployment**:
    - Check wallet connects to Base Mainnet
