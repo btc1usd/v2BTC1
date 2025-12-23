@@ -9,7 +9,8 @@
     "vault": "0x8C5f2D5DE1B56Ef784e812491703Fe4eDf61928F",
     "oracle": "0x6A655Af116DBE84D7fE452e2EDedF0e1C52d6e59",
     "merkleDistributor": "0x7A77039d4eCF074686F2b0D0447B708870b7087C",
-    "endowmentManager": "0xA9b7fB815c3b2A0a8d2Fc87473383D1D7E5F4153"
+    "endowmentManager": "0xA9b7fB815c3b2A0a8d2Fc87473383D1D7E5F4153",
+    "weeklyDistribution": "0xF4b4Fa932058ed2A193c4C3332b687698aa368BD"
   },
   "nonUpgradeable": {
     "btc1usd": "0xcb0d52E338A2d00ee452eDC5Be16bD79b104e367"

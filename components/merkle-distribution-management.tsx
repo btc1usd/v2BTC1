@@ -729,6 +729,15 @@ Please add more collateral to the vault before executing distribution.`);
     const hasUIAccess = address?.toLowerCase() === uiControllerAddress.toLowerCase();
     const isSafeConnected = address?.toLowerCase() === safeAddress.toLowerCase();
     
+    console.log('=== EXECUTE DISTRIBUTION - SAFE MODAL DEBUG ===');
+    console.log('UI Controller:', uiControllerAddress);
+    console.log('Safe Address:', safeAddress);
+    console.log('Connected Address:', address);
+    console.log('Has UI Access:', hasUIAccess);
+    console.log('Is Safe Connected:', isSafeConnected);
+    console.log('Safe !== UI Controller:', safeAddress !== uiControllerAddress);
+    console.log('Should show Safe modal:', hasUIAccess && !isSafeConnected && safeAddress !== uiControllerAddress);
+    
     if (!hasUIAccess && !isSafeConnected) {
       alert(`Access Denied: Only authorized addresses can execute distributions.
 
@@ -796,6 +805,15 @@ Check console for more details.`);
     
     const hasUIAccess = address?.toLowerCase() === uiControllerAddress.toLowerCase();
     const isSafeConnected = address?.toLowerCase() === safeAddress.toLowerCase();
+    
+    console.log('=== SET MERKLE ROOT - SAFE MODAL DEBUG ===');
+    console.log('UI Controller:', uiControllerAddress);
+    console.log('Safe Address:', safeAddress);
+    console.log('Connected Address:', address);
+    console.log('Has UI Access:', hasUIAccess);
+    console.log('Is Safe Connected:', isSafeConnected);
+    console.log('Safe !== UI Controller:', safeAddress !== uiControllerAddress);
+    console.log('Should show Safe modal:', hasUIAccess && !isSafeConnected && safeAddress !== uiControllerAddress);
     
     if (!hasUIAccess && !isSafeConnected) {
       alert(`Access Denied: Only authorized addresses can set merkle root.

@@ -1524,7 +1524,7 @@ function Dashboard() {
 
   // Add state to track minting progress
   const [mintingStep, setMintingStep] = useState<
-    "idle" | "approving" | "minting"
+    "idle" | "approving" | "minting" | "redeeming"
   >("idle");
 
   // Helper function to get user-friendly error message
@@ -3334,7 +3334,7 @@ function Dashboard() {
                                 </div>
                                 {activity.txHash && (
                                   <a
-                                    href={`https://basescan.org/tx/${activity.txHash}`}
+                                    href={`https://sepolia.basescan.org/tx/${activity.txHash}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="inline-flex items-center gap-1 mt-2 text-xs sm:text-sm text-orange-500 hover:text-orange-400 font-medium transition-colors"

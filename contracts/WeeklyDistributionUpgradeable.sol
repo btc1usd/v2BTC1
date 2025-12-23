@@ -7,6 +7,8 @@ import "./interfaces/IVault.sol";
 import "./libraries/SafeMath.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
 /**
  * @title WeeklyDistributionUpgradeable
@@ -17,7 +19,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
  * - No constructor (uses initialize function)
  * - Storage layout preserved for future upgrades
  */
-contract WeeklyDistributionUpgradeable is Initializable, OwnableUpgradeable {
+contract WeeklyDistributionUpgradeable is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable, PausableUpgradeable {
     using SafeMath for uint256;
 
     // Distribution tiers (in percentage, with 8 decimals to match BTC1USD)
@@ -126,6 +128,8 @@ contract WeeklyDistributionUpgradeable is Initializable, OwnableUpgradeable {
         require(_vault != address(0), "WeeklyDistribution: vault is zero address");
         
         __Ownable_init(initialOwner);
+        __ReentrancyGuard_init();
+        __Pausable_init();
         btc1usd = IBTC1USD(_btc1usd);
         vault = IVault(_vault);
         devWallet = _devWallet;
@@ -170,7 +174,7 @@ contract WeeklyDistributionUpgradeable is Initializable, OwnableUpgradeable {
         return 0;
     }
 
-    function executeDistribution() external {
+    function executeDistribution() external onlyOwner nonReentrant whenNotPaused {
         require(canDistribute(), "WeeklyDistribution: cannot distribute now");
 
         uint256 collateralValue = vault.getTotalCollateralValue();
@@ -270,10 +274,12 @@ contract WeeklyDistributionUpgradeable is Initializable, OwnableUpgradeable {
     }
 
     function setMerklDistributor(address _merklDistributor) external onlyOwner {
+        require(_merklDistributor != address(0), "WeeklyDistribution: merklDistributor is zero address");
         merklDistributor = IMerkleDistributor(_merklDistributor);
     }
 
     function setDevWallet(address _devWallet) external onlyOwner {
+        require(_devWallet != address(0), "WeeklyDistribution: devWallet is zero address");
         devWallet = _devWallet;
     }
 
@@ -343,5 +349,14 @@ contract WeeklyDistributionUpgradeable is Initializable, OwnableUpgradeable {
     function setBTC1USD(address _btc1usd) external onlyOwner {
         require(_btc1usd != address(0), "WeeklyDistribution: btc1usd is zero address");
         btc1usd = IBTC1USD(_btc1usd);
+    }
+
+    // Emergency pause/unpause functions
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
     }
 }

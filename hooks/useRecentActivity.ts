@@ -17,7 +17,6 @@ export interface ActivityEvent {
 
 const VAULT_ABI = [
   {
-    "anonymous": true,
     "inputs": [
       { "indexed": true, "name": "user", "type": "address" },
       { "indexed": false, "name": "btcAmount", "type": "uint256" },
@@ -28,7 +27,6 @@ const VAULT_ABI = [
     "type": "event"
   },
   {
-    "anonymous": true,
     "inputs": [
       { "indexed": true, "name": "user", "type": "address" },
       { "indexed": false, "name": "tokensRedeemed", "type": "uint256" },
@@ -42,7 +40,6 @@ const VAULT_ABI = [
 
 const DISTRIBUTOR_ABI = [
   {
-    "anonymous": true,
     "inputs": [
       { "indexed": false, "name": "index", "type": "uint256" },
       { "indexed": false, "name": "account", "type": "address" },
@@ -55,7 +52,6 @@ const DISTRIBUTOR_ABI = [
 
 const WEEKLY_DISTRIBUTION_ABI = [
   {
-    "anonymous": true,
     "inputs": [
       { "indexed": true, "name": "distributionId", "type": "uint256" },
       { "indexed": false, "name": "collateralRatio", "type": "uint256" },
@@ -234,15 +230,18 @@ export function useRecentActivity() {
   useEffect(() => {
     async function fetchHistoricalActivities() {
       if (!address || !publicClient) {
+        console.log('⚠️ No address or publicClient available')
         setActivities([])
         return
       }
 
+      console.log('🔍 Fetching historical activities for:', address)
       setIsLoading(true)
       try {
         const currentBlock = await publicClient.getBlockNumber()
-        // Fetch last 10,000 blocks (approximately last 5-6 hours on Base Sepolia with ~2 sec block time)
-        const fromBlock = currentBlock - 10000n
+        // Fetch last 100,000 blocks (approximately last 2-3 days on Base with ~2 sec block time)
+        // Increase range to ensure we capture activity
+        const fromBlock = currentBlock > 100000n ? currentBlock - 100000n : 0n
 
         const allActivities: ActivityEvent[] = []
 
@@ -378,7 +377,13 @@ export function useRecentActivity() {
           .sort((a, b) => b.timestamp - a.timestamp)
           .slice(0, 10)
 
+        console.log(`✅ Fetched ${sortedActivities.length} total activities`)
         setActivities(sortedActivities)
+        
+        // If no activities found, log it clearly
+        if (sortedActivities.length === 0) {
+          console.log('ℹ️ No recent activity found for this wallet in the last 100,000 blocks')
+        }
       } catch (error) {
         console.error('Error fetching historical activities:', error)
       } finally {
