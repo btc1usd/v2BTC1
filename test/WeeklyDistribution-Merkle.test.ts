@@ -66,6 +66,7 @@ describe("WeeklyDistribution + MerkleDistributor Integration", function () {
     // Deploy MerkleDistributor
     const MerkleDistributorFactory = await ethers.getContractFactory("MerkleDistributor");
     merkleDistributor = await MerkleDistributorFactory.deploy(
+      admin.address, // initialOwner for Ownable
       await btc1usd.getAddress(),
       admin.address,
       ethers.ZeroAddress // Will be set to WeeklyDistribution address

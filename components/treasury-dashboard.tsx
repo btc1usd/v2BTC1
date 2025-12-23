@@ -34,10 +34,15 @@ import {
   ExternalLink,
   Target,
   Trash2,
+  Copy,
+  Shield,
+  Terminal,
+  ArrowRight,
+  Sparkles,
 } from "lucide-react"
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract, usePublicClient } from "wagmi"
 import { CONTRACT_ADDRESSES, ABIS, ENDOWMENT_CATEGORIES, CATEGORY_NAMES } from "@/lib/contracts"
-import { parseUnits, formatUnits } from "viem"
+import { parseUnits, formatUnits, encodeFunctionData } from "viem"
 import { readContract } from "viem/actions"
 
 interface Payee {
@@ -155,6 +160,23 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
   const [showAddNonProfit, setShowAddNonProfit] = useState<boolean>(false)
   const [showAddDevWallet, setShowAddDevWallet] = useState<boolean>(false)
   const [showAddMerkleFeeWallet, setShowAddMerkleFeeWallet] = useState<boolean>(false)
+  
+  // Safe Transaction Modal states
+  const [showDevWalletSafeModal, setShowDevWalletSafeModal] = useState(false)
+  const [showNonProfitSafeModal, setShowNonProfitSafeModal] = useState(false)
+  const [showMerkleFeeWalletSafeModal, setShowMerkleFeeWalletSafeModal] = useState(false)
+  const [showDevDistributionSafeModal, setShowDevDistributionSafeModal] = useState(false)
+  const [showMerkleFeeDistributionSafeModal, setShowMerkleFeeDistributionSafeModal] = useState(false)
+  const [showEndowmentDistributionSafeModal, setShowEndowmentDistributionSafeModal] = useState(false)
+  const [copiedField, setCopiedField] = useState<string | null>(null)
+  
+  // Helper function for copying to clipboard
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedField(field)
+    setTimeout(() => setCopiedField(null), 2000)
+  }
+  
   const [proposalForm, setProposalForm] = useState<
     Omit<NonProfit, "id" | "selected" | "totalReceived" | "verified" | "amount">
   >({ name: "", description: "", wallet: "", category: "Humanitarian", website: "" })
@@ -194,11 +216,34 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
   // Transaction status and error handling
   const [transactionStatus, setTransactionStatus] = useState("")
   const [transactionType, setTransactionType] = useState<string | null>(null)
+  const [selectedToken, setSelectedToken] = useState<string>('BTC1') // Token selection for distributions
 
   // Read contract data - Dev Wallet balance
   const { data: devWalletBalance, refetch: refetchDevBalance } = useReadContract({
     address: CONTRACT_ADDRESSES.BTC1USD as `0x${string}`,
     abi: ABIS.BTC1USD,
+    functionName: 'balanceOf',
+    args: [CONTRACT_ADDRESSES.DEV_WALLET as `0x${string}`],
+  })
+
+  // Read Dev Wallet collateral balances
+  const { data: devWalletWbtcBalance, refetch: refetchDevWbtcBalance } = useReadContract({
+    address: CONTRACT_ADDRESSES.WBTC_TOKEN as `0x${string}`,
+    abi: ABIS.ERC20,
+    functionName: 'balanceOf',
+    args: [CONTRACT_ADDRESSES.DEV_WALLET as `0x${string}`],
+  })
+
+  const { data: devWalletCbbtcBalance, refetch: refetchDevCbbtcBalance } = useReadContract({
+    address: CONTRACT_ADDRESSES.CBBTC_TOKEN as `0x${string}`,
+    abi: ABIS.ERC20,
+    functionName: 'balanceOf',
+    args: [CONTRACT_ADDRESSES.DEV_WALLET as `0x${string}`],
+  })
+
+  const { data: devWalletTbtcBalance, refetch: refetchDevTbtcBalance } = useReadContract({
+    address: CONTRACT_ADDRESSES.TBTC_TOKEN as `0x${string}`,
+    abi: ABIS.ERC20,
     functionName: 'balanceOf',
     args: [CONTRACT_ADDRESSES.DEV_WALLET as `0x${string}`],
   })
@@ -799,6 +844,32 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
       args: [newDevPayee.wallet, newDevPayee.name, newDevPayee.description || ""],
     })
 
+    // Safe Integration: Check if user has UI access
+    const uiControllerAddress = process.env.NEXT_PUBLIC_UI_CONTROLLER || 
+      process.env.NEXT_PUBLIC_ADMIN_WALLET || 
+      "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835"
+    const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS || uiControllerAddress
+    
+    const hasUIAccess = address?.toLowerCase() === uiControllerAddress.toLowerCase()
+    const isSafeConnected = address?.toLowerCase() === safeAddress.toLowerCase()
+    
+    if (!hasUIAccess && !isSafeConnected) {
+      setTransactionStatus(`❌ Access Denied: Only authorized addresses can add wallets`)
+      setTimeout(() => setTransactionStatus(""), 3000)
+      return
+    }
+    
+    // If UI Controller is connected but not Safe, show modal with transaction data
+    if (hasUIAccess && !isSafeConnected && safeAddress !== uiControllerAddress) {
+      console.log('=== DEV WALLET SAFE TRANSACTION ===');
+      console.log('Contract Address:', CONTRACT_ADDRESSES.DEV_WALLET);
+      console.log('Function: addWallet(address,string,string)');
+      console.log('Parameters:', newDevPayee);
+      
+      setShowDevWalletSafeModal(true)
+      return
+    }
+
     // Set transaction type for success message
     setTransactionType('addWallet')
 
@@ -891,22 +962,67 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
     }
 
     // Validation: Check if total amount exceeds available balance
-    const devBalance = devWalletBalance ? Number.parseFloat(formatUnits(devWalletBalance as bigint, 8)) : 0
+    const tokenAddressMap: Record<string, string> = {
+      'BTC1': CONTRACT_ADDRESSES.BTC1USD,
+      'WBTC': CONTRACT_ADDRESSES.WBTC_TOKEN,
+      'cbBTC': CONTRACT_ADDRESSES.CBBTC_TOKEN,
+      'tBTC': CONTRACT_ADDRESSES.TBTC_TOKEN,
+    }
+
+    const tokenAddress = tokenAddressMap[selectedToken]
+    const tokenBalanceMap: Record<string, bigint | undefined> = {
+      'BTC1': devWalletBalance,
+      'WBTC': devWalletWbtcBalance,
+      'cbBTC': devWalletCbbtcBalance,
+      'tBTC': devWalletTbtcBalance,
+    }
+
+    const currentBalance = tokenBalanceMap[selectedToken]
+    const devBalance = currentBalance ? Number.parseFloat(formatUnits(currentBalance as bigint, 8)) : 0
+    
     if (totalAmount > devBalance) {
-      setTransactionStatus(`⚠️ Insufficient balance! Need ${totalAmount.toFixed(2)} BTC1 but only ${devBalance.toFixed(2)} available`)
+      setTransactionStatus(`⚠️ Insufficient balance! Need ${totalAmount.toFixed(2)} ${selectedToken} but only ${devBalance.toFixed(2)} available`)
       setTimeout(() => setTransactionStatus(""), 5000)
       return
     }
 
     // Prepare batch transfer data
     const recipients = selectedPayees.map(payee => payee.wallet as `0x${string}`)
-    const amounts = selectedPayees.map(payee => parseUnits(payee.amount || "0", 8)) // BTC1USD uses 8 decimals
+    const amounts = selectedPayees.map(payee => parseUnits(payee.amount || "0", 8)) // All tokens use 8 decimals
 
     console.log("✅ Validation passed. Distributing development fees:", {
       recipients: selectedPayees.length,
-      totalAmount: `${totalAmount.toFixed(2)} BTC1`,
-      availableBalance: `${devBalance.toFixed(2)} BTC1`
+      totalAmount: `${totalAmount.toFixed(2)} ${selectedToken}`,
+      availableBalance: `${devBalance.toFixed(2)} ${selectedToken}`,
+      tokenAddress
     })
+
+    // Safe Integration: Check if user has UI access
+    const uiControllerAddress = process.env.NEXT_PUBLIC_UI_CONTROLLER || 
+      process.env.NEXT_PUBLIC_ADMIN_WALLET || 
+      "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835"
+    const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS || uiControllerAddress
+    
+    const hasUIAccess = address?.toLowerCase() === uiControllerAddress.toLowerCase()
+    const isSafeConnected = address?.toLowerCase() === safeAddress.toLowerCase()
+    
+    if (!hasUIAccess && !isSafeConnected) {
+      setTransactionStatus(`❌ Access Denied: Only authorized addresses can distribute dev fees`)
+      setTimeout(() => setTransactionStatus(""), 3000)
+      return
+    }
+    
+    // If UI Controller is connected but not Safe, show modal with transaction data
+    if (hasUIAccess && !isSafeConnected && safeAddress !== uiControllerAddress) {
+      console.log('=== DEV FEE DISTRIBUTION SAFE TRANSACTION ===');
+      console.log('Contract Address:', CONTRACT_ADDRESSES.DEV_WALLET);
+      console.log('Function: batchTransfer(address,address[],uint256[])');
+      console.log('Selected Payees:', selectedPayees);
+      console.log('Total Amount:', totalAmount);
+      
+      setShowDevDistributionSafeModal(true)
+      return
+    }
 
     try {
       // Set distribution type and amount for tracking
@@ -920,7 +1036,7 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
         abi: ABIS.DEV_WALLET,
         functionName: "batchTransfer",
         args: [
-          CONTRACT_ADDRESSES.BTC1USD as `0x${string}`,
+          tokenAddress as `0x${string}`,
           recipients,
           amounts,
         ],
@@ -984,6 +1100,32 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
     const recipients = selectedWallets.map(wallet => wallet.address as `0x${string}`)
     const amounts = selectedWallets.map(wallet => parseUnits(wallet.amount || "0", 8)) // BTC1USD uses 8 decimals
 
+    // Safe Integration: Check if user has UI access
+    const uiControllerAddress = process.env.NEXT_PUBLIC_UI_CONTROLLER || 
+      process.env.NEXT_PUBLIC_ADMIN_WALLET || 
+      "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835"
+    const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS || uiControllerAddress
+    
+    const hasUIAccess = address?.toLowerCase() === uiControllerAddress.toLowerCase()
+    const isSafeConnected = address?.toLowerCase() === safeAddress.toLowerCase()
+    
+    if (!hasUIAccess && !isSafeConnected) {
+      alert(`Access Denied: Only authorized addresses can distribute Merkle fees`)
+      return
+    }
+    
+    // If UI Controller is connected but not Safe, show modal with transaction data
+    if (hasUIAccess && !isSafeConnected && safeAddress !== uiControllerAddress) {
+      console.log('=== MERKLE FEE DISTRIBUTION SAFE TRANSACTION ===');
+      console.log('Contract Address:', CONTRACT_ADDRESSES.MERKLE_FEE_COLLECTOR);
+      console.log('Function: batchTransfer(address,address[],uint256[])');
+      console.log('Selected Wallets:', selectedWallets);
+      console.log('Total Amount:', totalAmount);
+      
+      setShowMerkleFeeDistributionSafeModal(true)
+      return
+    }
+
     try {
       // Call batchTransfer on MerkleFeeCollector contract
       writeContract({
@@ -1039,6 +1181,31 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
       args: [newDevPayee.wallet, newDevPayee.name, newDevPayee.description || ""],
       abi: ABIS.MERKLE_FEE_COLLECTOR
     })
+
+    // Safe Integration: Check if user has UI access
+    const uiControllerAddress = process.env.NEXT_PUBLIC_UI_CONTROLLER || 
+      process.env.NEXT_PUBLIC_ADMIN_WALLET || 
+      "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835"
+    const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS || uiControllerAddress
+    
+    const hasUIAccess = address?.toLowerCase() === uiControllerAddress.toLowerCase()
+    const isSafeConnected = address?.toLowerCase() === safeAddress.toLowerCase()
+    
+    if (!hasUIAccess && !isSafeConnected) {
+      alert(`Access Denied: Only authorized addresses can add Merkle Fee wallets`)
+      return
+    }
+    
+    // If UI Controller is connected but not Safe, show modal with transaction data
+    if (hasUIAccess && !isSafeConnected && safeAddress !== uiControllerAddress) {
+      console.log('=== MERKLE FEE WALLET SAFE TRANSACTION ===');
+      console.log('Contract Address:', CONTRACT_ADDRESSES.MERKLE_FEE_COLLECTOR);
+      console.log('Function: addWallet(address,string,string)');
+      console.log('Parameters:', newDevPayee);
+      
+      setShowMerkleFeeWalletSafeModal(true)
+      return
+    }
 
     writeContract({
       address: CONTRACT_ADDRESSES.MERKLE_FEE_COLLECTOR as `0x${string}`,
@@ -1186,6 +1353,31 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
       alert("Distributions are not ready to be executed.")
       return
     }
+
+    // Safe Integration: Check if user has UI access
+    const uiControllerAddress = process.env.NEXT_PUBLIC_UI_CONTROLLER || 
+      process.env.NEXT_PUBLIC_ADMIN_WALLET || 
+      "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835"
+    const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS || uiControllerAddress
+    
+    const hasUIAccess = address?.toLowerCase() === uiControllerAddress.toLowerCase()
+    const isSafeConnected = address?.toLowerCase() === safeAddress.toLowerCase()
+    
+    if (!hasUIAccess && !isSafeConnected) {
+      alert(`Access Denied: Only authorized addresses can execute endowment distribution`)
+      return
+    }
+    
+    // If UI Controller is connected but not Safe, show modal with transaction data
+    if (hasUIAccess && !isSafeConnected && safeAddress !== uiControllerAddress) {
+      console.log('=== ENDOWMENT DISTRIBUTION SAFE TRANSACTION ===');
+      console.log('Contract Address:', CONTRACT_ADDRESSES.ENDOWMENT_MANAGER);
+      console.log('Function: executeMonthlyDistribution()');
+      
+      setShowEndowmentDistributionSafeModal(true)
+      return
+    }
+
     try {
       writeContract({
         address: CONTRACT_ADDRESSES.ENDOWMENT_MANAGER as `0x${string}`,
@@ -1202,6 +1394,32 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
   const handleAddNonProfitToContract = () => {
     if (!proposalForm.name || !proposalForm.description || !proposalForm.wallet || !proposalForm.category) {
       alert("Please fill in all required fields.")
+      return
+    }
+
+    // Safe Integration: Check if user has UI access
+    const uiControllerAddress = process.env.NEXT_PUBLIC_UI_CONTROLLER || 
+      process.env.NEXT_PUBLIC_ADMIN_WALLET || 
+      "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835"
+    const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS || uiControllerAddress
+    
+    const hasUIAccess = address?.toLowerCase() === uiControllerAddress.toLowerCase()
+    const isSafeConnected = address?.toLowerCase() === safeAddress.toLowerCase()
+    
+    if (!hasUIAccess && !isSafeConnected) {
+      setTransactionStatus(`❌ Access Denied: Only authorized addresses can add non-profits`)
+      setTimeout(() => setTransactionStatus(""), 3000)
+      return
+    }
+    
+    // If UI Controller is connected but not Safe, show modal with transaction data
+    if (hasUIAccess && !isSafeConnected && safeAddress !== uiControllerAddress) {
+      console.log('=== NON-PROFIT SAFE TRANSACTION ===');
+      console.log('Contract Address:', CONTRACT_ADDRESSES.ENDOWMENT_MANAGER);
+      console.log('Function:', isAdmin ? 'addNonProfit' : 'proposeNonProfit');
+      console.log('Parameters:', proposalForm);
+      
+      setShowNonProfitSafeModal(true)
       return
     }
 
@@ -1553,7 +1771,7 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
                           )}
                           <Input
                             type="number"
-                            placeholder="Amount (BTC1)"
+                            placeholder={`Amount (${selectedToken})`}
                             value={payee.amount}
                             onChange={(e) => handleDevPayeeAmountChange(payee.id, e.target.value)}
                             className="w-32 text-sm mt-2 bg-gray-700 border-gray-600 text-white"
@@ -1592,16 +1810,36 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* Token Selection */}
+                  <div className="p-4 bg-gradient-to-br from-gray-700/50 to-gray-800/50 border border-gray-600 rounded-lg">
+                    <Label className="text-sm font-medium text-gray-300 mb-2 block">
+                      Select Token
+                    </Label>
+                    <select
+                      value={selectedToken}
+                      onChange={(e) => setSelectedToken(e.target.value)}
+                      className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    >
+                      <option value="BTC1">BTC1 (BTC1USD)</option>
+                      <option value="WBTC">WBTC (Wrapped Bitcoin)</option>
+                      <option value="cbBTC">cbBTC (Coinbase BTC)</option>
+                      <option value="tBTC">tBTC (Threshold BTC)</option>
+                    </select>
+                  </div>
+
                   {/* Available Balance Display */}
                   <div className="p-4 bg-gradient-to-br from-orange-500/20 to-orange-600/10 border border-orange-500/30 rounded-lg">
                     <Label className="text-sm font-medium text-gray-300">
                       Available Balance
                     </Label>
                     <div className="text-2xl font-bold text-orange-400 mt-1">
-                      {devWalletBalance ? Number.parseFloat(formatUnits(devWalletBalance as bigint, 8)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+                      {selectedToken === 'BTC1' && devWalletBalance ? Number.parseFloat(formatUnits(devWalletBalance as bigint, 8)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 }) : 
+                       selectedToken === 'WBTC' && devWalletWbtcBalance ? Number.parseFloat(formatUnits(devWalletWbtcBalance as bigint, 8)).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) :
+                       selectedToken === 'cbBTC' && devWalletCbbtcBalance ? Number.parseFloat(formatUnits(devWalletCbbtcBalance as bigint, 8)).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) :
+                       selectedToken === 'tBTC' && devWalletTbtcBalance ? Number.parseFloat(formatUnits(devWalletTbtcBalance as bigint, 8)).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '0.0000'}
                     </div>
                     <p className="text-xs text-gray-400 mt-1">
-                      BTC1 in Dev Wallet
+                      {selectedToken} in Dev Wallet
                     </p>
                   </div>
 
@@ -2475,6 +2713,843 @@ export function TreasuryDashboard({ isAdmin }: { isAdmin: boolean }) {
             )}
           </TabsContent>
         </Tabs>
+
+        {/* Dev Wallet Safe Transaction Modal */}
+        <Dialog open={showDevWalletSafeModal} onOpenChange={setShowDevWalletSafeModal}>
+          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto bg-gradient-to-br from-gray-900 via-orange-950 to-gray-900 border-2 border-orange-500/70 shadow-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg shadow-orange-500/50">
+                  <Plus className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg sm:text-2xl font-bold text-white">
+                    Add Dev Wallet
+                  </DialogTitle>
+                  <DialogDescription className="text-xs sm:text-sm text-orange-200">
+                    Safe Multi-Signature Transaction
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+              {/* Contract Address */}
+              <div className="bg-gradient-to-br from-green-900/20 to-emerald-900/20 border-2 border-green-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-green-300 font-bold uppercase">1️⃣ Contract Address</Label>
+                  <Button
+                    size="sm"
+                    className="h-8 px-3 sm:px-4 bg-green-600 hover:bg-green-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => copyToClipboard(CONTRACT_ADDRESSES.DEV_WALLET, 'contract')}
+                  >
+                    {copiedField === 'contract' ? (
+                      <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                    ) : (
+                      <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy</>
+                    )}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-green-300 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto border border-green-500/40 break-all">
+                  {CONTRACT_ADDRESSES.DEV_WALLET}
+                </code>
+              </div>
+
+              {/* ABI JSON */}
+              <div className="bg-gradient-to-br from-purple-900/20 to-indigo-900/20 border-2 border-purple-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-purple-300 font-bold uppercase">2️⃣ Contract ABI (JSON)</Label>
+                  <Button
+                    size="sm"
+                    className="h-8 px-3 sm:px-4 bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => {
+                      const abiJson = JSON.stringify([{
+                        "inputs": [
+                          { "internalType": "address", "name": "_wallet", "type": "address" },
+                          { "internalType": "string", "name": "_name", "type": "string" },
+                          { "internalType": "string", "name": "_description", "type": "string" }
+                        ],
+                        "name": "addWallet",
+                        "outputs": [],
+                        "stateMutability": "nonpayable",
+                        "type": "function"
+                      }], null, 2);
+                      copyToClipboard(abiJson, 'abi');
+                    }}
+                  >
+                    {copiedField === 'abi' ? (
+                      <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                    ) : (
+                      <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy ABI</>
+                    )}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-purple-200 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto max-h-32 border border-purple-500/40">
+                  {JSON.stringify([{
+                    "inputs": [
+                      { "internalType": "address", "name": "_wallet", "type": "address" },
+                      { "internalType": "string", "name": "_name", "type": "string" },
+                      { "internalType": "string", "name": "_description", "type": "string" }
+                    ],
+                    "name": "addWallet",
+                    "outputs": [],
+                    "stateMutability": "nonpayable",
+                    "type": "function"
+                  }], null, 2)}
+                </code>
+              </div>
+
+              {/* Encoded Calldata */}
+              <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 border-2 border-cyan-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-cyan-300 font-bold uppercase">3️⃣ Encoded Calldata</Label>
+                  <Button
+                    size="sm"
+                    className="h-8 px-3 sm:px-4 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => {
+                      try {
+                        const encodedData = encodeFunctionData({
+                          abi: [{
+                            inputs: [
+                              { internalType: "address", name: "_wallet", type: "address" },
+                              { internalType: "string", name: "_name", type: "string" },
+                              { internalType: "string", name: "_description", type: "string" }
+                            ],
+                            name: "addWallet",
+                            outputs: [],
+                            stateMutability: "nonpayable",
+                            type: "function"
+                          }],
+                          functionName: 'addWallet',
+                          args: [newDevPayee.wallet as `0x${string}`, newDevPayee.name, newDevPayee.description || ""]
+                        });
+                        copyToClipboard(encodedData, 'calldata');
+                      } catch (e) {
+                        console.error('Encoding error:', e);
+                      }
+                    }}
+                  >
+                    {copiedField === 'calldata' ? (
+                      <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                    ) : (
+                      <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy Calldata</>
+                    )}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-cyan-200 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto max-h-32 border border-cyan-500/40 break-all">
+                  {(() => {
+                    try {
+                      return encodeFunctionData({
+                        abi: [{
+                          inputs: [
+                            { internalType: "address", name: "_wallet", type: "address" },
+                            { internalType: "string", name: "_name", type: "string" },
+                            { internalType: "string", name: "_description", type: "string" }
+                          ],
+                          name: "addWallet",
+                          outputs: [],
+                          stateMutability: "nonpayable",
+                          type: "function"
+                        }],
+                        functionName: 'addWallet',
+                        args: [newDevPayee.wallet as `0x${string}`, newDevPayee.name, newDevPayee.description || ""]
+                      });
+                    } catch {
+                      return '0x...';
+                    }
+                  })()}
+                </code>
+              </div>
+
+              {/* Parameters */}
+              <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-gray-600/50 rounded-lg p-3 sm:p-4">
+                <h3 className="text-xs sm:text-sm font-bold text-white mb-2 sm:mb-3">Parameters</h3>
+                <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Function:</span>
+                    <code className="text-orange-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">addWallet</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Wallet Address:</span>
+                    <code className="text-xs text-green-200 bg-black/40 px-2 py-1 rounded font-mono max-w-full sm:max-w-[300px] truncate">{newDevPayee.wallet}</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Name:</span>
+                    <code className="text-white bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">{newDevPayee.name}</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Description:</span>
+                    <code className="text-xs text-gray-300 bg-black/40 px-2 py-1 rounded font-mono truncate">{newDevPayee.description || "(empty)"}</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Value:</span>
+                    <code className="text-yellow-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">0 ETH</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-3 border-t-2 border-orange-700 pt-3 sm:pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowDevWalletSafeModal(false)}
+                className="flex-1 border-2 border-gray-600 hover:bg-gray-800 text-gray-200 font-semibold h-10 sm:h-auto"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  const safeUrl = `https://app.safe.global/base:${process.env.NEXT_PUBLIC_SAFE_ADDRESS}`;
+                  window.open(safeUrl, '_blank');
+                }}
+                className="flex-1 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white shadow-lg shadow-orange-500/40 border-2 border-orange-400/60 font-semibold h-10 sm:h-auto"
+              >
+                <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                Open Safe UI
+                <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Non-Profit Safe Transaction Modal */}
+        <Dialog open={showNonProfitSafeModal} onOpenChange={setShowNonProfitSafeModal}>
+          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto bg-gradient-to-br from-gray-900 via-pink-950 to-gray-900 border-2 border-pink-500/70 shadow-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center shadow-lg shadow-pink-500/50">
+                  <Heart className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg sm:text-2xl font-bold text-white">
+                    {isAdmin ? "Add Non-Profit" : "Propose Non-Profit"}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs sm:text-sm text-pink-200">
+                    Safe Multi-Signature Transaction
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+              {/* Contract Address */}
+              <div className="bg-gradient-to-br from-green-900/20 to-emerald-900/20 border-2 border-green-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-green-300 font-bold uppercase">1️⃣ Contract Address</Label>
+                  <Button
+                    size="sm"
+                    className="h-8 px-3 sm:px-4 bg-green-600 hover:bg-green-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => copyToClipboard(CONTRACT_ADDRESSES.ENDOWMENT_MANAGER, 'contract')}
+                  >
+                    {copiedField === 'contract' ? (
+                      <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                    ) : (
+                      <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy</>
+                    )}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-green-300 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto border border-green-500/40 break-all">
+                  {CONTRACT_ADDRESSES.ENDOWMENT_MANAGER}
+                </code>
+              </div>
+
+              {/* Encoded Calldata */}
+              <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 border-2 border-cyan-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-cyan-300 font-bold uppercase">2️⃣ Encoded Calldata</Label>
+                  <Button
+                    size="sm"
+                    className="h-8 px-3 sm:px-4 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => {
+                      try {
+                        const encodedData = encodeFunctionData({
+                          abi: ABIS.ENDOWMENT_MANAGER,
+                          functionName: isAdmin ? 'addNonProfit' : 'proposeNonProfit',
+                          args: [
+                            proposalForm.wallet as `0x${string}`,
+                            proposalForm.name,
+                            proposalForm.description,
+                            proposalForm.website || "",
+                            ENDOWMENT_CATEGORIES[proposalForm.category as keyof typeof ENDOWMENT_CATEGORIES],
+                          ]
+                        });
+                        copyToClipboard(encodedData, 'calldata');
+                      } catch (e) {
+                        console.error('Encoding error:', e);
+                      }
+                    }}
+                  >
+                    {copiedField === 'calldata' ? (
+                      <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                    ) : (
+                      <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy Calldata</>
+                    )}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-cyan-200 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto max-h-32 border border-cyan-500/40 break-all">
+                  {(() => {
+                    try {
+                      return encodeFunctionData({
+                        abi: ABIS.ENDOWMENT_MANAGER,
+                        functionName: isAdmin ? 'addNonProfit' : 'proposeNonProfit',
+                        args: [
+                          proposalForm.wallet as `0x${string}`,
+                          proposalForm.name,
+                          proposalForm.description,
+                          proposalForm.website || "",
+                          ENDOWMENT_CATEGORIES[proposalForm.category as keyof typeof ENDOWMENT_CATEGORIES],
+                        ]
+                      });
+                    } catch {
+                      return '0x...';
+                    }
+                  })()}
+                </code>
+              </div>
+
+              {/* Parameters */}
+              <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-gray-600/50 rounded-lg p-3 sm:p-4">
+                <h3 className="text-xs sm:text-sm font-bold text-white mb-2 sm:mb-3">Parameters</h3>
+                <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Function:</span>
+                    <code className="text-pink-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">{isAdmin ? "addNonProfit" : "proposeNonProfit"}</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Wallet:</span>
+                    <code className="text-xs text-green-200 bg-black/40 px-2 py-1 rounded font-mono max-w-full sm:max-w-[300px] truncate">{proposalForm.wallet}</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Name:</span>
+                    <code className="text-white bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">{proposalForm.name}</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Category:</span>
+                    <code className="text-purple-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">{proposalForm.category}</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Value:</span>
+                    <code className="text-yellow-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">0 ETH</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-3 border-t-2 border-pink-700 pt-3 sm:pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowNonProfitSafeModal(false)}
+                className="flex-1 border-2 border-gray-600 hover:bg-gray-800 text-gray-200 font-semibold h-10 sm:h-auto"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  const safeUrl = `https://app.safe.global/base:${process.env.NEXT_PUBLIC_SAFE_ADDRESS}`;
+                  window.open(safeUrl, '_blank');
+                }}
+                className="flex-1 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white shadow-lg shadow-pink-500/40 border-2 border-pink-400/60 font-semibold h-10 sm:h-auto"
+              >
+                <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                Open Safe UI
+                <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Merkle Fee Wallet Safe Transaction Modal */}
+        <Dialog open={showMerkleFeeWalletSafeModal} onOpenChange={setShowMerkleFeeWalletSafeModal}>
+          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto bg-gradient-to-br from-gray-900 via-yellow-950 to-gray-900 border-2 border-yellow-500/70 shadow-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-yellow-500 to-orange-600 flex items-center justify-center shadow-lg shadow-yellow-500/50">
+                  <Coins className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg sm:text-2xl font-bold text-white">
+                    Add Merkle Fee Wallet
+                  </DialogTitle>
+                  <DialogDescription className="text-xs sm:text-sm text-yellow-200">
+                    Safe Multi-Signature Transaction
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+              {/* Contract Address */}
+              <div className="bg-gradient-to-br from-green-900/20 to-emerald-900/20 border-2 border-green-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-green-300 font-bold uppercase">1️⃣ Contract Address</Label>
+                  <Button
+                    size="sm"
+                    className="h-8 px-3 sm:px-4 bg-green-600 hover:bg-green-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => copyToClipboard(CONTRACT_ADDRESSES.MERKLE_FEE_COLLECTOR, 'contract')}
+                  >
+                    {copiedField === 'contract' ? (
+                      <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                    ) : (
+                      <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy</>
+                    )}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-green-300 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto border border-green-500/40 break-all">
+                  {CONTRACT_ADDRESSES.MERKLE_FEE_COLLECTOR}
+                </code>
+              </div>
+
+              {/* ABI JSON */}
+              <div className="bg-gradient-to-br from-purple-900/20 to-indigo-900/20 border-2 border-purple-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-purple-300 font-bold uppercase">2️⃣ Contract ABI (JSON)</Label>
+                  <Button
+                    size="sm"
+                    className="h-8 px-3 sm:px-4 bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => {
+                      const abiJson = JSON.stringify([{
+                        "inputs": [
+                          { "internalType": "address", "name": "_wallet", "type": "address" },
+                          { "internalType": "string", "name": "_name", "type": "string" },
+                          { "internalType": "string", "name": "_description", "type": "string" }
+                        ],
+                        "name": "addWallet",
+                        "outputs": [],
+                        "stateMutability": "nonpayable",
+                        "type": "function"
+                      }], null, 2);
+                      copyToClipboard(abiJson, 'abi');
+                    }}
+                  >
+                    {copiedField === 'abi' ? (
+                      <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                    ) : (
+                      <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy ABI</>
+                    )}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-purple-200 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto max-h-32 border border-purple-500/40">
+                  {JSON.stringify([{
+                    "inputs": [
+                      { "internalType": "address", "name": "_wallet", "type": "address" },
+                      { "internalType": "string", "name": "_name", "type": "string" },
+                      { "internalType": "string", "name": "_description", "type": "string" }
+                    ],
+                    "name": "addWallet",
+                    "outputs": [],
+                    "stateMutability": "nonpayable",
+                    "type": "function"
+                  }], null, 2)}
+                </code>
+              </div>
+
+              {/* Encoded Calldata */}
+              <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 border-2 border-cyan-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-cyan-300 font-bold uppercase">3️⃣ Encoded Calldata</Label>
+                  <Button
+                    size="sm"
+                    className="h-8 px-3 sm:px-4 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => {
+                      try {
+                        const encodedData = encodeFunctionData({
+                          abi: [{
+                            inputs: [
+                              { internalType: "address", name: "_wallet", type: "address" },
+                              { internalType: "string", name: "_name", type: "string" },
+                              { internalType: "string", name: "_description", type: "string" }
+                            ],
+                            name: "addWallet",
+                            outputs: [],
+                            stateMutability: "nonpayable",
+                            type: "function"
+                          }],
+                          functionName: 'addWallet',
+                          args: [newDevPayee.wallet as `0x${string}`, newDevPayee.name, newDevPayee.description || ""]
+                        });
+                        copyToClipboard(encodedData, 'calldata');
+                      } catch (e) {
+                        console.error('Encoding error:', e);
+                      }
+                    }}
+                  >
+                    {copiedField === 'calldata' ? (
+                      <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                    ) : (
+                      <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy Calldata</>
+                    )}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-cyan-200 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto max-h-32 border border-cyan-500/40 break-all">
+                  {(() => {
+                    try {
+                      return encodeFunctionData({
+                        abi: [{
+                          inputs: [
+                            { internalType: "address", name: "_wallet", type: "address" },
+                            { internalType: "string", name: "_name", type: "string" },
+                            { internalType: "string", name: "_description", type: "string" }
+                          ],
+                          name: "addWallet",
+                          outputs: [],
+                          stateMutability: "nonpayable",
+                          type: "function"
+                        }],
+                        functionName: 'addWallet',
+                        args: [newDevPayee.wallet as `0x${string}`, newDevPayee.name, newDevPayee.description || ""]
+                      });
+                    } catch {
+                      return '0x...';
+                    }
+                  })()}
+                </code>
+              </div>
+
+              {/* Parameters */}
+              <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-gray-600/50 rounded-lg p-3 sm:p-4">
+                <h3 className="text-xs sm:text-sm font-bold text-white mb-2 sm:mb-3">Parameters</h3>
+                <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Function:</span>
+                    <code className="text-yellow-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">addWallet</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Wallet Address:</span>
+                    <code className="text-xs text-green-200 bg-black/40 px-2 py-1 rounded font-mono max-w-full sm:max-w-[300px] truncate">{newDevPayee.wallet}</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Name:</span>
+                    <code className="text-white bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">{newDevPayee.name}</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Description:</span>
+                    <code className="text-xs text-gray-300 bg-black/40 px-2 py-1 rounded font-mono truncate">{newDevPayee.description || "(empty)"}</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Value:</span>
+                    <code className="text-yellow-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">0 ETH</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-3 border-t-2 border-yellow-700 pt-3 sm:pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowMerkleFeeWalletSafeModal(false)}
+                className="flex-1 border-2 border-gray-600 hover:bg-gray-800 text-gray-200 font-semibold h-10 sm:h-auto"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  const safeUrl = `https://app.safe.global/base:${process.env.NEXT_PUBLIC_SAFE_ADDRESS}`;
+                  window.open(safeUrl, '_blank');
+                }}
+                className="flex-1 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white shadow-lg shadow-yellow-500/40 border-2 border-yellow-400/60 font-semibold h-10 sm:h-auto"
+              >
+                <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                Open Safe UI
+                <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dev Fee Distribution Safe Modal */}
+        <Dialog open={showDevDistributionSafeModal} onOpenChange={setShowDevDistributionSafeModal}>
+          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto bg-gradient-to-br from-gray-900 via-orange-950 to-gray-900 border-2 border-orange-500/70 shadow-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg shadow-orange-500/50">
+                  <Send className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg sm:text-2xl font-bold text-white">
+                    Distribute Dev Fees
+                  </DialogTitle>
+                  <DialogDescription className="text-xs sm:text-sm text-orange-200">
+                    Safe Multi-Signature Transaction
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+              {/* Contract Address */}
+              <div className="bg-gradient-to-br from-green-900/20 to-emerald-900/20 border-2 border-green-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-green-300 font-bold uppercase">1️⃣ Contract Address</Label>
+                  <Button size="sm" className="h-8 px-3 sm:px-4 bg-green-600 hover:bg-green-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => copyToClipboard(CONTRACT_ADDRESSES.DEV_WALLET, 'contract')}>
+                    {copiedField === 'contract' ? (<><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>) : (<><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy</>)}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-green-300 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto border border-green-500/40 break-all">
+                  {CONTRACT_ADDRESSES.DEV_WALLET}
+                </code>
+              </div>
+
+              {/* Encoded Calldata */}
+              <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 border-2 border-cyan-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-cyan-300 font-bold uppercase">2️⃣ Encoded Calldata</Label>
+                  <Button size="sm" className="h-8 px-3 sm:px-4 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => {
+                      try {
+                        const selectedPayees = devPayees.filter((payee) => payee.selected)
+                        const recipients = selectedPayees.map(payee => payee.wallet as `0x${string}`)
+                        const amounts = selectedPayees.map(payee => parseUnits(payee.amount || "0", 8))
+                        const encodedData = encodeFunctionData({
+                          abi: ABIS.DEV_WALLET,
+                          functionName: 'batchTransfer',
+                          args: [CONTRACT_ADDRESSES.BTC1USD as `0x${string}`, recipients, amounts]
+                        });
+                        copyToClipboard(encodedData, 'calldata');
+                      } catch (e) { console.error('Encoding error:', e); }
+                    }}>
+                    {copiedField === 'calldata' ? (<><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>) : (<><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy Calldata</>)}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-cyan-200 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto max-h-32 border border-cyan-500/40 break-all">
+                  {(() => {
+                    try {
+                      const selectedPayees = devPayees.filter((payee) => payee.selected)
+                      const recipients = selectedPayees.map(payee => payee.wallet as `0x${string}`)
+                      const amounts = selectedPayees.map(payee => parseUnits(payee.amount || "0", 8))
+                      return encodeFunctionData({
+                        abi: ABIS.DEV_WALLET,
+                        functionName: 'batchTransfer',
+                        args: [CONTRACT_ADDRESSES.BTC1USD as `0x${string}`, recipients, amounts]
+                      });
+                    } catch { return '0x...'; }
+                  })()}
+                </code>
+              </div>
+
+              {/* Recipients Summary */}
+              <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-gray-600/50 rounded-lg p-3 sm:p-4">
+                <h3 className="text-xs sm:text-sm font-bold text-white mb-2 sm:mb-3">Distribution Summary</h3>
+                <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Function:</span>
+                    <code className="text-orange-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">batchTransfer</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Recipients:</span>
+                    <code className="text-white bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">{devPayees.filter(p => p.selected).length} wallets</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Total Amount:</span>
+                    <code className="text-green-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">
+                      {devPayees.filter(p => p.selected).reduce((sum, p) => sum + Number.parseFloat(p.amount || "0"), 0).toFixed(2)} BTC1
+                    </code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Value:</span>
+                    <code className="text-yellow-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">0 ETH</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-3 border-t-2 border-orange-700 pt-3 sm:pt-4">
+              <Button variant="outline" onClick={() => setShowDevDistributionSafeModal(false)}
+                className="flex-1 border-2 border-gray-600 hover:bg-gray-800 text-gray-200 font-semibold h-10 sm:h-auto">Cancel</Button>
+              <Button onClick={() => { window.open(`https://app.safe.global/base:${process.env.NEXT_PUBLIC_SAFE_ADDRESS}`, '_blank'); }}
+                className="flex-1 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white shadow-lg shadow-orange-500/40 border-2 border-orange-400/60 font-semibold h-10 sm:h-auto">
+                <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />Open Safe UI<ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Merkle Fee Distribution Safe Modal */}
+        <Dialog open={showMerkleFeeDistributionSafeModal} onOpenChange={setShowMerkleFeeDistributionSafeModal}>
+          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto bg-gradient-to-br from-gray-900 via-yellow-950 to-gray-900 border-2 border-yellow-500/70 shadow-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-yellow-500 to-orange-600 flex items-center justify-center shadow-lg shadow-yellow-500/50">
+                  <Send className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg sm:text-2xl font-bold text-white">Distribute Merkle Fees</DialogTitle>
+                  <DialogDescription className="text-xs sm:text-sm text-yellow-200">Safe Multi-Signature Transaction</DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+              <div className="bg-gradient-to-br from-green-900/20 to-emerald-900/20 border-2 border-green-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-green-300 font-bold uppercase">1️⃣ Contract Address</Label>
+                  <Button size="sm" className="h-8 px-3 sm:px-4 bg-green-600 hover:bg-green-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => copyToClipboard(CONTRACT_ADDRESSES.MERKLE_FEE_COLLECTOR, 'contract')}>
+                    {copiedField === 'contract' ? (<><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>) : (<><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy</>)}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-green-300 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto border border-green-500/40 break-all">
+                  {CONTRACT_ADDRESSES.MERKLE_FEE_COLLECTOR}
+                </code>
+              </div>
+
+              <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 border-2 border-cyan-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-cyan-300 font-bold uppercase">2️⃣ Encoded Calldata</Label>
+                  <Button size="sm" className="h-8 px-3 sm:px-4 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => {
+                      try {
+                        const selectedWallets = merkleFeeWallets.filter((w) => w.selected)
+                        const recipients = selectedWallets.map(w => w.address as `0x${string}`)
+                        const amounts = selectedWallets.map(w => parseUnits(w.amount || "0", 8))
+                        const encodedData = encodeFunctionData({
+                          abi: ABIS.MERKLE_FEE_COLLECTOR,
+                          functionName: 'batchTransfer',
+                          args: [CONTRACT_ADDRESSES.BTC1USD as `0x${string}`, recipients, amounts]
+                        });
+                        copyToClipboard(encodedData, 'calldata');
+                      } catch (e) { console.error('Encoding error:', e); }
+                    }}>
+                    {copiedField === 'calldata' ? (<><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>) : (<><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy Calldata</>)}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-cyan-200 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto max-h-32 border border-cyan-500/40 break-all">
+                  {(() => {
+                    try {
+                      const selectedWallets = merkleFeeWallets.filter((w) => w.selected)
+                      const recipients = selectedWallets.map(w => w.address as `0x${string}`)
+                      const amounts = selectedWallets.map(w => parseUnits(w.amount || "0", 8))
+                      return encodeFunctionData({ abi: ABIS.MERKLE_FEE_COLLECTOR, functionName: 'batchTransfer',
+                        args: [CONTRACT_ADDRESSES.BTC1USD as `0x${string}`, recipients, amounts] });
+                    } catch { return '0x...'; }
+                  })()}
+                </code>
+              </div>
+
+              <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-gray-600/50 rounded-lg p-3 sm:p-4">
+                <h3 className="text-xs sm:text-sm font-bold text-white mb-2 sm:mb-3">Distribution Summary</h3>
+                <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Function:</span>
+                    <code className="text-yellow-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">batchTransfer</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Recipients:</span>
+                    <code className="text-white bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">{merkleFeeWallets.filter(w => w.selected).length} wallets</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Total Amount:</span>
+                    <code className="text-green-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">
+                      {merkleFeeWallets.filter(w => w.selected).reduce((sum, w) => sum + Number.parseFloat(w.amount || "0"), 0).toFixed(2)} BTC1
+                    </code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Value:</span>
+                    <code className="text-yellow-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">0 ETH</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-3 border-t-2 border-yellow-700 pt-3 sm:pt-4">
+              <Button variant="outline" onClick={() => setShowMerkleFeeDistributionSafeModal(false)}
+                className="flex-1 border-2 border-gray-600 hover:bg-gray-800 text-gray-200 font-semibold h-10 sm:h-auto">Cancel</Button>
+              <Button onClick={() => { window.open(`https://app.safe.global/base:${process.env.NEXT_PUBLIC_SAFE_ADDRESS}`, '_blank'); }}
+                className="flex-1 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white shadow-lg shadow-yellow-500/40 border-2 border-yellow-400/60 font-semibold h-10 sm:h-auto">
+                <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />Open Safe UI<ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Endowment Distribution Safe Modal */}
+        <Dialog open={showEndowmentDistributionSafeModal} onOpenChange={setShowEndowmentDistributionSafeModal}>
+          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto bg-gradient-to-br from-gray-900 via-pink-950 to-gray-900 border-2 border-pink-500/70 shadow-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center shadow-lg shadow-pink-500/50">
+                  <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg sm:text-2xl font-bold text-white">Execute Endowment Distribution</DialogTitle>
+                  <DialogDescription className="text-xs sm:text-sm text-pink-200">Safe Multi-Signature Transaction</DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+              <div className="bg-gradient-to-br from-green-900/20 to-emerald-900/20 border-2 border-green-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-green-300 font-bold uppercase">1️⃣ Contract Address</Label>
+                  <Button size="sm" className="h-8 px-3 sm:px-4 bg-green-600 hover:bg-green-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => copyToClipboard(CONTRACT_ADDRESSES.ENDOWMENT_MANAGER, 'contract')}>
+                    {copiedField === 'contract' ? (<><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>) : (<><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy</>)}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-green-300 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto border border-green-500/40 break-all">
+                  {CONTRACT_ADDRESSES.ENDOWMENT_MANAGER}
+                </code>
+              </div>
+
+              <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 border-2 border-cyan-500/50 rounded-lg p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <Label className="text-xs sm:text-sm text-cyan-300 font-bold uppercase">2️⃣ Encoded Calldata</Label>
+                  <Button size="sm" className="h-8 px-3 sm:px-4 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                    onClick={() => {
+                      try {
+                        const encodedData = encodeFunctionData({
+                          abi: ABIS.ENDOWMENT_MANAGER,
+                          functionName: 'executeMonthlyDistribution',
+                          args: []
+                        });
+                        copyToClipboard(encodedData, 'calldata');
+                      } catch (e) { console.error('Encoding error:', e); }
+                    }}>
+                    {copiedField === 'calldata' ? (<><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>) : (<><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy Calldata</>)}
+                  </Button>
+                </div>
+                <code className="text-xs sm:text-sm text-cyan-200 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto max-h-32 border border-cyan-500/40 break-all">
+                  {(() => {
+                    try {
+                      return encodeFunctionData({
+                        abi: ABIS.ENDOWMENT_MANAGER,
+                        functionName: 'executeMonthlyDistribution',
+                        args: []
+                      });
+                    } catch { return '0x...'; }
+                  })()}
+                </code>
+              </div>
+
+              <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-gray-600/50 rounded-lg p-3 sm:p-4">
+                <h3 className="text-xs sm:text-sm font-bold text-white mb-2 sm:mb-3">Parameters</h3>
+                <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Function:</span>
+                    <code className="text-pink-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">executeMonthlyDistribution</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Arguments:</span>
+                    <code className="text-white bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">None (no parameters)</code>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                    <span className="text-gray-400">Value:</span>
+                    <code className="text-yellow-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">0 ETH</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-3 border-t-2 border-pink-700 pt-3 sm:pt-4">
+              <Button variant="outline" onClick={() => setShowEndowmentDistributionSafeModal(false)}
+                className="flex-1 border-2 border-gray-600 hover:bg-gray-800 text-gray-200 font-semibold h-10 sm:h-auto">Cancel</Button>
+              <Button onClick={() => { window.open(`https://app.safe.global/base:${process.env.NEXT_PUBLIC_SAFE_ADDRESS}`, '_blank'); }}
+                className="flex-1 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white shadow-lg shadow-pink-500/40 border-2 border-pink-400/60 font-semibold h-10 sm:h-auto">
+                <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />Open Safe UI<ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )

@@ -75,6 +75,7 @@ async function main() {
   // Deploy MerkleDistributor first
   const MerkleDistributor = await ethers.getContractFactory("MerkleDistributor");
   const merkleDistributor = await MerkleDistributor.deploy(
+    config.admin, // initialOwner for Ownable
     btc1usdAddress,
     config.admin,
     "0x0000000000000000000000000000000000000000" // Temporary, will be updated

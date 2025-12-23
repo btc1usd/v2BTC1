@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
 
         // Get current distribution ID
         return await merkleDistributor.currentDistributionId();
-      }, 8453, { // Base Mainnet chain ID
+      }, Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453"), { // Use chain ID from environment
         timeout: 15000, // Increased timeout
         maxRetries: 3,
         retryDelay: 2000,
@@ -240,7 +240,7 @@ export async function GET(request: NextRequest) {
             );
             
             return await merkleDistributor.getDistributionInfo(i);
-          }, 8453, { // Base Mainnet chain ID
+          }, Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453"), { // Use chain ID from environment
             timeout: 15000, // Increased timeout
             maxRetries: 3,
             retryDelay: 2000,

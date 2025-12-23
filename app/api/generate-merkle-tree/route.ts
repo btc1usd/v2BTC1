@@ -130,25 +130,29 @@ const UNIV2_PAIR_ABI = [
 const AERODROME_POOL_ABI = [
   {
     "inputs": [],
-    "name": "tokenA",
+    "name": "token0",
     "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [],
-    "name": "tokenB",
+    "name": "token1",
     "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [],
-    "name": "getReserves",
-    "outputs": [
-      { "internalType": "uint256", "name": "reserve0", "type": "uint256" },
-      { "internalType": "uint256", "name": "reserve1", "type": "uint256" }
-    ],
+    "name": "reserve0",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "reserve1",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
     "stateMutability": "view",
     "type": "function"
   },
@@ -171,11 +175,15 @@ const AERODROME_POOL_ABI = [
 // Approved LP pools to check for BTC1USD - only these will be processed as LP pools
 // All other smart contracts will be skipped (major performance improvement)
 const APPROVED_LP_POOLS = [
-  '0x269251b69fcd1ceb0500a86408cab39666b2077a', // Known BTC1/WETH pool
-  '0x18fd0aaaf8c6e28427b26ac75cc4375e21eb74a0b0ce1b66b8672a11a4c47b3d', // Approved LP pool
-  '0xf669d50334177dc11296b61174955a0216adad38', // Approved LP pool
-  '0x9d3a11303486e7d773f0ddfd2f47c4b374533580', // Approved LP pool
-  // Add more approved LP pool addresses here as needed
+  '0x269251b69fcd1ceb0500a86408cab39666b2077a', // BTC1/WETH UniswapV2
+  '0x18fd0aaaf8c6e28427b26ac75cc4375e21eb74a0b0ce1b66b8672a11a4c47b3d', // Aerodrome pool
+  '0xf669d50334177dc11296b61174955a0216adad38', // Aerodrome pool
+  '0x9d3a11303486e7d773f0ddfd2f47c4b374533580', // Aerodrome pool
+  '0xba420997ee5b98a8037e4395b2f4e9f9715a22a9256be1e880b2ff545ef7a327', // Aerodrome pool
+  '0x3968eff088dfde7b7d00e192fa9ef412aac583ebcb07971d516bd7951c1a74b0', // Aerodrome pool
+  '0xe80d2ef16abbaf4dd7ba60973fded0bb57295bc03b08446f4d3212a58c9cb085', // Aerodrome pool
+  '0xa27368cdd9c4e4f2b2f447c9a614682f14b378dab8715a293503b50d43236901', // Aerodrome pool
+  '0x74c754b0a0c1774601c4b92a975c068d4c000432aeffd980be7cbcc3c012ce65', // Aerodrome pool
 ].map(addr => addr.toLowerCase());
 
 // Load deployment configuration - Environment variables ONLY for production
@@ -209,7 +217,8 @@ const getProvider = async () => {
     console.log('🔄 Initializing RPC provider with fallback mechanism...');
     
     // Use robust provider with fallback mechanism
-    const provider = await createProviderWithFallback(8453, {
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+    const provider = await createProviderWithFallback(chainId, {
       timeout: 15000, // Increased timeout
       maxRetries: 3,
       retryDelay: 2000, // Increased initial delay
@@ -224,64 +233,76 @@ const getProvider = async () => {
   }
 };
 
-// Helper to get holders using Alchemy API (if available)
-const getHoldersFromAlchemy = async (tokenAddress: string): Promise<string[]> => {
+// Helper to get holders using Alchemy API with retry logic (if available)
+const getHoldersFromAlchemy = async (tokenAddress: string, retries = 3): Promise<string[]> => {
   const alchemyApiKey = process.env.ALCHEMY_API_KEY;
   if (!alchemyApiKey) {
     console.log('Alchemy API key not found, skipping Alchemy method');
     return [];
   }
 
-  try {
-    console.log('Fetching holders from Alchemy API...');
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`Fetching holders from Alchemy API (attempt ${attempt}/${retries})...`);
 
-    // Use Alchemy's Transfers API to get all unique addresses
-    const alchemyUrl = `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
+      // Use Alchemy's Transfers API to get all unique addresses
+      const alchemyUrl = `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
 
-    // Get asset transfers for the token
-    const response = await fetch(alchemyUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'alchemy_getAssetTransfers',
-        params: [{
-          fromBlock: '0x0',
-          toBlock: 'latest',
-          contractAddresses: [tokenAddress],
-          category: ['erc20'],
-          withMetadata: false,
-          excludeZeroValue: true,
-          maxCount: '0x3e8' // 1000 transfers max
-        }],
-        id: 1
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Alchemy API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if (data.result?.transfers) {
-      const uniqueAddresses = new Set<string>();
-
-      data.result.transfers.forEach((transfer: any) => {
-        if (transfer.from && transfer.from !== '0x0000000000000000000000000000000000000000') {
-          uniqueAddresses.add(transfer.from);
-        }
-        if (transfer.to) {
-          uniqueAddresses.add(transfer.to);
-        }
+      // Get asset transfers for the token
+      const response = await fetch(alchemyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'alchemy_getAssetTransfers',
+          params: [{
+            fromBlock: '0x0',
+            toBlock: 'latest',
+            contractAddresses: [tokenAddress],
+            category: ['erc20'],
+            withMetadata: false,
+            excludeZeroValue: true,
+            maxCount: '0x3e8' // 1000 transfers max
+          }],
+          id: 1
+        })
       });
 
-      const holders = Array.from(uniqueAddresses);
-      console.log(`✅ Alchemy found ${holders.length} unique addresses from transfers`);
-      return holders;
+      if (!response.ok) {
+        throw new Error(`Alchemy API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.result?.transfers) {
+        const uniqueAddresses = new Set<string>();
+
+        data.result.transfers.forEach((transfer: any) => {
+          if (transfer.from && transfer.from !== '0x0000000000000000000000000000000000000000') {
+            uniqueAddresses.add(transfer.from);
+          }
+          if (transfer.to) {
+            uniqueAddresses.add(transfer.to);
+          }
+        });
+
+        const holders = Array.from(uniqueAddresses);
+        console.log(`✅ Alchemy found ${holders.length} unique addresses from transfers`);
+        return holders;
+      }
+    } catch (error) {
+      console.warn(`⚠️ Alchemy attempt ${attempt}/${retries} failed:`, error instanceof Error ? error.message : error);
+      
+      if (attempt === retries) {
+        console.error(`❌ All ${retries} attempts failed for Alchemy API`);
+        return [];
+      }
+      
+      // Exponential backoff
+      const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+      console.log(`   Retrying in ${waitTime}ms...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
     }
-  } catch (error) {
-    console.warn('Alchemy API failed:', error instanceof Error ? error.message : error);
   }
 
   return [];
@@ -314,81 +335,94 @@ const isContract = async (provider: ethers.JsonRpcProvider, address: string): Pr
   }
 };
 
-// Helper to get LP token holders using Alchemy API with pagination
-const getLPHoldersFromAlchemy = async (lpTokenAddress: string): Promise<Map<string, bigint>> => {
+// Helper to get LP token holders using Alchemy API with pagination and retry logic
+const getLPHoldersFromAlchemy = async (lpTokenAddress: string, retries = 3): Promise<Map<string, bigint>> => {
   const alchemyApiKey = process.env.ALCHEMY_API_KEY;
   if (!alchemyApiKey) {
     console.log('⚠️ Alchemy API key not found for LP holders');
     return new Map();
   }
 
-  try {
-    console.log(`  🔍 Fetching LP token holders for ${lpTokenAddress}...`);
-    const alchemyUrl = `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
-    const balances = new Map<string, bigint>();
-    let pageKey: string | undefined = undefined;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`  🔍 Fetching LP token holders for ${lpTokenAddress} (attempt ${attempt}/${retries})...`);
+      const alchemyUrl = `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
+      const balances = new Map<string, bigint>();
+      let pageKey: string | undefined = undefined;
 
-    do {
-      const response: Response = await fetch(alchemyUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          method: 'alchemy_getAssetTransfers',
-          params: [{
-            fromBlock: '0x0',
-            toBlock: 'latest',
-            contractAddresses: [lpTokenAddress],
-            category: ['erc20'],
-            withMetadata: false,
-            excludeZeroValue: true,
-            maxCount: '0x3e8', // 1000 transfers per page
-            pageKey
-          }],
-          id: 1
-        })
-      });
+      do {
+        const response: Response = await fetch(alchemyUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'alchemy_getAssetTransfers',
+            params: [{
+              fromBlock: '0x0',
+              toBlock: 'latest',
+              contractAddresses: [lpTokenAddress],
+              category: ['erc20'],
+              withMetadata: false,
+              excludeZeroValue: true,
+              maxCount: '0x3e8', // 1000 transfers per page
+              pageKey
+            }],
+            id: 1
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error(`Alchemy API error: ${response.status}`);
-      }
-
-      const data: any = await response.json();
-      if (!data.result) {
-        throw new Error('Invalid Alchemy response');
-      }
-
-      // Process transfers to calculate balances
-      for (const transfer of data.result.transfers || []) {
-        const from = transfer.from?.toLowerCase();
-        const to = transfer.to?.toLowerCase();
-        const value = BigInt(transfer.rawContract?.value || 0);
-
-        if (from && from !== '0x0000000000000000000000000000000000000000') {
-          balances.set(from, (balances.get(from) || BigInt(0)) - value);
+        if (!response.ok) {
+          throw new Error(`Alchemy API error: ${response.status}`);
         }
-        if (to && to !== '0x0000000000000000000000000000000000000000') {
-          balances.set(to, (balances.get(to) || BigInt(0)) + value);
+
+        const data: any = await response.json();
+        if (!data.result) {
+          throw new Error('Invalid Alchemy response');
+        }
+
+        // Process transfers to calculate balances
+        for (const transfer of data.result.transfers || []) {
+          const from = transfer.from?.toLowerCase();
+          const to = transfer.to?.toLowerCase();
+          const value = BigInt(transfer.rawContract?.value || 0);
+
+          if (from && from !== '0x0000000000000000000000000000000000000000') {
+            balances.set(from, (balances.get(from) || BigInt(0)) - value);
+          }
+          if (to && to !== '0x0000000000000000000000000000000000000000') {
+            balances.set(to, (balances.get(to) || BigInt(0)) + value);
+          }
+        }
+
+        pageKey = data.result.pageKey;
+      } while (pageKey);
+
+      // Filter to only positive balances
+      const holders = new Map<string, bigint>();
+      for (const [address, balance] of balances.entries()) {
+        if (balance > BigInt(0)) {
+          holders.set(address, balance);
         }
       }
 
-      pageKey = data.result.pageKey;
-    } while (pageKey);
-
-    // Filter to only positive balances
-    const holders = new Map<string, bigint>();
-    for (const [address, balance] of balances.entries()) {
-      if (balance > BigInt(0)) {
-        holders.set(address, balance);
+      console.log(`  ✅ Found ${holders.size} LP token holders`);
+      return holders;
+    } catch (error) {
+      console.warn(`  ⚠️ LP holders fetch attempt ${attempt}/${retries} failed:`, error instanceof Error ? error.message : error);
+      
+      if (attempt === retries) {
+        console.error(`  ❌ All ${retries} attempts failed for LP holders`);
+        return new Map();
       }
+      
+      // Exponential backoff
+      const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+      console.log(`     Retrying in ${waitTime}ms...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
     }
-
-    console.log(`  ✅ Found ${holders.size} LP token holders`);
-    return holders;
-  } catch (error) {
-    console.warn(`  ⚠️ Failed to fetch LP holders:`, error instanceof Error ? error.message : error);
-    return new Map();
   }
+
+  return new Map();
 };
 
 // Detect if a smart contract is a UniswapV2-style LP pool containing BTC1
@@ -438,24 +472,25 @@ const detectAerodromePool = async (
   try {
     const pool = new ethers.Contract(poolAddress, AERODROME_POOL_ABI, provider);
     
-    const [tokenA, tokenB, reserves, totalSupply] = await Promise.all([
-      pool.tokenA(),
-      pool.tokenB(),
-      pool.getReserves(),
+    const [token0, token1, reserve0, reserve1, totalSupply] = await Promise.all([
+      pool.token0(),
+      pool.token1(),
+      pool.reserve0(),
+      pool.reserve1(),
       pool.totalSupply()
     ]);
 
     const isBTC1Pool = 
-      tokenA.toLowerCase() === btc1Address.toLowerCase() || 
-      tokenB.toLowerCase() === btc1Address.toLowerCase();
+      token0.toLowerCase() === btc1Address.toLowerCase() || 
+      token1.toLowerCase() === btc1Address.toLowerCase();
 
     if (!isBTC1Pool) {
       return null;
     }
 
-    const btc1Reserve = tokenA.toLowerCase() === btc1Address.toLowerCase() 
-      ? BigInt(reserves[0]) 
-      : BigInt(reserves[1]);
+    const btc1Reserve = token0.toLowerCase() === btc1Address.toLowerCase() 
+      ? BigInt(reserve0) 
+      : BigInt(reserve1);
 
     return {
       isBTC1Pool: true,

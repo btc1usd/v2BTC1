@@ -11,9 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import SafeTransactionModal from "@/components/safe-transaction-modal";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
+import { ethers } from 'ethers';
 import {
   Select,
   SelectContent,
@@ -35,10 +37,12 @@ import CollateralManagement from "@/components/collateral-management";
 
 import { useTheme } from "next-themes";
 import { useWeb3 } from "@/lib/web3-provider";
+import { hasUIAccess, getAuthStatus } from '@/lib/auth-config';
 import {
   useWriteContract,
   useWaitForTransactionReceipt,
   useReadContract,
+  useSignTypedData,
 } from "wagmi";
 import { parseUnits, formatUnits } from "viem";
 import {
@@ -84,6 +88,9 @@ import {
   formatTokens,
 } from "@/lib/protocol-math";
 import { CONTRACT_ADDRESSES, COLLATERAL_TOKENS } from "@/lib/contracts";
+import { getPermitDomain, PERMIT_TYPES, getPermitDeadline, createPermitMessage, splitSignature } from "@/lib/permit-utils";
+import { PERMIT2_ADDRESS, PERMIT2_ABI, PERMIT2_TYPES, getPermit2Domain, createPermit2Message, getPermit2Expiration, getPermit2SigDeadline, MAX_UINT160 } from "@/lib/permit2-utils";
+import { usePermitTransactions } from "@/hooks/use-permit-transactions";
 import { useRecentActivity } from "@/hooks/useRecentActivity";
 import {
   ArrowUpRight,
@@ -215,6 +222,18 @@ function Dashboard() {
   const [hasClaimableRewards, setHasClaimableRewards] = useState(false);
   const [claimableDistributionCount, setClaimableDistributionCount] = useState(0); // Count of actually claimable distributions
   const [userDistributions, setUserDistributions] = useState<any[]>([]);
+  const [usePermit, setUsePermit] = useState(false); // Toggle for gasless permit transactions
+
+  // Safe Transaction Modal State
+  const [safeModalOpen, setSafeModalOpen] = useState(false);
+  const [safeModalConfig, setSafeModalConfig] = useState<{
+    title: string;
+    description: string;
+    contractAddress: string;
+    functionSignature: string;
+    calldata: string;
+    category: 'security' | 'rewards' | 'governance';
+  } | null>(null);
 
   const handleExecuteDistribution = async () => {
     if (!isConnected || !address) {
@@ -223,53 +242,97 @@ function Dashboard() {
       return;
     }
 
-    console.log("=== DISTRIBUTION EXECUTION DEBUG ===");
-    console.log("Can execute distribution:", canExecuteDistribution);
-    console.log(
-      "Distribution contract:",
-      protocolState?.contractAddresses?.weeklyDistribution
-    );
-    console.log("Current collateral ratio:", collateralRatio);
-    console.log(
-      "Current reward per token:",
-      currentRewardPerToken ? formatUnits(currentRewardPerToken, 18) : "0"
-    );
-    console.log("=== END DEBUG ===");
+    // Open Safe Transaction Modal instead of executing directly
+    const iface = new ethers.Interface([
+      'function executeDistribution()'
+    ]);
+    const calldata = iface.encodeFunctionData('executeDistribution', []);
 
-    if (!canExecuteDistribution) {
-      setTransactionStatus(
-        "Distribution cannot be executed at this time. Check: ratio ≥ 112%, 7 days since last distribution"
-      );
-      setTimeout(() => setTransactionStatus(""), 8000);
+    setSafeModalConfig({
+      title: 'Execute Distribution',
+      description: 'Create new epoch and mint rewards to WeeklyDistribution contract',
+      contractAddress: protocolState?.contractAddresses?.weeklyDistribution || '',
+      functionSignature: 'executeDistribution()',
+      calldata,
+      category: 'rewards',
+    });
+    setSafeModalOpen(true);
+  };
+
+  // Helper function to open Safe modal for any admin action
+  const openSafeModal = (config: {
+    title: string;
+    description: string;
+    contractAddress: string;
+    functionSignature: string;
+    calldata: string;
+    category: 'security' | 'rewards' | 'governance';
+  }) => {
+    setSafeModalConfig(config);
+    setSafeModalOpen(true);
+  };
+
+  // Set Merkle Root Handler
+  const handleSetMerkleRoot = (distributionId: number, merkleRoot: string) => {
+    if (!isConnected || !address) {
+      setTransactionStatus("Please connect your wallet first");
+      setTimeout(() => setTransactionStatus(""), 3000);
       return;
     }
 
-    try {
-      setPendingTransactionType("mint");
-      setTransactionStatus("Executing distribution (7-hour interval)...");
+    // NOTE: This handler is deprecated - merkle-distribution-management.tsx handles this directly
+    // Keeping for backward compatibility but should not be called
+    console.warn('handleSetMerkleRoot in dashboard.tsx is deprecated - use merkle-distribution-management.tsx');
+  };
 
-      writeContract({
-        address: protocolState?.contractAddresses?.weeklyDistribution as any,
-        abi: [
-          {
-            inputs: [],
-            name: "executeDistribution",
-            outputs: [],
-            stateMutability: "nonpayable",
-            type: "function",
-          },
-        ],
-        functionName: "executeDistribution",
-        args: [],
-      });
+  // Pause/Unpause Handlers
+  const handlePauseContract = (contractName: string, contractAddress: string) => {
+    if (!isConnected || !address) return;
 
-      console.log("Distribution execution initiated");
-    } catch (error) {
-      console.error("Error executing distribution:", error);
-      setTransactionStatus("Failed to execute distribution");
-      setPendingTransactionType(null);
-      setTimeout(() => setTransactionStatus(""), 3000);
-    }
+    const iface = new ethers.Interface(['function pause()']);
+    const calldata = iface.encodeFunctionData('pause', []);
+
+    openSafeModal({
+      title: `Pause ${contractName}`,
+      description: `Emergency pause all operations on ${contractName} contract`,
+      contractAddress,
+      functionSignature: 'pause()',
+      calldata,
+      category: 'security',
+    });
+  };
+
+  const handleUnpauseContract = (contractName: string, contractAddress: string) => {
+    if (!isConnected || !address) return;
+
+    const iface = new ethers.Interface(['function unpause()']);
+    const calldata = iface.encodeFunctionData('unpause', []);
+
+    openSafeModal({
+      title: `Unpause ${contractName}`,
+      description: `Resume normal operations on ${contractName} contract`,
+      contractAddress,
+      functionSignature: 'unpause()',
+      calldata,
+      category: 'security',
+    });
+  };
+
+  // Lock Critical Parameters
+  const handleLockCriticalParams = () => {
+    if (!isConnected || !address) return;
+
+    const iface = new ethers.Interface(['function lockCriticalParams()']);
+    const calldata = iface.encodeFunctionData('lockCriticalParams', []);
+
+    openSafeModal({
+      title: 'Lock Critical Parameters',
+      description: '⚠️ IRREVERSIBLE: Permanently lock vault and distribution addresses on BTC1USD',
+      contractAddress: protocolState?.contractAddresses?.btc1usd || '',
+      functionSignature: 'lockCriticalParams()',
+      calldata,
+      category: 'security',
+    });
   };
 
   // Helper function to format distribution time
@@ -366,7 +429,7 @@ function Dashboard() {
         process.env.NEXT_PUBLIC_VAULT_CONTRACT ||
         CONTRACT_ADDRESSES.VAULT,
       priceOracle:
-        process.env.NEXT_PUBLIC_CHAINLINK_BTC_ORACLE_CONTRACT ||
+        process.env.NEXT_PUBLIC_PRICE_ORACLE_CONTRACT ||
         CONTRACT_ADDRESSES.CHAINLINK_BTC_ORACLE,
       weeklyDistribution:
         process.env.NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT ||
@@ -424,6 +487,95 @@ function Dashboard() {
       },
     });
 
+  // Read permit nonces for collateral tokens (for mintWithPermit)
+  const { data: wbtcNonce } = useReadContract({
+    address: protocolState?.contractAddresses?.wbtc as `0x${string}`,
+    abi: [{
+      inputs: [{ internalType: "address", name: "owner", type: "address" }],
+      name: "nonces",
+      outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+      stateMutability: "view",
+      type: "function",
+    }],
+    functionName: "nonces",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && !!protocolState?.contractAddresses?.wbtc },
+  });
+
+  const { data: cbbtcNonce } = useReadContract({
+    address: protocolState?.contractAddresses?.cbbtc as `0x${string}`,
+    abi: [{
+      inputs: [{ internalType: "address", name: "owner", type: "address" }],
+      name: "nonces",
+      outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+      stateMutability: "view",
+      type: "function",
+    }],
+    functionName: "nonces",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && !!protocolState?.contractAddresses?.cbbtc },
+  });
+
+  const { data: tbtcNonce } = useReadContract({
+    address: protocolState?.contractAddresses?.tbtc as `0x${string}`,
+    abi: [{
+      inputs: [{ internalType: "address", name: "owner", type: "address" }],
+      name: "nonces",
+      outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+      stateMutability: "view",
+      type: "function",
+    }],
+    functionName: "nonces",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && !!protocolState?.contractAddresses?.tbtc },
+  });
+
+  // Read permit nonce for BTC1USD (for redeemWithPermit)
+  const { data: btc1usdNonce } = useReadContract({
+    address: protocolState?.contractAddresses?.btc1usd as `0x${string}`,
+    abi: [{
+      inputs: [{ internalType: "address", name: "owner", type: "address" }],
+      name: "nonces",
+      outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+      stateMutability: "view",
+      type: "function",
+    }],
+    functionName: "nonces",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && !!protocolState?.contractAddresses?.btc1usd },
+  });
+
+  // Read Permit2 allowances (for tokens without native EIP-2612)
+  const { data: wbtcPermit2Allowance } = useReadContract({
+    address: PERMIT2_ADDRESS as `0x${string}`,
+    abi: PERMIT2_ABI,
+    functionName: "allowance",
+    args: address && protocolState?.contractAddresses?.wbtc && protocolState?.contractAddresses?.vault
+      ? [address, protocolState.contractAddresses.wbtc as `0x${string}`, protocolState.contractAddresses.vault as `0x${string}`]
+      : undefined,
+    query: { enabled: !!address && !!protocolState?.contractAddresses?.wbtc && !!protocolState?.contractAddresses?.vault },
+  });
+
+  const { data: cbbtcPermit2Allowance } = useReadContract({
+    address: PERMIT2_ADDRESS as `0x${string}`,
+    abi: PERMIT2_ABI,
+    functionName: "allowance",
+    args: address && protocolState?.contractAddresses?.cbbtc && protocolState?.contractAddresses?.vault
+      ? [address, protocolState.contractAddresses.cbbtc as `0x${string}`, protocolState.contractAddresses.vault as `0x${string}`]
+      : undefined,
+    query: { enabled: !!address && !!protocolState?.contractAddresses?.cbbtc && !!protocolState?.contractAddresses?.vault },
+  });
+
+  const { data: tbtcPermit2Allowance } = useReadContract({
+    address: PERMIT2_ADDRESS as `0x${string}`,
+    abi: PERMIT2_ABI,
+    functionName: "allowance",
+    args: address && protocolState?.contractAddresses?.tbtc && protocolState?.contractAddresses?.vault
+      ? [address, protocolState.contractAddresses.tbtc as `0x${string}`, protocolState.contractAddresses.vault as `0x${string}`]
+      : undefined,
+    query: { enabled: !!address && !!protocolState?.contractAddresses?.tbtc && !!protocolState?.contractAddresses?.vault },
+  });
+
   // BTC1USD total supply reading
   const { data: btc1usdTotalSupply, refetch: refetchTotalSupply } =
     useReadContract({
@@ -455,7 +607,7 @@ function Dashboard() {
     abi: [
       {
         inputs: [],
-        name: "getCurrentPrice",
+        name: "getBTCPrice",
         outputs: [
           {
             internalType: "uint256",
@@ -465,9 +617,9 @@ function Dashboard() {
         ],
         stateMutability: "view",
         type: "function",
-      },
+      }
     ],
-    functionName: "getCurrentPrice",
+    functionName: "getBTCPrice",
     query: {
       enabled: !!protocolState?.contractAddresses?.priceOracle,
     },
@@ -533,7 +685,7 @@ function Dashboard() {
           type: "address",
         },
       ],
-      name: "getCollateralBalance",
+      name: "collateralBalances",
       outputs: [
         {
           internalType: "uint256",
@@ -551,7 +703,7 @@ function Dashboard() {
     useReadContract({
       address: protocolState?.contractAddresses?.vault as any,
       abi: VAULT_COLLATERAL_BALANCE_ABI,
-      functionName: "getCollateralBalance",
+      functionName: "collateralBalances",
       args: protocolState?.contractAddresses?.wbtc
         ? [protocolState.contractAddresses.wbtc as any]
         : undefined,
@@ -567,7 +719,7 @@ function Dashboard() {
     useReadContract({
       address: protocolState?.contractAddresses?.vault as any,
       abi: VAULT_COLLATERAL_BALANCE_ABI,
-      functionName: "getCollateralBalance",
+      functionName: "collateralBalances",
       args: protocolState?.contractAddresses?.cbbtc
         ? [protocolState.contractAddresses.cbbtc as any]
         : undefined,
@@ -583,7 +735,7 @@ function Dashboard() {
     useReadContract({
       address: protocolState?.contractAddresses?.vault as any,
       abi: VAULT_COLLATERAL_BALANCE_ABI,
-      functionName: "getCollateralBalance",
+      functionName: "collateralBalances",
       args: protocolState?.contractAddresses?.tbtc
         ? [protocolState.contractAddresses.tbtc as any]
         : undefined,
@@ -593,6 +745,20 @@ function Dashboard() {
           !!protocolState?.contractAddresses?.tbtc,
       },
     });
+  
+  // ============ COMPREHENSIVE VAULT DEBUG ============
+  console.log("\n============ VAULT COLLATERAL DEBUG ============");
+  console.log("🔍 Contract Addresses:");
+  console.log("  Vault:", protocolState?.contractAddresses?.vault);
+  console.log("  WBTC:", protocolState?.contractAddresses?.wbtc);
+  console.log("  cbBTC:", protocolState?.contractAddresses?.cbbtc);
+  console.log("  tBTC:", protocolState?.contractAddresses?.tbtc);
+  console.log("\n🔍 Vault Collateral Balances:");
+  console.log("  WBTC:", vaultWbtcBalance?.toString(), "(", vaultWbtcBalance ? formatUnits(vaultWbtcBalance as unknown as bigint, 8) : "0", "BTC)");
+  console.log("  cbBTC:", vaultCbbtcBalance?.toString(), "(", vaultCbbtcBalance ? formatUnits(vaultCbbtcBalance as unknown as bigint, 8) : "0", "BTC)");
+  console.log("  tBTC:", vaultTbtcBalance?.toString(), "(", vaultTbtcBalance ? formatUnits(vaultTbtcBalance as unknown as bigint, 8) : "0", "BTC)");
+  console.log("\n🔍 Your BTC1 Balance:", btc1usdBalance?.toString(), "(", btc1usdBalance ? formatUnits(btc1usdBalance as unknown as bigint, 8) : "0", "BTC1)");
+  console.log("============================================\n");
 
   // Dev Wallet BTC1USD Balance - Updated from deployment config
   const { data: devWalletBalance, refetch: refetchDevWalletBalance } =
@@ -1035,7 +1201,7 @@ function Dashboard() {
   }, [btc1usdTotalSupply]);
 
   useEffect(() => {
-    if (btcPrice !== undefined) {
+    if (btcPrice !== undefined && btcPrice !== null) {
       const btcPriceFormatted = parseFloat(formatUnits(btcPrice, 8));
       console.log("BTC price updated:", btcPriceFormatted);
       setProtocolState((prev) => ({
@@ -1229,6 +1395,20 @@ function Dashboard() {
     tbtc: vaultTbtcBalance ? parseFloat(formatUnits(vaultTbtcBalance as unknown as bigint, 8)) : 0,
   };
   
+  // Debug logging for vault balances
+  console.log("🔍 Vault Balances:", {
+    wbtc: realVaultBalances.wbtc,
+    cbbtc: realVaultBalances.cbbtc,
+    tbtc: realVaultBalances.tbtc,
+    totalCollateralUSD,
+    collateralRatio,
+  });
+  
+  // Debug total collateral value from contract
+  console.log("🔍 Total Collateral Value from Contract:", totalCollateralValue?.toString());
+  console.log("🔍 Formatted USD:", totalCollateralUSD);
+  console.log("🔍 Vault Address:", protocolState?.contractAddresses?.vault);
+  
   // Use real collateral value from contract for consistency with contract calculations
   const realCollateralValue = totalCollateralValue
     ? parseFloat(formatUnits(totalCollateralValue, 8))
@@ -1309,6 +1489,10 @@ function Dashboard() {
     error: writeError,
     reset: resetWriteContract,
   } = useWriteContract();
+  
+  // EIP-2612 Permit signature hook
+  const { signTypedDataAsync } = useSignTypedData();
+  
   const {
     isLoading: isConfirming,
     isSuccess: isConfirmed,
@@ -1451,92 +1635,179 @@ function Dashboard() {
         pendingTransactionType === "approve" &&
         (pendingMintAmount || pendingDepositAmount)
       ) {
-        // Approval confirmed, now proceed with minting
-        setMintingStep("minting");
-        setPendingTransactionType("mint");
-        setTransactionStatus("Approval confirmed. Minting BTC1 tokens...");
-
-        // Determine the amount and contract address based on which action we're doing
-        const amount = pendingMintAmount
-          ? parseUnits(pendingMintAmount, 8)
-          : parseUnits(pendingDepositAmount, 8);
-
-        // Get the collateral contract address based on pending collateral type
-        const collateralContractAddress =
-          pendingCollateralType === "WBTC"
-            ? protocolState?.contractAddresses?.wbtc
-            : pendingCollateralType === "cbBTC"
-            ? protocolState?.contractAddresses?.cbbtc
-            : pendingCollateralType === "tBTC"
-            ? protocolState?.contractAddresses?.tbtc
-            : protocolState?.contractAddresses?.wbtc; // fallback to WBTC
-
-        const vaultAddress = protocolState?.contractAddresses?.vault;
-
-        console.log("Proceeding to mint with:", {
-          amount: amount.toString(),
-          collateralType: pendingCollateralType,
-          collateralContractAddress,
-          vaultAddress,
-          vaultLength: vaultAddress?.length,
-          collateralLength: collateralContractAddress?.length,
-          amountFormatted: pendingMintAmount || pendingDepositAmount,
-        });
-
-        if (!collateralContractAddress || !vaultAddress) {
-          console.error("Missing contract addresses for minting");
-          setTransactionStatus("Error: Missing contract addresses");
-          setMintingStep("idle");
-          setPendingTransactionType(null);
-          return;
-        }
-
-        // Validate address lengths (Ethereum addresses should be 42 characters)
-        if (
-          collateralContractAddress.length !== 42 ||
-          vaultAddress.length !== 42
-        ) {
-          console.error("Invalid contract address lengths for minting:", {
-            collateral: {
-              address: collateralContractAddress,
-              length: collateralContractAddress.length,
-            },
-            vault: { address: vaultAddress, length: vaultAddress.length },
+        // Approval confirmed, now proceed with minting or redeeming
+        // Check if this was for redeeming (sell tab) or minting (buy tab)
+        const isRedeemTab = mintSubTab === 'sell';
+        
+        if (isRedeemTab && pendingMintAmount) {
+          // This was an approval for redeeming tokens
+          setMintingStep("minting"); // Reuse minting step for redeeming
+          setPendingTransactionType("redeem");
+          setTransactionStatus("Approval confirmed. Redeeming BTC1 tokens...");
+          
+          // Determine the amount and contract address
+          const amount = parseUnits(pendingMintAmount, 8);
+          
+          // Get the collateral contract address based on pending collateral type
+          const collateralContractAddress =
+            pendingCollateralType === "WBTC"
+              ? protocolState?.contractAddresses?.wbtc
+              : pendingCollateralType === "cbBTC"
+              ? protocolState?.contractAddresses?.cbbtc
+              : pendingCollateralType === "tBTC"
+              ? protocolState?.contractAddresses?.tbtc
+              : protocolState?.contractAddresses?.wbtc; // fallback to WBTC
+          
+          const vaultAddress = protocolState?.contractAddresses?.vault;
+          
+          console.log("Proceeding to redeem with:", {
+            amount: amount.toString(),
+            collateralType: pendingCollateralType,
+            collateralContractAddress,
+            vaultAddress,
+            vaultLength: vaultAddress?.length,
+            collateralLength: collateralContractAddress?.length,
+            amountFormatted: pendingMintAmount,
           });
-          setTransactionStatus(
-            "Error: Invalid contract addresses detected during minting."
-          );
-          setMintingStep("idle");
-          setPendingTransactionType(null);
-          return;
-        }
+          
+          if (!collateralContractAddress || !vaultAddress) {
+            console.error("Missing contract addresses for redeeming");
+            setTransactionStatus("Error: Missing contract addresses");
+            setMintingStep("idle");
+            setPendingTransactionType(null);
+            return;
+          }
+          
+          // Validate address lengths (Ethereum addresses should be 42 characters)
+          if (
+            collateralContractAddress.length !== 42 ||
+            vaultAddress.length !== 42
+          ) {
+            console.error("Invalid contract address lengths for redeeming:", {
+              collateral: {
+                address: collateralContractAddress,
+                length: collateralContractAddress.length,
+              },
+              vault: { address: vaultAddress, length: vaultAddress.length },
+            });
+            setTransactionStatus(
+              "Error: Invalid contract addresses detected during redeeming."
+            );
+            setMintingStep("idle");
+            setPendingTransactionType(null);
+            return;
+          }
+          
+          // Call the redeem function on the vault
+          writeContract({
+            address: vaultAddress as any,
+            abi: [
+              {
+                inputs: [
+                  { internalType: "uint256", name: "tokenAmount", type: "uint256" },
+                  {
+                    internalType: "address",
+                    name: "collateralToken",
+                    type: "address",
+                  },
+                ],
+                name: "redeem",
+                outputs: [],
+                stateMutability: "nonpayable",
+                type: "function",
+              },
+            ],
+            functionName: "redeem",
+            args: [amount, collateralContractAddress as any],
+          });
+        } else {
+          // Approval confirmed, now proceed with minting
+          setMintingStep("minting");
+          setPendingTransactionType("mint");
+          setTransactionStatus("Approval confirmed. Minting BTC1 tokens...");
 
-        writeContract({
-          address: vaultAddress as any,
-          abi: [
-            {
-              inputs: [
-                {
-                  internalType: "address",
-                  name: "collateralToken",
-                  type: "address",
-                },
-                { internalType: "uint256", name: "btcAmount", type: "uint256" },
-              ],
-              name: "mint",
-              outputs: [],
-              stateMutability: "nonpayable",
-              type: "function",
-            },
-          ],
-          functionName: "mint",
-          args: [collateralContractAddress as any, amount],
-        });
+          // Determine the amount and contract address based on which action we're doing
+          const amount = pendingMintAmount
+            ? parseUnits(pendingMintAmount, 8)
+            : parseUnits(pendingDepositAmount, 8);
+
+          // Get the collateral contract address based on pending collateral type
+          const collateralContractAddress =
+            pendingCollateralType === "WBTC"
+              ? protocolState?.contractAddresses?.wbtc
+              : pendingCollateralType === "cbBTC"
+              ? protocolState?.contractAddresses?.cbbtc
+              : pendingCollateralType === "tBTC"
+              ? protocolState?.contractAddresses?.tbtc
+              : protocolState?.contractAddresses?.wbtc; // fallback to WBTC
+
+          const vaultAddress = protocolState?.contractAddresses?.vault;
+
+          console.log("Proceeding to mint with:", {
+            amount: amount.toString(),
+            collateralType: pendingCollateralType,
+            collateralContractAddress,
+            vaultAddress,
+            vaultLength: vaultAddress?.length,
+            collateralLength: collateralContractAddress?.length,
+            amountFormatted: pendingMintAmount || pendingDepositAmount,
+          });
+
+          if (!collateralContractAddress || !vaultAddress) {
+            console.error("Missing contract addresses for minting");
+            setTransactionStatus("Error: Missing contract addresses");
+            setMintingStep("idle");
+            setPendingTransactionType(null);
+            return;
+          }
+
+          // Validate address lengths (Ethereum addresses should be 42 characters)
+          if (
+            collateralContractAddress.length !== 42 ||
+            vaultAddress.length !== 42
+          ) {
+            console.error("Invalid contract address lengths for minting:", {
+              collateral: {
+                address: collateralContractAddress,
+                length: collateralContractAddress.length,
+              },
+              vault: { address: vaultAddress, length: vaultAddress.length },
+            });
+            setTransactionStatus(
+              "Error: Invalid contract addresses detected during minting."
+            );
+            setMintingStep("idle");
+            setPendingTransactionType(null);
+            return;
+          }
+
+          writeContract({
+            address: vaultAddress as any,
+            abi: [
+              {
+                inputs: [
+                  {
+                    internalType: "address",
+                    name: "collateralToken",
+                    type: "address",
+                  },
+                  { internalType: "uint256", name: "btcAmount", type: "uint256" },
+                ],
+                name: "mint",
+                outputs: [],
+                stateMutability: "nonpayable",
+                type: "function",
+              },
+            ],
+            functionName: "mint",
+            args: [collateralContractAddress as any, amount],
+          });
+        }
       } else if (pendingTransactionType === "mint") {
         // Minting completed (BTC1USD mint or WBTC mint)
         console.log("=== MINTING COMPLETED ===");
         console.log("Refreshing balances...");
-        setTransactionStatus("Transaction successful! Refreshing balances...");
+        setTransactionStatus("✅ Transaction successful! Refreshing balances...");
         setMintingStep("idle");
         setPendingTransactionType(null);
         setPendingMintAmount("");
@@ -1583,22 +1854,24 @@ function Dashboard() {
             refetchCurrentRewardPerToken(),
           ]).then(() => {
             console.log("✅ All data refreshed successfully!");
+            // Update status to show completion
+            setTransactionStatus("✅ Complete! Redirecting to overview...");
           }).catch(err => {
             console.error("❌ Error refreshing data:", err);
           });
         }, 2000); // Increased delay to ensure blockchain state is updated
 
-        // Clear status after 5 seconds
-        const timer = setTimeout(() => {
+        // Clear status after 3 seconds and redirect to overview
+        setTimeout(() => {
           setTransactionStatus("");
-          console.log("=== MINTING PROCESS COMPLETE ===");
-        }, 5000);
-        return () => clearTimeout(timer);
+          setActiveTab("overview"); // Redirect to overview tab
+          console.log("=== MINTING PROCESS COMPLETE - Redirected to Overview ===")
+        }, 3000);
       } else if (pendingTransactionType === "redeem") {
         // Redeem completed
         console.log("=== REDEEM COMPLETED ===");
         console.log("Refreshing balances...");
-        setTransactionStatus("Transaction successful! Refreshing balances...");
+        setTransactionStatus("✅ Transaction successful! Refreshing balances...");
         setPendingTransactionType(null);
 
         // Clear form fields
@@ -1641,17 +1914,19 @@ function Dashboard() {
             refetchCurrentRewardPerToken(),
           ]).then(() => {
             console.log("✅ All data refreshed successfully!");
+            // Update status to show completion
+            setTransactionStatus("✅ Complete! Redirecting to overview...");
           }).catch(err => {
             console.error("❌ Error refreshing data:", err);
           });
         }, 2000); // Increased delay to ensure blockchain state is updated
 
-        // Clear status after 5 seconds
-        const timer = setTimeout(() => {
+        // Clear status after 3 seconds and redirect to overview
+        setTimeout(() => {
           setTransactionStatus("");
-          console.log("=== REDEEM PROCESS COMPLETE ===");
-        }, 5000);
-        return () => clearTimeout(timer);
+          setActiveTab("overview"); // Redirect to overview tab
+          console.log("=== REDEEM PROCESS COMPLETE - Redirected to Overview ===")
+        }, 3000);
       }
     }
   }, [
@@ -1675,10 +1950,20 @@ function Dashboard() {
     refetchCollateralValue,
     hash,
     resetWriteContract,
+    setActiveTab,
   ]);
 
+  const {
+    mintWithPermit2,
+    redeemWithPermit,
+    checkPermit2Approval,
+    approvePermit2,
+    status: permitStatus,
+    isProcessing: permitProcessing,
+  } = usePermitTransactions();
+
   const handleMint = async () => {
-    console.log("=== BTC1USD MINT DEBUG START ===");
+    console.log("=== BTC1USD MINT WITH PERMIT2 START ===");
 
     if (!mintAmount || !address) {
       console.log("Missing mintAmount or address:", { mintAmount, address });
@@ -1695,7 +1980,7 @@ function Dashboard() {
       return;
     }
 
-    // Protocol Rule 1: Check if user has sufficient collateral balance
+    // Check user collateral balance
     const userCollateralBalance = parseFloat(
       selectedCollateral === "WBTC"
         ? userWbtcBalance
@@ -1703,11 +1988,6 @@ function Dashboard() {
         ? userCbbtcBalance
         : userTbtcBalance
     );
-    console.log(`${selectedCollateral} Balance Check:`, {
-      balance: userCollateralBalance,
-      btcAmount,
-      hasEnough: btcAmount <= userCollateralBalance,
-    });
 
     if (btcAmount > userCollateralBalance) {
       setTransactionStatus(
@@ -1719,78 +1999,7 @@ function Dashboard() {
       return;
     }
 
-    // Debug protocol state
-    console.log("Protocol State:", {
-      btcPrice: protocolState.btcPrice,
-      totalSupply: protocolState.totalSupply,
-      collateralRatio: collateralRatio,
-      contractAddresses: protocolState.contractAddresses,
-    });
-
-    // Protocol Rule 2: Validate that mint won't break protocol health
-    const currentRatio = collateralRatio;
-    
-    // Use real vault balances for mint calculation
-    const realVaultBalances = {
-      wbtc: vaultWbtcBalance ? parseFloat(formatUnits(vaultWbtcBalance as unknown as bigint, 8)) : 0,
-      cbbtc: vaultCbbtcBalance ? parseFloat(formatUnits(vaultCbbtcBalance as unknown as bigint, 8)) : 0,
-      tbtc: vaultTbtcBalance ? parseFloat(formatUnits(vaultTbtcBalance as unknown as bigint, 8)) : 0,
-    };
-    
-    // Use real collateral value from contract for consistency with contract calculations
-    const realCollateralValue = totalCollateralValue
-      ? parseFloat(formatUnits(totalCollateralValue, 8))
-      : 0;
-      
-    const mintResult = ProtocolMath.calculateMint(
-      {
-        ...protocolState,
-        collateralBalances: realVaultBalances
-      },
-      btcAmount * protocolState.btcPrice,
-      undefined, // params
-      realCollateralValue
-    );
-
-    console.log("Mint Calculation:", {
-      btcAmount,
-      usdValue: btcAmount * protocolState.btcPrice,
-      mintResult,
-      currentRatio,
-    });
-
-    // Simulate the new state after minting
-    const totalToMint =
-      mintResult.tokensToMint + mintResult.devFee + mintResult.endowmentFee;
-    const newTotalSupply = protocolState.totalSupply + totalToMint;
-    const newCollateralValue =
-      (totalCollateralUSD ||
-        (vaultWbtcBalance ? parseFloat(formatUnits(vaultWbtcBalance as unknown as bigint, 8)) : 0) * protocolState.btcPrice) +
-      btcAmount * protocolState.btcPrice;
-    const newRatio = newCollateralValue / newTotalSupply;
-
-    console.log("State Simulation:", {
-      totalToMint,
-      newTotalSupply,
-      newCollateralValue,
-      newRatio,
-    });
-
-    // Removed collateral ratio restriction checks
-
-    // Protocol Rule 3: Ensure protocol is not paused
-    // This would be checked by the smart contract, but we can add frontend warning
-    if (currentRatio > 0 && currentRatio < 1.05) {
-      const proceed = confirm(
-        `Warning: Protocol is in critical state with ${formatPercentage(
-          currentRatio,
-          1
-        )} collateral ratio. Minting may be risky. Do you want to proceed?`
-      );
-      if (!proceed) return;
-    }
-
-    // Get the collateral contract address based on selection
+    // Get contract addresses
     const collateralContractAddress =
       selectedCollateral === "WBTC"
         ? protocolState?.contractAddresses?.wbtc
@@ -1799,95 +2008,129 @@ function Dashboard() {
         : protocolState?.contractAddresses?.tbtc;
     const vaultAddress = protocolState?.contractAddresses?.vault;
 
-    console.log("Contract Addresses:", {
-      selectedCollateral,
-      collateral: collateralContractAddress,
-      vault: vaultAddress,
-      vaultLength: vaultAddress?.length,
-      collateralLength: collateralContractAddress?.length,
-    });
-
-    if (!collateralContractAddress || !vaultAddress) {
-      console.error("Missing contract addresses:", {
-        collateral: collateralContractAddress,
-        vault: vaultAddress,
-      });
-      setTransactionStatus(
-        "Error: Contract addresses not found. Please check deployment."
-      );
-      setTimeout(() => setTransactionStatus(""), 5000);
-      return;
-    }
-
-    // Validate address lengths (Ethereum addresses should be 42 characters)
-    if (collateralContractAddress.length !== 42 || vaultAddress.length !== 42) {
-      console.error("Invalid contract address lengths:", {
-        collateral: {
-          address: collateralContractAddress,
-          length: collateralContractAddress.length,
-        },
-        vault: { address: vaultAddress, length: vaultAddress.length },
-      });
-      setTransactionStatus("Error: Invalid contract addresses detected.");
+    if (!collateralContractAddress || !vaultAddress || !chainId) {
+      setTransactionStatus("Error: Contract addresses not found. Please check deployment.");
       setTimeout(() => setTransactionStatus(""), 5000);
       return;
     }
 
     try {
-      // First, approve the vault to spend the selected collateral
       const amount = parseUnits(mintAmount, 8); // All BTC tokens have 8 decimals
 
-      console.log(
-        `Approving vault ${vaultAddress} to spend ${mintAmount} ${selectedCollateral} (${amount.toString()} wei)`
+      // STEP 1: Check if user has approved Permit2 to spend their collateral
+      setTransactionStatus("Checking Permit2 approval...");
+      const allowance = await checkPermit2Approval(
+        collateralContractAddress as `0x${string}`,
+        address as `0x${string}`
       );
 
-      // Set pending state
-      setMintingStep("approving");
-      setPendingTransactionType("approve");
-      setPendingMintAmount(mintAmount);
-      setPendingCollateralType(selectedCollateral);
-      console.log("========================");
+      console.log(`${selectedCollateral} -> Permit2 allowance:`, allowance.toString());
 
-      writeContract({
-        address: collateralContractAddress as any,
-        abi: [
-          {
-            inputs: [
-              { internalType: "address", name: "spender", type: "address" },
-              { internalType: "uint256", name: "amount", type: "uint256" },
-            ],
-            name: "approve",
-            outputs: [{ internalType: "bool", name: "", type: "bool" }],
-            stateMutability: "nonpayable",
-            type: "function",
+      // If not approved (allowance is 0), approve first with unlimited amount
+      // Once approved with max uint256, this will never trigger again
+      if (allowance === 0n) {
+        console.log("⚠️  Permit2 not approved. Requesting one-time unlimited approval...");
+        setMintingStep("approving");
+        setPendingTransactionType("approve");
+        setTransactionStatus(`Step 1/2: Approve ${selectedCollateral} to Permit2 (one-time setup)...`);
+
+        await approvePermit2(
+          collateralContractAddress as `0x${string}`,
+          (hash) => {
+            console.log("✅ Permit2 approved:", hash);
+            setTransactionStatus("Approval successful! Now proceeding with mint...");
+            
+            // Continue to mint after approval
+            setTimeout(() => {
+              executeMintWithPermit2(
+                vaultAddress,
+                collateralContractAddress,
+                amount
+              );
+            }, 1000);
           },
-        ],
-        functionName: "approve",
-        args: [vaultAddress as any, amount],
-      });
-
-      setTransactionStatus(
-        "Please confirm the approval transaction in your wallet..."
-      );
-      console.log("=== BTC1USD MINT DEBUG END ===");
+          (error) => {
+            console.error("❌ Permit2 approval failed:", error);
+            setTransactionStatus(`Approval failed: ${error.message}`);
+            setMintingStep("idle");
+            setPendingTransactionType(null);
+            setTimeout(() => setTransactionStatus(""), 5000);
+          }
+        );
+      } else {
+        // Already approved, proceed directly to mint
+        console.log("✅ Permit2 already approved. Proceeding to mint...");
+        await executeMintWithPermit2(
+          vaultAddress,
+          collateralContractAddress,
+          amount
+        );
+      }
     } catch (error: any) {
-      console.error("=== ERROR IN HANDLE_MINT ===");
-      console.error("Error approving vault:", error);
-      console.error("Error message:", error.message);
-      console.error("Error stack:", error.stack);
-      console.error("=== END ERROR ===");
-
-      // Handle specific error cases
-      const decodedError = decodeContractError(error);
-
-      setTransactionStatus("Error approving vault: " + decodedError);
+      console.error("=== ERROR IN HANDLE_MINT ===", error);
+      setTransactionStatus("Error: " + (error.message || "Unknown error"));
       setMintingStep("idle");
       setPendingTransactionType(null);
       setPendingMintAmount("");
-
-      // Clear status after 5 seconds
       setTimeout(() => setTransactionStatus(""), 5000);
     }
+  };
+
+  // Helper function to execute the actual mint with Permit2
+  const executeMintWithPermit2 = async (
+    vaultAddress: string,
+    collateralContractAddress: string,
+    amount: bigint
+  ) => {
+    setMintingStep("minting");
+    setPendingTransactionType("mint");
+    setPendingMintAmount(mintAmount);
+    setPendingCollateralType(selectedCollateral);
+    setTransactionStatus("Step 2/2: Processing gasless mint with Permit2...");
+
+    console.log("🔐 Using Permit2 for gasless mint");
+    console.log("Amount:", mintAmount, selectedCollateral);
+    console.log("Vault:", vaultAddress);
+    console.log("Collateral:", collateralContractAddress);
+
+    await mintWithPermit2(
+      vaultAddress as `0x${string}`,
+      collateralContractAddress as `0x${string}`,
+      amount,
+      chainId!,
+      (hash) => {
+        console.log("✅ Mint transaction successful:", hash);
+        setTransactionStatus(`Mint successful! Hash: ${hash}`);
+        setMintAmount("");
+        setMintingStep("idle");
+        setPendingTransactionType(null);
+        setPendingMintAmount("");
+        
+        // Refresh balances after successful mint
+        setTimeout(() => {
+          refetchBtc1usdBalance();
+          refetchWbtcBalance();
+          refetchCbbtcBalance();
+          refetchTbtcBalance();
+          refetchTotalSupply();
+          refetchCollateralRatio();
+          refetchCollateralValue();
+          refetchVaultWbtcBalance();
+          refetchVaultCbbtcBalance();
+          refetchVaultTbtcBalance();
+          setTransactionStatus("");
+        }, 3000);
+      },
+      (error) => {
+        console.error("❌ Mint failed:", error);
+        setTransactionStatus(`Mint failed: ${error.message}`);
+        setMintingStep("idle");
+        setPendingTransactionType(null);
+        setPendingMintAmount("");
+        
+        setTimeout(() => setTransactionStatus(""), 5000);
+      }
+    );
   };
 
   const handleVaultDeposit = async () => {
@@ -1951,8 +2194,78 @@ function Dashboard() {
     }
   };
 
+  // Helper function to generate EIP-2612 permit signature
+  // @ts-ignore - Legacy unused function, will be removed
+  const generatePermitSignature = async (
+    tokenAddress: string,
+    ownerAddress: string,
+    spenderAddress: string,
+    value: bigint,
+    deadline: number
+  ) => {
+    try {
+      // Get the current nonce for the user
+      const nonce = 0n; // Stub
+
+      // Get domain separator
+      const domainSeparator = '0x0'; // Stub
+
+      // EIP-712 domain
+      const domain = {
+        name: "BTC1USD",
+        version: "1",
+        chainId: chainId || 84532,
+        verifyingContract: tokenAddress as `0x${string}`,
+      };
+
+      // EIP-712 types
+      const types = {
+        Permit: [
+          { name: "owner", type: "address" },
+          { name: "spender", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+      };
+
+      // Message to sign
+      const message = {
+        owner: ownerAddress,
+        spender: spenderAddress,
+        value: value.toString(),
+        nonce: (nonce as bigint).toString(),
+        deadline,
+      };
+
+      console.log("\ud83d\udd10 Generating permit signature:", { domain, types, message });
+
+      // Request signature from wallet using eth_signTypedData_v4
+      const signature = await window.ethereum?.request({
+        method: "eth_signTypedData_v4",
+        params: [ownerAddress, JSON.stringify({ domain, types, primaryType: "Permit", message })],
+      });
+
+      if (!signature) {
+        throw new Error("Signature generation failed");
+      }
+
+      // Split signature into r, s, v components
+      const r = signature.slice(0, 66);
+      const s = "0x" + signature.slice(66, 130);
+      const v = parseInt(signature.slice(130, 132), 16);
+
+      console.log("✅ Permit signature generated:", { r, s, v });
+
+      return { v, r, s, deadline, nonce: nonce as bigint };
+    } catch (error) {
+      console.error("❌ Permit signature generation failed:", error);
+      throw error;
+    }
+  };
+
   const handleRedeem = async () => {
-    console.log("=== REDEEM FUNCTION START ===");
+    console.log("=== REDEEM WITH PERMIT START ===");
 
     if (!isConnected || !address) {
       setTransactionStatus("Please connect your wallet first");
@@ -1973,7 +2286,7 @@ function Dashboard() {
       return;
     }
 
-    // Protocol Rule 1: Check user balance
+    // Check user balance
     const userBalance = btc1usdBalance
       ? parseFloat(formatUnits(btc1usdBalance, 8))
       : 0;
@@ -1995,62 +2308,7 @@ function Dashboard() {
       await refetchVaultTbtcBalance();
     }
 
-    // Debug contract addresses being used
-    console.log("=== REDEEM DEBUG START ===");
-    console.log("Contract addresses being used:");
-    console.log("Vault:", protocolState?.contractAddresses?.vault);
-    console.log("WBTC:", protocolState?.contractAddresses?.wbtc);
-    console.log("BTC1USD:", protocolState?.contractAddresses?.btc1usd);
-    console.log("User address:", address);
-    console.log("Redeem amount:", tokenAmount);
-    console.log("User BTC1USD balance:", userBalance);
-    console.log("Current collateral ratio:", collateralRatio);
-    console.log("Total collateral USD:", totalCollateralUSD);
-    console.log("Vault WBTC balance (BigInt):", vaultWbtcBalance?.toString());
-    console.log(
-      "Vault WBTC balance (formatted):",
-      vaultWbtcBalance ? formatUnits(vaultWbtcBalance as bigint, 8) : "0"
-    );
-    console.log("=== REDEEM DEBUG END ===");
-
-    // Protocol Rule 2: Check protocol health and determine redemption mode
-    const currentRatio = collateralRatio;
-    let effectivePrice: number;
-    let redemptionMode: string;
-
-    if (currentRatio >= 1.1) {
-      // Healthy mode: 1 BTC1USD → $1 of BTC (minus 0.1% dev fee)
-      effectivePrice = 1.0;
-      redemptionMode = "Healthy";
-    } else {
-      // Stress mode: 1 BTC1USD → 0.90 × R USD of BTC (minus 0.1% fee)
-      // FIXED: Properly calculate stress value as 0.90 × current_ratio
-      effectivePrice = 0.9 * currentRatio;
-      redemptionMode = "Stress";
-
-      // Show stress mode warning via transaction status
-      setTransactionStatus(
-        `⚠️ Stress Mode: You will receive ${(effectivePrice * 100).toFixed(
-          1
-        )}% of face value (${formatPercentage(currentRatio, 1)} ratio)`
-      );
-      // Note: User can still proceed with the transaction
-    }
-
-    // Protocol Rule 3: Calculate and validate redemption amounts
-    const grossBtcValue =
-      (tokenAmount * effectivePrice) / protocolState.btcPrice;
-    const devFee = grossBtcValue * 0.001; // 0.1% dev fee
-    const btcToReceive = grossBtcValue - devFee;
-
-    // Protocol Rule 4: Validate redemption won't break minimum collateral ratio
-    const newTotalSupply = protocolState.totalSupply - tokenAmount;
-    const usdValueRedeemed = grossBtcValue * protocolState.btcPrice;
-    const newCollateralValue = totalCollateralUSD - usdValueRedeemed;
-
-    // Protocol Rule 5: Ensure sufficient collateral exists in vault
-    const requiredCollateral = grossBtcValue; // Total BTC needed (including fees)
-    // Use fresh vault balance from contract for selected collateral
+    // Validate sufficient collateral exists
     const vaultBalance =
       selectedRedeemCollateral === "WBTC"
         ? vaultWbtcBalance
@@ -2061,30 +2319,12 @@ function Dashboard() {
       ? parseFloat(formatUnits(vaultBalance as bigint, 8))
       : 0;
 
-    console.log("=== REDEEM CALCULATION DEBUG ===");
-    console.log("Selected collateral:", selectedRedeemCollateral);
-    console.log("Effective price:", effectivePrice);
-    console.log("Gross BTC value:", grossBtcValue.toFixed(8), "BTC");
-    console.log("Dev fee:", devFee.toFixed(8), "BTC");
-    console.log("BTC to receive:", btcToReceive.toFixed(8), "BTC");
-    console.log(
-      "Required collateral:",
-      requiredCollateral.toFixed(8),
-      selectedRedeemCollateral
-    );
-    console.log(
-      "Available collateral (from contract):",
-      availableCollateral.toFixed(8),
-      selectedRedeemCollateral
-    );
-    console.log(
-      "Vault has sufficient collateral:",
-      availableCollateral >= requiredCollateral
-    );
-    console.log("=== END CALCULATION DEBUG ===");
+    const currentRatio = collateralRatio;
+    const effectivePrice = currentRatio >= 1.1 ? 1.0 : 0.9 * currentRatio;
+    const grossBtcValue = (tokenAmount * effectivePrice) / protocolState.btcPrice;
+    const requiredCollateral = grossBtcValue;
 
     if (requiredCollateral > availableCollateral) {
-      // Show detailed error message with correct values
       setTransactionStatus(
         `Insufficient ${selectedRedeemCollateral} in vault. Required: ${requiredCollateral.toFixed(
           8
@@ -2096,74 +2336,82 @@ function Dashboard() {
       return;
     }
 
-    // Get the selected collateral contract address
+    // Get contract addresses
     const collateralContractAddress =
       selectedRedeemCollateral === "WBTC"
         ? protocolState?.contractAddresses?.wbtc
         : selectedRedeemCollateral === "cbBTC"
         ? protocolState?.contractAddresses?.cbbtc
         : protocolState?.contractAddresses?.tbtc;
+    const vaultAddress = protocolState?.contractAddresses?.vault;
 
-    console.log("=== REDEMPTION DETAILS ===");
-    console.log("Redeeming:", tokenAmount, "BTC1USD tokens");
-    console.log("Selected collateral:", selectedRedeemCollateral);
-    console.log("Collateral address:", collateralContractAddress);
-    console.log("Current ratio:", formatPercentage(currentRatio, 1));
-    console.log("Redemption mode:", redemptionMode);
-    console.log("Effective price:", effectivePrice);
-    console.log("Expected to receive:", btcToReceive.toFixed(8), "BTC");
-    console.log("Dev fee:", devFee.toFixed(8), "BTC");
-    console.log(
-      "New collateral ratio:",
-      formatPercentage(
-        newTotalSupply > 0 ? newCollateralValue / newTotalSupply : 0,
-        1
-      )
-    );
+    if (!collateralContractAddress || !vaultAddress || !chainId) {
+      setTransactionStatus("Error: Contract addresses not found. Please check deployment.");
+      setTimeout(() => setTransactionStatus(""), 5000);
+      return;
+    }
 
     try {
-      // Use 8 decimals for BTC1USD
       const amount = parseUnits(redeemAmount, 8);
 
-      // Set transaction type and collateral type
-      setPendingTransactionType("redeem"); // Set to "redeem" to differentiate from buy/mint
-      setPendingCollateralType(selectedRedeemCollateral); // Store selected collateral for balance refresh
+      setMintingStep("redeeming");
+      setPendingTransactionType("redeem");
+      setPendingMintAmount(redeemAmount);
+      setPendingCollateralType(selectedRedeemCollateral);
+      setTransactionStatus("Processing redeem with EIP-2612 Permit...");
 
-      setTransactionStatus(
-        "Please confirm the redemption transaction in your wallet..."
+      console.log("🔐 Using EIP-2612 Permit for gasless redeem");
+      console.log("Amount:", redeemAmount, "BTC1USD");
+      console.log("Collateral:", selectedRedeemCollateral);
+      console.log("Vault:", vaultAddress);
+
+      // Use redeemWithPermit from the hook
+      await redeemWithPermit(
+        vaultAddress as `0x${string}`,
+        protocolState?.contractAddresses?.btc1usd as `0x${string}`,
+        collateralContractAddress as `0x${string}`,
+        amount,
+        chainId,
+        (hash) => {
+          console.log("✅ Redeem transaction successful:", hash);
+          setTransactionStatus(`Redeem successful! Hash: ${hash}`);
+          setRedeemAmount("");
+          setMintingStep("idle");
+          setPendingTransactionType(null);
+          setPendingMintAmount("");
+          
+          // Refresh balances after successful redeem
+          setTimeout(() => {
+            refetchBtc1usdBalance();
+            refetchWbtcBalance();
+            refetchCbbtcBalance();
+            refetchTbtcBalance();
+            refetchTotalSupply();
+            refetchCollateralRatio();
+            refetchCollateralValue();
+            refetchVaultWbtcBalance();
+            refetchVaultCbbtcBalance();
+            refetchVaultTbtcBalance();
+            setTransactionStatus("");
+          }, 3000);
+        },
+        (error) => {
+          console.error("❌ Redeem failed:", error);
+          setTransactionStatus(`Redeem failed: ${error.message}`);
+          setMintingStep("idle");
+          setPendingTransactionType(null);
+          setPendingMintAmount("");
+          
+          setTimeout(() => setTransactionStatus(""), 5000);
+        }
       );
-
-      writeContract({
-        address: protocolState?.contractAddresses?.vault as any,
-        abi: [
-          {
-            inputs: [
-              { internalType: "uint256", name: "tokenAmount", type: "uint256" },
-              {
-                internalType: "address",
-                name: "collateralToken",
-                type: "address",
-              },
-            ],
-            name: "redeem",
-            outputs: [],
-            stateMutability: "nonpayable",
-            type: "function",
-          },
-        ],
-        functionName: "redeem",
-        args: [amount, collateralContractAddress as any],
-      });
-
-      // Note: Don't clear the form or show success here - wait for transaction confirmation
-      // The useEffect will handle this when isConfirmed becomes true
-
-      // The balance will be automatically updated when the transaction is confirmed
-    } catch (error) {
-      console.error("Error redeeming BTC1USD:", error);
-      setTransactionStatus(getSimpleErrorMessage(error));
-      setTimeout(() => setTransactionStatus(""), 3000);
+    } catch (error: any) {
+      console.error("=== ERROR IN HANDLE_REDEEM ===", error);
+      setTransactionStatus("Error: " + (error.message || "Unknown error"));
+      setMintingStep("idle");
       setPendingTransactionType(null);
+      setPendingMintAmount("");
+      setTimeout(() => setTransactionStatus(""), 5000);
     }
   };
 
@@ -2427,11 +2675,9 @@ function Dashboard() {
     return errorMessage;
   };
 
-  // Admin check - Updated from deployment config
-  const adminAddress = CONTRACT_ADDRESSES.ADMIN; // From deployment config
-  const isAdminUser = !!(
-    address && address.toLowerCase() === adminAddress.toLowerCase()
-  );
+  // Admin check - Updated to use centralized auth config
+  const authStatus = getAuthStatus(address);
+  const isAdminUser = authStatus.canViewAdmin;
 
   const testContractFunction = async () => {
     console.log("Testing contract function call...");
@@ -2637,6 +2883,7 @@ function Dashboard() {
 
             {/* Right: Actions */}
             <div className="flex items-center gap-2 ml-auto">
+              
               {!isConnected ? (
                 /* Connect Wallet Button */
                 <Button
@@ -3653,6 +3900,25 @@ function Dashboard() {
                           Sell coins to receive BTC collateral
                         </CardDescription>
                       </div>
+                      <Button
+                        onClick={async () => {
+                          console.log("🔄 Manually refreshing vault balances...");
+                          await Promise.all([
+                            refetchVaultWbtcBalance(),
+                            refetchVaultCbbtcBalance(),
+                            refetchVaultTbtcBalance(),
+                            refetchCollateralValue(),
+                            refetchCollateralRatio(),
+                          ]);
+                          console.log("✅ Vault balances refreshed!");
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="text-gray-300 hover:text-white"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Refresh
+                      </Button>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-6">
@@ -4051,6 +4317,8 @@ function Dashboard() {
               <DistributionAdmin
                 collateralRatio={collateralRatio}
                 totalSupply={protocolState.totalSupply}
+                onSetMerkleRoot={handleSetMerkleRoot}
+                onExecuteDistribution={handleExecuteDistribution}
               />
             </div>
           )}
@@ -4103,6 +4371,23 @@ function Dashboard() {
 
         </main>
       </div>
+
+      {/* Safe Transaction Modal */}
+      {safeModalConfig && (
+        <SafeTransactionModal
+          isOpen={safeModalOpen}
+          onClose={() => {
+            setSafeModalOpen(false);
+            setSafeModalConfig(null);
+          }}
+          title={safeModalConfig.title}
+          description={safeModalConfig.description}
+          contractAddress={safeModalConfig.contractAddress}
+          functionSignature={safeModalConfig.functionSignature}
+          calldata={safeModalConfig.calldata}
+          category={safeModalConfig.category}
+        />
+      )}
     </div>
   );
 }

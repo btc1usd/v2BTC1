@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Disable ISR/caching to prevent Netlify Blobs usage
+  output: 'standalone',
   experimental: {
     instrumentationHook: true,
   },

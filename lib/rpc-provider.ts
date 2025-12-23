@@ -134,9 +134,10 @@ async function testProviderHealth(provider: JsonRpcProvider, timeout: number): P
       )
     ]);
     
-    // Validate we're on the correct network
-    if (networkResult.chainId !== BigInt(8453)) {
-      throw new Error(`Wrong chain ID: expected 8453 (Base Mainnet), got ${networkResult.chainId}`);
+    // Validate we're on the correct network (support both Base Mainnet and Base Sepolia)
+    const expectedChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+    if (networkResult.chainId !== BigInt(expectedChainId)) {
+      throw new Error(`Wrong chain ID: expected ${expectedChainId}, got ${networkResult.chainId}`);
     }
     
     console.log(`🌐 Network verified: chainId=${chainIdResult}`);

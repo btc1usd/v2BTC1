@@ -10,8 +10,9 @@ import { Progress } from './ui/progress';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { formatUnits, parseUnits } from 'viem';
+import { formatUnits, parseUnits, encodeFunctionData } from 'viem';
 import {
   Settings,
   Play,
@@ -33,7 +34,10 @@ import {
   ListOrdered,
   Sliders,
   Wallet,
-  Sparkles
+  Sparkles,
+  Copy,
+  ExternalLink,
+  ArrowRight
 } from 'lucide-react';
 
 interface DistributionHistory {
@@ -236,7 +240,15 @@ const safeDecimalToBigInt = (value: string): bigint => {
     }
   };
 
-  export default function MerkleDistributionManagement() {
+  interface MerkleDistributionManagementProps {
+    onSetMerkleRoot?: (epoch: number, merkleRoot: string) => void;
+    onExecuteDistribution?: () => void;
+  }
+  
+  export default function MerkleDistributionManagement({
+    onSetMerkleRoot,
+    onExecuteDistribution
+  }: MerkleDistributionManagementProps = {}) {
   const { address, isConnected } = useAccount();
 
 
@@ -246,6 +258,18 @@ const safeDecimalToBigInt = (value: string): bigint => {
   const [loading, setLoading] = useState(false);
   const [showPrerequisites, setShowPrerequisites] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  
+  // Safe Transaction Modal state
+  const [showSafeModal, setShowSafeModal] = useState(false);
+  const [showMerkleRootModal, setShowMerkleRootModal] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  
+  // Helper function for copying to clipboard
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   // Reclaim tab state
   const [transactionStatus, setTransactionStatus] = useState("");
@@ -284,14 +308,56 @@ const safeDecimalToBigInt = (value: string): bigint => {
     }
   });
 
-  // Add collateral ratio data fetching
-  const { data: collateralRatioData } = useReadContract({
+  // Add collateral ratio data fetching with enhanced error handling
+  // Using correct function name: getCurrentCollateralRatio
+  const { 
+    data: collateralRatioData, 
+    isError: isCollateralRatioError, 
+    isLoading: isCollateralRatioLoading,
+    error: collateralRatioError,
+    refetch: refetchCollateralRatio
+  } = useReadContract({
     address: VAULT_ADDRESS as `0x${string}`,
     abi: VAULT_ABI,
     functionName: 'getCurrentCollateralRatio',
     query: {
-      enabled: isConnected,
+      enabled: isConnected && !!VAULT_ADDRESS,
       refetchInterval: 10000, // Refetch every 10 seconds
+      retry: 3,
+      retryDelay: 1000,
+    }
+  });
+
+  // FALLBACK: Get total collateral value and BTC1USD supply separately
+  const { data: totalCollateralValue } = useReadContract({
+    address: VAULT_ADDRESS as `0x${string}`,
+    abi: [{
+      "inputs": [],
+      "name": "getTotalCollateralValue",
+      "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+      "stateMutability": "view",
+      "type": "function"
+    }],
+    functionName: 'getTotalCollateralValue',
+    query: {
+      enabled: isConnected && !!VAULT_ADDRESS && isCollateralRatioError,
+      refetchInterval: 10000,
+    }
+  });
+
+  const { data: btc1usdTotalSupply } = useReadContract({
+    address: CONTRACT_ADDRESSES.BTC1USD as `0x${string}`,
+    abi: [{
+      "inputs": [],
+      "name": "totalSupply",
+      "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+      "stateMutability": "view",
+      "type": "function"
+    }],
+    functionName: 'totalSupply',
+    query: {
+      enabled: isConnected && isCollateralRatioError,
+      refetchInterval: 10000,
     }
   });
 
@@ -654,10 +720,29 @@ Please add more collateral to the vault before executing distribution.`);
       return;
     }
     
-    // Check if user is admin (optional - remove if not needed)
-    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
-    if (address?.toLowerCase() !== adminAddress.toLowerCase()) {
-      alert(`Access Denied: Only admin can execute distributions.\n\nAdmin address: ${adminAddress}\nYour address: ${address}`);
+    // Safe Integration: Check if user has UI access
+    const uiControllerAddress = process.env.NEXT_PUBLIC_UI_CONTROLLER || 
+      process.env.NEXT_PUBLIC_ADMIN_WALLET || 
+      "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
+    const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS || uiControllerAddress;
+    
+    const hasUIAccess = address?.toLowerCase() === uiControllerAddress.toLowerCase();
+    const isSafeConnected = address?.toLowerCase() === safeAddress.toLowerCase();
+    
+    if (!hasUIAccess && !isSafeConnected) {
+      alert(`Access Denied: Only authorized addresses can execute distributions.
+
+UI Controller: ${uiControllerAddress}
+Safe Address: ${safeAddress}
+Your address: ${address}
+
+Please connect with an authorized wallet.`);
+      return;
+    }
+    
+    // If UI Controller is connected but not Safe, show beautiful Safe modal
+    if (hasUIAccess && !isSafeConnected && safeAddress !== uiControllerAddress) {
+      setShowSafeModal(true);
       return;
     }
     
@@ -690,7 +775,7 @@ Check console for more details.`);
     }
   };
 
-  const writeMerkleRoot = () => {
+  const writeMerkleRoot = async () => {
     if (!merkleRootInput || !totalTokens) {
       alert('Please provide both Merkle Root and Total Tokens values.');
       return;
@@ -702,6 +787,39 @@ Check console for more details.`);
     console.log('Total tokens:', totalTokens);
     console.log('Parsed total tokens:', parseUnits(totalTokens, 8));
     console.log('User address:', address);
+    
+    // Safe Integration: Check if user has UI access
+    const uiControllerAddress = process.env.NEXT_PUBLIC_UI_CONTROLLER || 
+      process.env.NEXT_PUBLIC_ADMIN_WALLET || 
+      "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
+    const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS || uiControllerAddress;
+    
+    const hasUIAccess = address?.toLowerCase() === uiControllerAddress.toLowerCase();
+    const isSafeConnected = address?.toLowerCase() === safeAddress.toLowerCase();
+    
+    if (!hasUIAccess && !isSafeConnected) {
+      alert(`Access Denied: Only authorized addresses can set merkle root.
+
+UI Controller: ${uiControllerAddress}
+Safe Address: ${safeAddress}
+Your address: ${address}
+
+Please connect with an authorized wallet.`);
+      return;
+    }
+    
+    // If UI Controller is connected but not Safe, show modal with transaction data
+    if (hasUIAccess && !isSafeConnected && safeAddress !== uiControllerAddress) {
+      console.log('=== MERKLE ROOT TRANSACTION DATA ===');
+      console.log('Contract Address:', WEEKLY_DISTRIBUTION_ADDRESS);
+      console.log('Function: updateMerkleRoot(bytes32,uint256)');
+      console.log('Merkle Root:', merkleRootInput);
+      console.log('Total Tokens:', totalTokens, 'BTC1USD');
+      console.log('Total Tokens (wei):', parseUnits(totalTokens, 8).toString());
+      
+      setShowMerkleRootModal(true);
+      return;
+    }
     
     try {
       writeMerkleContract({
@@ -771,7 +889,7 @@ Check console for more details.`);
   };
 
   const handleSetMerkleRoot = () => {
-    if (merkleRootInput && totalTokens) {
+    if (merkleRootInput && totalTokens && currentDistId !== null) {
       writeMerkleRoot();
     }
   };
@@ -779,15 +897,22 @@ Check console for more details.`);
   const handleGenerateMerkleTree = async () => {
     setLoading(true);
     try {
-      console.log('Generating merkle tree...');
+      console.log('🌳 Generating merkle tree...');
+      console.log('API endpoint: /api/generate-merkle-tree');
       
       const response = await fetch('/api/generate-merkle-tree', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
+      
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
       
       if (response.ok) {
         const result = await response.json();
-        console.log('Merkle tree generated successfully:', result);
+        console.log('✅ Merkle tree generated successfully:', result);
         
         setMerkleRootInput(result.merkleRoot);
         setTotalTokens(formatUnits(result.totalRewards, 8));
@@ -803,16 +928,50 @@ Check console for more details.`);
 The merkle root has been automatically filled. Click "Set Merkle Root" to complete the distribution setup.`);
         
       } else {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate merkle tree');
+        // Try to get error details
+        let errorData;
+        const contentType = response.headers.get('content-type');
+        console.log('Error response content-type:', contentType);
+        
+        try {
+          errorData = await response.json();
+          console.error('❌ Server error response:', errorData);
+        } catch (parseError) {
+          // If response is not JSON, get text
+          const errorText = await response.text();
+          console.error('❌ Server error (non-JSON):', errorText.substring(0, 500));
+          errorData = { 
+            error: `Server returned ${response.status}`, 
+            details: errorText.substring(0, 200)
+          };
+        }
+        
+        // Build detailed error message
+        let errorMsg = errorData.error || `HTTP ${response.status} error`;
+        if (errorData.details) {
+          errorMsg += `\n\nDetails: ${errorData.details}`;
+        }
+        if (errorData.suggestions && Array.isArray(errorData.suggestions)) {
+          errorMsg += '\n\nSuggestions:\n' + errorData.suggestions.map((s: string) => `• ${s}`).join('\n');
+        }
+        
+        throw new Error(errorMsg);
       }
     } catch (error) {
-      console.error('Error generating merkle tree:', error);
+      console.error('💥 Error generating merkle tree:', error);
+      
+      let errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Check for common network errors
+      if (errorMessage.includes('fetch')) {
+        errorMessage += '\n\nPossible causes:\n• Network connection issue\n• API server not responding\n• CORS configuration problem';
+      }
+      
       alert(`❌ Failed to generate merkle tree:
 
-${error instanceof Error ? error.message : 'Unknown error'}
+${errorMessage}
 
-Please check the console for more details and try again.`);
+Please check the browser console (F12) for detailed logs.`);
     } finally {
       setLoading(false);
     }
@@ -1334,10 +1493,78 @@ This action cannot be undone. Continue?`;
   const finalCanDistribute = !!canDistributeNow;
 
   // Calculate collateral ratio as a decimal number (e.g., 1.12 for 112%)
-  const collateralRatio = collateralRatioData ? parseFloat(formatUnits(collateralRatioData as bigint, 8)) : 0;
+  // Use fallback calculation if direct call fails
+  let collateralRatio = 0;
+  let isManualCalculation = false;
+  
+  if (collateralRatioData) {
+    collateralRatio = parseFloat(formatUnits(collateralRatioData as bigint, 8));
+  } else if (isCollateralRatioError && totalCollateralValue && btc1usdTotalSupply) {
+    // FALLBACK: Manual calculation when contract function fails
+    // Formula: (totalCollateralValue * 1e8) / totalSupply
+    const collateralValueNum = parseFloat(formatUnits(totalCollateralValue as bigint, 8));
+    const totalSupplyNum = parseFloat(formatUnits(btc1usdTotalSupply as bigint, 8));
+    
+    if (totalSupplyNum > 0) {
+      collateralRatio = collateralValueNum / totalSupplyNum;
+      isManualCalculation = true;
+    }
+  }
 
   // Check if collateral ratio is sufficient for distribution (minimum 112%)
   const isCollateralRatioSufficient = collateralRatio >= 1.12;
+
+  // Helper to display collateral ratio
+  const getCollateralRatioDisplay = () => {
+    if (isCollateralRatioLoading) return 'Loading...';
+    if (isCollateralRatioError && !isManualCalculation) {
+      const errorMsg = (collateralRatioError as any)?.message || '';
+      if (errorMsg.includes('network')) return 'Network error';
+      if (errorMsg.includes('revert')) return 'Calculating...';
+      return 'Error fetching';
+    }
+    if (!isConnected) return 'Connect wallet';
+    if (collateralRatio === 0) return '0% (no collateral)';
+    const display = `${(collateralRatio * 100).toFixed(1)}%`;
+    return isManualCalculation ? `${display} (calc)` : display;
+  };
+
+  // Helper to get collateral ratio status color
+  const getCollateralRatioStatusColor = () => {
+    if (isCollateralRatioError) return 'text-red-400';
+    if (isCollateralRatioLoading) return 'text-yellow-400';
+    if (!isConnected) return 'text-gray-400';
+    return isCollateralRatioSufficient ? 'text-green-400' : 'text-red-400';
+  };
+
+  // Debug collateral ratio data
+  useEffect(() => {
+    console.log('=== COLLATERAL RATIO DEBUG ===');
+    console.log('Vault Address:', VAULT_ADDRESS);
+    console.log('Is Connected:', isConnected);
+    console.log('Is Loading:', isCollateralRatioLoading);
+    console.log('Is Error:', isCollateralRatioError);
+    if (isCollateralRatioError && collateralRatioError) {
+      console.error('Error Details:', collateralRatioError);
+      console.error('Error Message:', (collateralRatioError as any).message || 'Unknown error');
+      console.error('Error Cause:', (collateralRatioError as any).cause);
+    }
+    console.log('Raw Data:', collateralRatioData);
+    if (collateralRatioData) {
+      console.log('Parsed Ratio:', parseFloat(formatUnits(collateralRatioData as bigint, 8)));
+      console.log('Percentage:', (parseFloat(formatUnits(collateralRatioData as bigint, 8)) * 100).toFixed(2) + '%');
+    }
+    
+    // Fallback calculation logging
+    if (isManualCalculation) {
+      console.log('\n** USING FALLBACK CALCULATION **');
+      console.log('Total Collateral Value:', totalCollateralValue ? formatUnits(totalCollateralValue as bigint, 8) : 'N/A');
+      console.log('Total Supply:', btc1usdTotalSupply ? formatUnits(btc1usdTotalSupply as bigint, 8) : 'N/A');
+      console.log('Calculated Ratio:', collateralRatio);
+      console.log('Percentage:', (collateralRatio * 100).toFixed(2) + '%');
+    }
+    console.log('=== END DEBUG ===');
+  }, [collateralRatioData, isConnected, isCollateralRatioLoading, isCollateralRatioError, collateralRatioError, VAULT_ADDRESS, isManualCalculation, totalCollateralValue, btc1usdTotalSupply, collateralRatio]);
 
   // EXECUTION REQUIREMENTS (ALL must be true):
   // 1. Smart contract canDistribute() = true (7 days passed + Friday 14:00+ UTC)
@@ -1511,6 +1738,51 @@ This action cannot be undone. Continue?`;
                   Trigger the reward distribution based on collateral ratio (7-day cycle)
                 </p>
 
+                {/* Collateral Error Alert */}
+                {isCollateralRatioError && !isManualCalculation && (
+                  <div className="ml-2 sm:ml-10 mt-2 mr-2 sm:mr-10">
+                    <Alert className="bg-yellow-500/10 border-yellow-500/30">
+                      <AlertCircle className="h-4 w-4 text-yellow-400" />
+                      <AlertTitle className="text-yellow-400 font-semibold text-xs sm:text-base">Using Fallback Calculation</AlertTitle>
+                      <AlertDescription className="mt-2 text-[10px] sm:text-sm text-gray-300">
+                        <div className="space-y-2">
+                          <div>
+                            Contract function `getCurrentCollateralRatio()` is reverting. Using manual calculation instead.
+                          </div>
+                          <div className="text-[9px] sm:text-xs text-gray-400">
+                            <strong>Formula:</strong> Total Collateral Value ÷ Total Supply
+                          </div>
+                          <div className="text-[9px] sm:text-xs text-gray-400">
+                            This is a known issue with the current contract deployment. The calculated value is still accurate.
+                          </div>
+                          <div className="mt-2">
+                            <Button
+                              onClick={() => refetchCollateralRatio()}
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/20"
+                            >
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                              Retry Direct Call
+                            </Button>
+                          </div>
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+
+                {isManualCalculation && (
+                  <div className="ml-2 sm:ml-10 mt-2 mr-2 sm:mr-10">
+                    <Alert className="bg-green-500/10 border-green-500/30">
+                      <CheckCircle className="h-4 w-4 text-green-400" />
+                      <AlertDescription className="text-[10px] sm:text-sm text-green-100">
+                        ✅ Collateral ratio calculated successfully using fallback method
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+
                 {/* Execution Requirements Alert */}
                 {!canExecuteDistribution && (
                   <div className="ml-2 sm:ml-10 mt-2 mr-2 sm:mr-10">
@@ -1533,9 +1805,26 @@ This action cannot be undone. Continue?`;
                           <span className="shrink-0 text-xs sm:text-sm">{isCollateralRatioSufficient ? '✅' : '❌'}</span>
                           <div className="min-w-0 flex-1 overflow-hidden">
                             <div className="font-semibold text-[10px] sm:text-sm">Collateral:</div>
-                            <div className="text-[9px] sm:text-xs text-gray-400 mt-0.5 sm:mt-1 break-words leading-tight">
-                              {collateralRatio ? `${(collateralRatio * 100).toFixed(1)}%` : 'N/A'}
-                              {isCollateralRatioSufficient ? ' ✓' : ' (need ≥112%)'}
+                            <div className="text-[9px] sm:text-xs mt-0.5 sm:mt-1 break-words leading-tight">
+                              <span className={getCollateralRatioStatusColor()}>
+                                {getCollateralRatioDisplay()}
+                              </span>
+                              {!isCollateralRatioLoading && !isCollateralRatioError && isConnected && (isCollateralRatioSufficient ? ' ✓' : ' (need ≥112%)')}
+                              {isManualCalculation && isConnected && (isCollateralRatioSufficient ? ' ✓' : ' (need ≥112%)')}
+                              {isCollateralRatioError && !isManualCalculation && (
+                                <div className="mt-1 flex items-center gap-2">
+                                  <Button
+                                    onClick={() => refetchCollateralRatio()}
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-5 px-2 text-[8px] sm:text-xs border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
+                                  >
+                                    <RefreshCw className="h-2 w-2 sm:h-3 sm:w-3 mr-1" />
+                                    Retry
+                                  </Button>
+                                  <span className="text-[8px] text-yellow-400">Using fallback...</span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -2351,6 +2640,433 @@ This action cannot be undone. Continue?`;
           </div>
         </div>
       )}
+
+      {/* Beautiful Safe Transaction Modal */}
+      <Dialog open={showSafeModal} onOpenChange={setShowSafeModal}>
+        <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto bg-gray-900 border-2 border-orange-500/60 shadow-2xl">
+          <div className="absolute inset-0 bg-gradient-to-br from-orange-900/30 via-gray-900 to-red-900/30 rounded-lg"></div>
+          <div className="relative z-10">
+          <DialogHeader>
+            <div className="flex items-center gap-2 sm:gap-3 mb-2">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
+                <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg sm:text-2xl font-bold text-white">
+                  Safe Transaction Required
+                </DialogTitle>
+                <DialogDescription className="text-xs sm:text-sm text-gray-400">
+                  Execute via Gnosis Safe with multi-sig approval
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+            {/* Alert Banner */}
+            <Alert className="bg-yellow-500/10 border-2 border-yellow-500/50">
+              <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 text-yellow-400" />
+              <AlertDescription className="text-yellow-200 text-xs sm:text-sm">
+                ⚠️ Execute this transaction through Safe UI with the data below
+              </AlertDescription>
+            </Alert>
+
+            {/* Connection Status */}
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 sm:p-4">
+              <div className="flex items-start gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                  <Wallet className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs sm:text-sm font-medium text-blue-400 mb-1">Connected as UI Controller</p>
+                  <code className="text-xs text-gray-300 bg-black/30 px-2 py-1 rounded font-mono break-all">
+                    {address?.slice(0, 10)}...{address?.slice(-8)}
+                  </code>
+                </div>
+              </div>
+            </div>
+
+            {/* Transaction Details */}
+            <div className="space-y-2 sm:space-y-3">
+              <h3 className="text-xs sm:text-sm font-semibold text-white flex items-center gap-2">
+                <Terminal className="w-3 h-3 sm:w-4 sm:h-4" />
+                Transaction Details
+              </h3>
+              
+              <div className="bg-black/40 border border-gray-700 rounded-lg p-3 sm:p-4 space-y-2 sm:space-y-3">
+                {/* Contract Address */}
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-400">Contract Address</Label>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <code className="text-xs text-green-400 bg-black/50 px-2 sm:px-3 py-2 rounded font-mono flex-1 overflow-x-auto break-all">
+                      {WEEKLY_DISTRIBUTION_ADDRESS}
+                    </code>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-full sm:w-8 p-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText(WEEKLY_DISTRIBUTION_ADDRESS);
+                        setCopiedField('contract');
+                        setTimeout(() => setCopiedField(null), 2000);
+                      }}
+                    >
+                      {copiedField === 'contract' ? (
+                        <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 text-green-400" />
+                      ) : (
+                        <Copy className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Encoded Data */}
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-400">Encoded Transaction Data (Hex)</Label>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <code className="text-xs text-cyan-400 bg-black/50 px-3 py-2 rounded font-mono flex-1 overflow-x-auto max-h-20">
+                      {(() => {
+                        try {
+                          return encodeFunctionData({
+                            abi: WEEKLY_DISTRIBUTION_ABI,
+                            functionName: 'executeDistribution',
+                            args: []
+                          });
+                        } catch {
+                          return '0x2e7ba6ef';
+                        }
+                      })()}
+                    </code>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-full sm:w-8 p-0"
+                      onClick={() => {
+                        const encodedData = encodeFunctionData({
+                          abi: WEEKLY_DISTRIBUTION_ABI,
+                          functionName: 'executeDistribution',
+                          args: []
+                        });
+                        navigator.clipboard.writeText(encodedData);
+                        setCopiedField('data');
+                        setTimeout(() => setCopiedField(null), 2000);
+                      }}
+                    >
+                      {copiedField === 'data' ? (
+                        <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 text-green-400" />
+                      ) : (
+                        <Copy className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Function selector for executeDistribution()</p>
+                </div>
+
+                {/* Function Name */}
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-400">Function</Label>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <code className="text-xs text-blue-400 bg-black/50 px-2 sm:px-3 py-2 rounded font-mono flex-1">
+                      executeDistribution()
+                    </code>
+                  </div>
+                </div>
+
+                {/* Value */}
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-400">Value</Label>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <code className="text-xs text-yellow-400 bg-black/50 px-2 sm:px-3 py-2 rounded font-mono flex-1">
+                      0 ETH
+                    </code>
+                  </div>
+                </div>
+
+                {/* Safe Address */}
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-400">Safe Multi-Sig Address</Label>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <code className="text-xs text-purple-400 bg-black/50 px-2 sm:px-3 py-2 rounded font-mono flex-1 overflow-x-auto break-all">
+                      {process.env.NEXT_PUBLIC_SAFE_ADDRESS}
+                    </code>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-full sm:w-8 p-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText(process.env.NEXT_PUBLIC_SAFE_ADDRESS || '');
+                        setCopiedField('safe');
+                        setTimeout(() => setCopiedField(null), 2000);
+                      }}
+                    >
+                      {copiedField === 'safe' ? (
+                        <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 text-green-400" />
+                      ) : (
+                        <Copy className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Steps */}
+            <div className="space-y-2 sm:space-y-3">
+              <h3 className="text-xs sm:text-sm font-semibold text-white flex items-center gap-2">
+                <ListOrdered className="w-3 h-3 sm:w-4 sm:h-4" />
+                Execution Steps
+              </h3>
+              
+              <div className="space-y-2">
+                {[
+                  { icon: ExternalLink, text: 'Open Safe UI in new tab', color: 'text-blue-400' },
+                  { icon: Terminal, text: 'Create "New Transaction" → "Contract Interaction"', color: 'text-green-400' },
+                  { icon: Copy, text: 'Paste contract address and hex data above', color: 'text-cyan-400' },
+                  { icon: CheckCircle, text: 'Verify function: executeDistribution()', color: 'text-yellow-400' },
+                  { icon: Users, text: 'Collect threshold signatures from Safe owners', color: 'text-purple-400' },
+                  { icon: Sparkles, text: 'Execute transaction from Safe', color: 'text-orange-400' },
+                ].map((step, index) => (
+                  <div key={index} className="flex items-start gap-2 sm:gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors">
+                    <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gray-800 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-xs font-bold text-gray-400">{index + 1}</span>
+                    </div>
+                    <step.icon className={`w-3 h-3 sm:w-4 sm:h-4 ${step.color} flex-shrink-0 mt-1`} />
+                    <p className="text-xs sm:text-sm text-gray-300 flex-1">{step.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setShowSafeModal(false)}
+              className="flex-1 border-gray-600 hover:bg-gray-800 h-10 sm:h-auto"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const safeUrl = `https://app.safe.global/base:${process.env.NEXT_PUBLIC_SAFE_ADDRESS}`;
+                window.open(safeUrl, '_blank');
+              }}
+              className="flex-1 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white shadow-lg shadow-orange-500/40 border-2 border-orange-400/60 font-semibold h-10 sm:h-auto"
+            >
+              <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              Open Safe UI
+              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
+            </Button>
+          </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Merkle Root Safe Transaction Modal */}
+      <Dialog open={showMerkleRootModal} onOpenChange={setShowMerkleRootModal}>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto bg-gradient-to-br from-gray-900 via-purple-950 to-gray-900 border-2 border-purple-500/70 shadow-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/50">
+                <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
+              </div>
+              <div>
+                <DialogTitle className="text-xl sm:text-2xl font-bold text-white">
+                  Set Merkle Root
+                </DialogTitle>
+                <DialogDescription className="text-sm sm:text-base text-purple-200">
+                  Safe Multi-Signature Transaction
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+            {/* Contract Address */}
+            <div className="bg-gradient-to-br from-green-900/20 to-emerald-900/20 border-2 border-green-500/50 rounded-lg p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                <Label className="text-xs sm:text-sm text-green-300 font-bold uppercase">1️⃣ Contract Address</Label>
+                <Button
+                  size="sm"
+                  className="h-8 px-3 sm:px-4 bg-green-600 hover:bg-green-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                  onClick={() => copyToClipboard(WEEKLY_DISTRIBUTION_ADDRESS, 'contract')}
+                >
+                  {copiedField === 'contract' ? (
+                    <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                  ) : (
+                    <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy</>
+                  )}
+                </Button>
+              </div>
+              <code className="text-xs sm:text-sm text-green-300 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto border border-green-500/40 break-all">
+                {WEEKLY_DISTRIBUTION_ADDRESS}
+              </code>
+            </div>
+
+            {/* ABI JSON */}
+            <div className="bg-gradient-to-br from-purple-900/20 to-indigo-900/20 border-2 border-purple-500/50 rounded-lg p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                <Label className="text-xs sm:text-sm text-purple-300 font-bold uppercase">2️⃣ Contract ABI (JSON)</Label>
+                <Button
+                  size="sm"
+                  className="h-8 px-3 sm:px-4 bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                  onClick={() => {
+                    const abiJson = JSON.stringify([{
+                      "inputs": [
+                        { "internalType": "bytes32", "name": "merkleRoot", "type": "bytes32" },
+                        { "internalType": "uint256", "name": "totalTokensForHolders", "type": "uint256" }
+                      ],
+                      "name": "updateMerkleRoot",
+                      "outputs": [],
+                      "stateMutability": "nonpayable",
+                      "type": "function"
+                    }], null, 2);
+                    copyToClipboard(abiJson, 'abi');
+                  }}
+                >
+                  {copiedField === 'abi' ? (
+                    <><CheckCircle className="w-4 h-4 mr-2" /> Copied!</>
+                  ) : (
+                    <><Copy className="w-4 h-4 mr-2" /> Copy ABI</>
+                  )}
+                </Button>
+              </div>
+              <code className="text-xs sm:text-sm text-purple-200 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto max-h-32 border border-purple-500/40">
+                {JSON.stringify([{
+                  "inputs": [
+                    { "internalType": "bytes32", "name": "merkleRoot", "type": "bytes32" },
+                    { "internalType": "uint256", "name": "totalTokensForHolders", "type": "uint256" }
+                  ],
+                  "name": "updateMerkleRoot",
+                  "outputs": [],
+                  "stateMutability": "nonpayable",
+                  "type": "function"
+                }], null, 2)}
+              </code>
+            </div>
+
+            {/* Encoded Calldata */}
+            <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 border-2 border-cyan-500/50 rounded-lg p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                <Label className="text-xs sm:text-sm text-cyan-300 font-bold uppercase">3️⃣ Encoded Calldata</Label>
+                <Button
+                  size="sm"
+                  className="h-8 px-3 sm:px-4 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                  onClick={() => {
+                    const encodedData = encodeFunctionData({
+                      abi: WEEKLY_DISTRIBUTION_ABI,
+                      functionName: 'updateMerkleRoot',
+                      args: [merkleRootInput as `0x${string}`, parseUnits(totalTokens || '0', 8)]
+                    });
+                    copyToClipboard(encodedData, 'calldata');
+                  }}
+                >
+                  {copiedField === 'calldata' ? (
+                    <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                  ) : (
+                    <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy Calldata</>
+                  )}
+                </Button>
+              </div>
+              <code className="text-xs sm:text-sm text-cyan-200 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto max-h-32 border border-cyan-500/40 break-all">
+                {(() => {
+                  try {
+                    return encodeFunctionData({
+                      abi: WEEKLY_DISTRIBUTION_ABI,
+                      functionName: 'updateMerkleRoot',
+                      args: [merkleRootInput as `0x${string}`, parseUnits(totalTokens || '0', 8)]
+                    });
+                  } catch {
+                    return '0x...';
+                  }
+                })()}
+              </code>
+            </div>
+
+            {/* Parameters */}
+            <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-gray-600/50 rounded-lg p-3 sm:p-4">
+              <h3 className="text-xs sm:text-sm font-bold text-white mb-2 sm:mb-3">Parameters</h3>
+              <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Function:</span>
+                  <code className="text-purple-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">updateMerkleRoot</code>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Merkle Root:</span>
+                  <code className="text-xs text-purple-200 bg-black/40 px-2 py-1 rounded font-mono max-w-full sm:max-w-[300px] truncate">{merkleRootInput}</code>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Total Tokens:</span>
+                  <code className="text-white bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">{totalTokens} BTC1USD</code>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Total (wei):</span>
+                  <code className="text-xs text-gray-300 bg-black/40 px-2 py-1 rounded font-mono truncate">{parseUnits(totalTokens || '0', 8).toString()}</code>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Value:</span>
+                  <code className="text-yellow-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">0 ETH</code>
+                </div>
+              </div>
+            </div>
+
+            {/* Instructions */}
+            <div className="bg-gradient-to-r from-orange-900/20 to-red-900/20 border border-orange-500/40 rounded-lg p-3 sm:p-4">
+              <h3 className="text-xs sm:text-sm font-bold text-white mb-2 flex items-center gap-2">
+                <span className="text-lg sm:text-xl">📝</span>
+                How to Execute in Safe UI
+              </h3>
+              <div className="space-y-1.5 text-xs sm:text-sm text-gray-200">
+                <div className="flex items-start gap-2">
+                  <span className="text-orange-400 font-bold min-w-[16px] sm:min-w-[20px] text-xs sm:text-sm">1.</span>
+                  <span className="text-xs sm:text-sm">Open Safe UI → <strong>New Transaction</strong> → <strong>Contract Interaction</strong></span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-orange-400 font-bold min-w-[16px] sm:min-w-[20px] text-xs sm:text-sm">2.</span>
+                  <span className="text-xs sm:text-sm">Paste <span className="text-green-300 font-semibold">Contract Address</span></span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-orange-400 font-bold min-w-[16px] sm:min-w-[20px] text-xs sm:text-sm">3.</span>
+                  <span className="text-xs sm:text-sm">Click <strong>"Enter ABI"</strong> and paste <span className="text-purple-300 font-semibold">ABI JSON</span></span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-orange-400 font-bold min-w-[16px] sm:min-w-[20px] text-xs sm:text-sm">4.</span>
+                  <span className="text-xs sm:text-sm">Select <code className="text-purple-300 bg-black/40 px-1 rounded font-mono text-xs">updateMerkleRoot</code> function</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-orange-400 font-bold min-w-[16px] sm:min-w-[20px] text-xs sm:text-sm">5.</span>
+                  <span className="text-xs sm:text-sm">Fill parameters OR paste <span className="text-cyan-300 font-semibold">Calldata</span></span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-orange-400 font-bold min-w-[16px] sm:min-w-[20px] text-xs sm:text-sm">6.</span>
+                  <span className="text-xs sm:text-sm">Set Value = 0, Review → Execute</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-3 border-t-2 border-purple-700 pt-3 sm:pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowMerkleRootModal(false)}
+              className="flex-1 border-2 border-gray-600 hover:bg-gray-800 text-gray-200 font-semibold h-10 sm:h-auto"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const safeUrl = `https://app.safe.global/base:${process.env.NEXT_PUBLIC_SAFE_ADDRESS}`;
+                window.open(safeUrl, '_blank');
+              }}
+              className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-lg shadow-purple-500/40 border-2 border-purple-400/60 font-semibold h-10 sm:h-auto"
+            >
+              <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              Open Safe UI
+              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

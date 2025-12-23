@@ -461,7 +461,7 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         return result;
     }
 
-    function hasUnclaimedRewards(address account) public view override returns (bool) {
+    function hasUnclaimedRewards(address account) public view returns (bool) {
         uint256[] memory incompleteDists = getIncompleteDistributionIds();
         return incompleteDists.length > 0 && account != address(0);
     }
@@ -472,7 +472,7 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
         address account,
         uint256 amount,
         bytes32[] calldata merkleProof
-    ) external view override returns (bool) {
+    ) external view returns (bool) {
         if (distributionId > currentDistributionId || isDistributionComplete(distributionId)) {
             return false;
         }
@@ -491,7 +491,6 @@ contract MerkleDistributor is IMerkleDistributor, ReentrancyGuard, Ownable {
     function getDistributionInfo(uint256 distributionId)
         external
         view
-        override
         returns (
             bytes32 root,
             uint256 totalTokens,

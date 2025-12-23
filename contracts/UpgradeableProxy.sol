@@ -177,6 +177,27 @@ contract ProxyAdmin {
     }
 
     /**
+     * @dev Executes an arbitrary call on a proxy contract
+     * @param target The target contract to call
+     * @param data The calldata to execute
+     */
+    function executeCall(address target, bytes memory data) external payable onlyGovernance returns (bytes memory) {
+        (bool success, bytes memory returndata) = target.call{value: msg.value}(data);
+        if (!success) {
+            if (returndata.length > 0) {
+                // Bubble up the revert reason
+                assembly {
+                    let returndata_size := mload(returndata)
+                    revert(add(32, returndata), returndata_size)
+                }
+            } else {
+                revert("ProxyAdmin: call reverted without reason");
+            }
+        }
+        return returndata;
+    }
+
+    /**
      * @dev Transfers ownership of ProxyAdmin
      */
     function transferOwnership(address newOwner) external onlyOwner {

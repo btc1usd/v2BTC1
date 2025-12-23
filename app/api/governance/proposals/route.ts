@@ -39,16 +39,22 @@ export async function GET(request: NextRequest) {
     const proposalId = searchParams.get('id');
     const status = searchParams.get('status');
 
+    // Use the chain ID from environment variables
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+
     // Use robust provider with fallback
-    const provider = await createProviderWithFallback(8453, {
+    const provider = await createProviderWithFallback(chainId, {
       timeout: 15000, // Increased timeout
       maxRetries: 3,
       retryDelay: 2000, // Increased delay
       backoffMultiplier: 2
     });
 
+    // Use the correct contract address from environment or fallback to CONTRACT_ADDRESSES
+    const daoAddress = process.env.NEXT_PUBLIC_DAO_CONTRACT || CONTRACT_ADDRESSES.GOVERNANCE_DAO;
+
     const governanceDAO = new ethers.Contract(
-      process.env.NEXT_PUBLIC_GOVERNANCE_DAO_CONTRACT || CONTRACT_ADDRESSES.GOVERNANCE_DAO,
+      daoAddress,
       GOVERNANCE_DAO_ABI,
       provider
     );
@@ -56,95 +62,157 @@ export async function GET(request: NextRequest) {
     // Get single proposal
     if (proposalId) {
       const id = parseInt(proposalId);
-      const proposalData = await governanceDAO.getProposal(id);
-      const proposalState = await governanceDAO.state(id);
+      
+      // Validate proposal ID
+      if (isNaN(id) || id <= 0) {
+        return NextResponse.json(
+          { error: 'Invalid proposal ID' },
+          { status: 400 }
+        );
+      }
 
-      const proposal: any = {
-        id,
-        proposer: proposalData[0],
-        title: proposalData[1],
-        description: proposalData[2],
-        category: CATEGORY_NAMES[Number(proposalData[3])],
-        categoryId: Number(proposalData[3]),
-        forVotes: ethers.formatUnits(proposalData[4], 8),
-        againstVotes: ethers.formatUnits(proposalData[5], 8),
-        abstainVotes: ethers.formatUnits(proposalData[6], 8),
-        startBlock: Number(proposalData[7]),
-        endBlock: Number(proposalData[8]),
-        eta: Number(proposalData[9]),
-        executed: proposalData[10],
-        canceled: proposalData[11],
-        state: STATE_NAMES[Number(proposalState)],
-        stateId: Number(proposalState),
-      };
+      try {
+        const proposalData = await governanceDAO.getProposal(id);
+        const proposalState = await governanceDAO.state(id);
 
-      // Get quorum for this category
-      const quorum = await governanceDAO.getQuorum(proposalData[3]);
-      proposal.quorum = ethers.formatUnits(quorum, 8);
+        // Validate that we received valid data
+        if (!proposalData || proposalData.length === 0) {
+          return NextResponse.json(
+            { error: 'Proposal not found or invalid data returned' },
+            { status: 404 }
+          );
+        }
 
-      // Calculate vote percentage
-      const totalVotes = parseFloat(proposal.forVotes) + parseFloat(proposal.againstVotes) + parseFloat(proposal.abstainVotes);
-      proposal.quorumReached = totalVotes >= parseFloat(proposal.quorum);
-      proposal.votePercentage = totalVotes > 0
-        ? {
-            for: (parseFloat(proposal.forVotes) / totalVotes) * 100,
-            against: (parseFloat(proposal.againstVotes) / totalVotes) * 100,
-            abstain: (parseFloat(proposal.abstainVotes) / totalVotes) * 100,
-          }
-        : { for: 0, against: 0, abstain: 0 };
+        const proposal: any = {
+          id,
+          proposer: proposalData[0],
+          title: proposalData[1],
+          description: proposalData[2],
+          category: CATEGORY_NAMES[Number(proposalData[3])] || 'Unknown',
+          categoryId: Number(proposalData[3]),
+          forVotes: ethers.formatUnits(proposalData[4], 8),
+          againstVotes: ethers.formatUnits(proposalData[5], 8),
+          abstainVotes: ethers.formatUnits(proposalData[6], 8),
+          startBlock: Number(proposalData[7]),
+          endBlock: Number(proposalData[8]),
+          eta: Number(proposalData[9]),
+          executed: proposalData[10],
+          canceled: proposalData[11],
+          state: STATE_NAMES[Number(proposalState)] || 'Unknown',
+          stateId: Number(proposalState),
+        };
 
-      return NextResponse.json({ proposal });
+        // Get quorum for this category
+        const quorum = await governanceDAO.getQuorum(proposalData[3]);
+        proposal.quorum = ethers.formatUnits(quorum, 8);
+
+        // Calculate vote percentage
+        const totalVotes = parseFloat(proposal.forVotes) + parseFloat(proposal.againstVotes) + parseFloat(proposal.abstainVotes);
+        proposal.quorumReached = totalVotes >= parseFloat(proposal.quorum);
+        proposal.votePercentage = totalVotes > 0
+          ? {
+              for: (parseFloat(proposal.forVotes) / totalVotes) * 100,
+              against: (parseFloat(proposal.againstVotes) / totalVotes) * 100,
+              abstain: (parseFloat(proposal.abstainVotes) / totalVotes) * 100,
+            }
+          : { for: 0, against: 0, abstain: 0 };
+
+        return NextResponse.json({ proposal });
+      } catch (error: any) {
+        console.error(`Error fetching proposal ${id}:`, error);
+        return NextResponse.json(
+          { 
+            error: `Failed to fetch proposal ${id}`, 
+            details: error.message,
+            suggestions: [
+              "Check if the proposal exists",
+              "Verify contract deployment",
+              "Try again in a few minutes"
+            ]
+          },
+          { status: 500 }
+        );
+      }
     }
 
     // Get all proposals or filtered by status
-    const proposalCount = await governanceDAO.proposalCount();
+    let proposalCount;
+    try {
+      proposalCount = await governanceDAO.proposalCount();
+    } catch (error: any) {
+      console.error('Error fetching proposal count:', error);
+      return NextResponse.json(
+        { 
+          error: 'Failed to fetch proposal count', 
+          details: error.message,
+          suggestions: [
+            "Check contract deployment",
+            "Verify RPC configuration",
+            "Try again in a few minutes"
+          ]
+        },
+        { status: 500 }
+      );
+    }
+
     const proposals: any[] = [];
 
     for (let i = 1; i <= Number(proposalCount); i++) {
-      const proposalData = await governanceDAO.getProposal(i);
-      const proposalState = await governanceDAO.state(i);
-      const stateString = STATE_NAMES[Number(proposalState)];
+      try {
+        const proposalData = await governanceDAO.getProposal(i);
+        const proposalState = await governanceDAO.state(i);
+        const stateString = STATE_NAMES[Number(proposalState)] || 'Unknown';
 
-      // Filter by status if provided
-      if (status && stateString.toLowerCase() !== status.toLowerCase()) {
+        // Filter by status if provided
+        if (status && stateString.toLowerCase() !== status.toLowerCase()) {
+          continue;
+        }
+
+        // Validate that we received valid data
+        if (!proposalData || proposalData.length === 0) {
+          continue; // Skip invalid proposals
+        }
+
+        const forVotes = ethers.formatUnits(proposalData[4], 8);
+        const againstVotes = ethers.formatUnits(proposalData[5], 8);
+        const abstainVotes = ethers.formatUnits(proposalData[6], 8);
+
+        // Calculate vote percentage
+        const totalVotes = parseFloat(forVotes) + parseFloat(againstVotes) + parseFloat(abstainVotes);
+        const votePercentage = totalVotes > 0
+          ? {
+              for: (parseFloat(forVotes) / totalVotes) * 100,
+              against: (parseFloat(againstVotes) / totalVotes) * 100,
+              abstain: (parseFloat(abstainVotes) / totalVotes) * 100,
+            }
+          : { for: 0, against: 0, abstain: 0 };
+
+        const proposal: any = {
+          id: i,
+          proposer: proposalData[0],
+          title: proposalData[1],
+          description: proposalData[2],
+          category: CATEGORY_NAMES[Number(proposalData[3])] || 'Unknown',
+          categoryId: Number(proposalData[3]),
+          forVotes,
+          againstVotes,
+          abstainVotes,
+          startBlock: Number(proposalData[7]),
+          endBlock: Number(proposalData[8]),
+          eta: Number(proposalData[9]),
+          executed: proposalData[10],
+          canceled: proposalData[11],
+          state: stateString,
+          stateId: Number(proposalState),
+          votePercentage,
+        };
+
+        proposals.push(proposal);
+      } catch (error: any) {
+        console.warn(`Skipping proposal ${i} due to error:`, error.message);
+        // Continue with next proposal instead of failing completely
         continue;
       }
-
-      const forVotes = ethers.formatUnits(proposalData[4], 8);
-      const againstVotes = ethers.formatUnits(proposalData[5], 8);
-      const abstainVotes = ethers.formatUnits(proposalData[6], 8);
-
-      // Calculate vote percentage
-      const totalVotes = parseFloat(forVotes) + parseFloat(againstVotes) + parseFloat(abstainVotes);
-      const votePercentage = totalVotes > 0
-        ? {
-            for: (parseFloat(forVotes) / totalVotes) * 100,
-            against: (parseFloat(againstVotes) / totalVotes) * 100,
-            abstain: (parseFloat(abstainVotes) / totalVotes) * 100,
-          }
-        : { for: 0, against: 0, abstain: 0 };
-
-      const proposal: any = {
-        id: i,
-        proposer: proposalData[0],
-        title: proposalData[1],
-        description: proposalData[2],
-        category: CATEGORY_NAMES[Number(proposalData[3])],
-        categoryId: Number(proposalData[3]),
-        forVotes,
-        againstVotes,
-        abstainVotes,
-        startBlock: Number(proposalData[7]),
-        endBlock: Number(proposalData[8]),
-        eta: Number(proposalData[9]),
-        executed: proposalData[10],
-        canceled: proposalData[11],
-        state: stateString,
-        stateId: Number(proposalState),
-        votePercentage,
-      };
-
-      proposals.push(proposal);
     }
 
     // Sort by ID descending (newest first)

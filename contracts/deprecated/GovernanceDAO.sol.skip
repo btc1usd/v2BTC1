@@ -1,0 +1,681 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import "./interfaces/IBTC1USD.sol";
+import "./ProtocolGovernance.sol";
+import "./EndowmentManager.sol";
+import "./interfaces/IVault.sol";
+import "./WeeklyDistribution.sol";
+import "./PriceOracle.sol";
+import "./libraries/SafeMath.sol";
+
+/**
+ * @title GovernanceDAO
+ * @notice Comprehensive DAO for BTC1USD Protocol with integrated governance
+ * @dev Handles protocol upgrades, parameter changes, endowment management, and treasury operations
+ */
+contract GovernanceDAO {
+    using SafeMath for uint256;
+
+    // Core contracts
+    BTC1USD public btc1usd;
+    ProtocolGovernance public protocolGovernance;
+    EndowmentManager public endowmentManager;
+    Vault public vault;
+    WeeklyDistribution public weeklyDistribution;
+    PriceOracle public priceOracle;
+
+    // Admin
+    address public admin;
+    address public pendingAdmin;
+
+    // DAO configuration
+    uint256 public constant MIN_PROPOSAL_THRESHOLD = 10000e18; // 10,000 BTC1USD (for user proposals)
+    uint256 public constant MIN_VOTING_PERIOD = 3 days;
+    uint256 public constant MAX_VOTING_PERIOD = 14 days;
+    uint256 public constant QUORUM_PERCENTAGE = 4; // 4% of total supply
+    uint256 public constant TIMELOCK_DELAY = 2 days;
+    uint256 public constant EXECUTION_WINDOW = 14 days; // Must execute within 14 days after timelock
+
+    // Allow admin proposals without token requirement
+    bool public allowAdminProposals = true;
+    // Allow user proposals with token requirement
+    bool public allowUserProposals = false;
+
+    // Proposal categories with different requirements
+    enum ProposalCategory {
+        ParameterChange,        // Change protocol parameters
+        ContractUpgrade,        // Upgrade contract implementations
+        EmergencyAction,        // Emergency pause/unpause
+        TreasuryAction,         // Treasury management
+        EndowmentNonProfit,     // Add/remove non-profits
+        EndowmentDistribution,  // Execute endowment distribution
+        GovernanceChange,       // Change governance rules
+        OracleUpdate           // Update price oracle
+    }
+
+    // Proposal states
+    enum ProposalState {
+        Pending,
+        Active,
+        Canceled,
+        Defeated,
+        Succeeded,
+        Queued,
+        Expired,
+        Executed
+    }
+
+    // Enhanced proposal structure
+    struct Proposal {
+        uint256 id;
+        address proposer;
+        string title;
+        string description;
+        ProposalCategory category;
+        uint256 startBlock;
+        uint256 endBlock;
+        uint256 forVotes;
+        uint256 againstVotes;
+        uint256 abstainVotes;
+        uint256 eta; // Execution timestamp after timelock
+        bool canceled;
+        bool executed;
+
+        // Execution data
+        address[] targets;
+        uint256[] values;
+        string[] signatures;
+        bytes[] calldatas;
+    }
+
+    // Vote receipt
+    struct Receipt {
+        bool hasVoted;
+        uint8 support; // 0=against, 1=for, 2=abstain
+        uint256 votes;
+        string reason;
+    }
+
+    // Delegation
+    mapping(address => address) public delegates;
+    mapping(address => uint256) public delegatedVotes;
+
+    // Proposals
+    mapping(uint256 => Proposal) public proposals;
+    mapping(uint256 => mapping(address => Receipt)) public receipts;
+    uint256 public proposalCount;
+
+    // Proposal category requirements (can be updated by governance)
+    mapping(ProposalCategory => uint256) public categoryQuorum;
+    mapping(ProposalCategory => uint256) public categoryThreshold;
+
+    // Events
+    event ProposalCreated(
+        uint256 indexed proposalId,
+        address indexed proposer,
+        string title,
+        ProposalCategory category,
+        uint256 startBlock,
+        uint256 endBlock
+    );
+
+    event VoteCast(
+        address indexed voter,
+        uint256 indexed proposalId,
+        uint8 support,
+        uint256 votes,
+        string reason
+    );
+
+    event ProposalQueued(uint256 indexed proposalId, uint256 eta);
+    event ProposalExecuted(uint256 indexed proposalId);
+    event ProposalCanceled(uint256 indexed proposalId);
+    event DelegateChanged(address indexed delegator, address indexed fromDelegate, address indexed toDelegate);
+    event DelegateVotesChanged(address indexed delegate, uint256 previousBalance, uint256 newBalance);
+
+    // Endowment-specific events
+    event NonProfitProposalCreated(uint256 indexed proposalId, address indexed wallet, string name);
+    event EndowmentDistributionProposed(uint256 indexed proposalId, uint256 amount);
+
+    // Protocol upgrade events
+    event ContractUpgradeProposed(uint256 indexed proposalId, address indexed oldContract, address indexed newContract);
+    event ParameterChangeProposed(uint256 indexed proposalId, string parameter, uint256 oldValue, uint256 newValue);
+
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "GovernanceDAO: caller is not admin");
+        _;
+    }
+
+    modifier onlyDAO() {
+        require(msg.sender == address(this), "GovernanceDAO: caller must be DAO");
+        _;
+    }
+
+    constructor(
+        address _btc1usd,
+        address _protocolGovernance,
+        address _endowmentManager,
+        address _vault,
+        address _weeklyDistribution,
+        address _priceOracle,
+        address _admin
+    ) {
+        btc1usd = BTC1USD(_btc1usd);
+        protocolGovernance = ProtocolGovernance(_protocolGovernance);
+        endowmentManager = EndowmentManager(_endowmentManager);
+        vault = Vault(_vault);
+        weeklyDistribution = WeeklyDistribution(_weeklyDistribution);
+        priceOracle = PriceOracle(_priceOracle);
+        admin = _admin;
+
+        // Initialize category requirements
+        categoryQuorum[ProposalCategory.ParameterChange] = 4; // 4%
+        categoryQuorum[ProposalCategory.ContractUpgrade] = 10; // 10% for upgrades
+        categoryQuorum[ProposalCategory.EmergencyAction] = 15; // 15% for emergency
+        categoryQuorum[ProposalCategory.TreasuryAction] = 5; // 5%
+        categoryQuorum[ProposalCategory.EndowmentNonProfit] = 3; // 3%
+        categoryQuorum[ProposalCategory.EndowmentDistribution] = 2; // 2%
+        categoryQuorum[ProposalCategory.GovernanceChange] = 10; // 10%
+        categoryQuorum[ProposalCategory.OracleUpdate] = 5; // 5%
+
+        categoryThreshold[ProposalCategory.ParameterChange] = 10000e18;
+        categoryThreshold[ProposalCategory.ContractUpgrade] = 50000e18; // Higher threshold for upgrades
+        categoryThreshold[ProposalCategory.EmergencyAction] = 100000e18;
+        categoryThreshold[ProposalCategory.TreasuryAction] = 25000e18;
+        categoryThreshold[ProposalCategory.EndowmentNonProfit] = 5000e18;
+        categoryThreshold[ProposalCategory.EndowmentDistribution] = 1000e18;
+        categoryThreshold[ProposalCategory.GovernanceChange] = 50000e18;
+        categoryThreshold[ProposalCategory.OracleUpdate] = 25000e18;
+    }
+
+    // ========== PROPOSAL CREATION ==========
+
+    function propose(
+        string memory title,
+        string memory description,
+        ProposalCategory category,
+        address[] memory targets,
+        uint256[] memory values,
+        string[] memory signatures,
+        bytes[] memory calldatas
+    ) public returns (uint256) {
+        // Check if caller is admin or has sufficient tokens
+        bool isAdminCaller = msg.sender == admin;
+
+        if (isAdminCaller) {
+            require(allowAdminProposals, "GovernanceDAO: admin proposals disabled");
+        } else {
+            require(allowUserProposals, "GovernanceDAO: user proposals disabled");
+            require(
+                getVotingPower(msg.sender) >= categoryThreshold[category],
+                "GovernanceDAO: insufficient voting power"
+            );
+        }
+
+        require(
+            targets.length == values.length &&
+            targets.length == signatures.length &&
+            targets.length == calldatas.length,
+            "GovernanceDAO: proposal function information arity mismatch"
+        );
+        require(targets.length > 0, "GovernanceDAO: must provide actions");
+
+        proposalCount++;
+
+        Proposal storage newProposal = proposals[proposalCount];
+        newProposal.id = proposalCount;
+        newProposal.proposer = msg.sender;
+        newProposal.title = title;
+        newProposal.description = description;
+        newProposal.category = category;
+        newProposal.startBlock = block.number + 1;
+        newProposal.endBlock = newProposal.startBlock + (MIN_VOTING_PERIOD / 12); // Assuming 12 sec blocks
+        newProposal.targets = targets;
+        newProposal.values = values;
+        newProposal.signatures = signatures;
+        newProposal.calldatas = calldatas;
+
+        emit ProposalCreated(
+            proposalCount,
+            msg.sender,
+            title,
+            category,
+            newProposal.startBlock,
+            newProposal.endBlock
+        );
+
+        return proposalCount;
+    }
+
+    // ========== ENDOWMENT-SPECIFIC PROPOSALS ==========
+
+    function proposeAddNonProfit(
+        string memory title,
+        string memory description,
+        address wallet,
+        string memory name,
+        string memory orgDescription,
+        string memory website,
+        uint8 category
+    ) external returns (uint256) {
+        address[] memory targets = new address[](1);
+        uint256[] memory values = new uint256[](1);
+        string[] memory signatures = new string[](1);
+        bytes[] memory calldatas = new bytes[](1);
+
+        targets[0] = address(endowmentManager);
+        values[0] = 0;
+        signatures[0] = "addNonProfit(address,string,string,string,uint8)";
+        calldatas[0] = abi.encode(wallet, name, orgDescription, website, category);
+
+        uint256 proposalId = propose(
+            title,
+            description,
+            ProposalCategory.EndowmentNonProfit,
+            targets,
+            values,
+            signatures,
+            calldatas
+        );
+
+        emit NonProfitProposalCreated(proposalId, wallet, name);
+        return proposalId;
+    }
+
+    function proposeEndowmentDistribution(
+        string memory title,
+        string memory description
+    ) external returns (uint256) {
+        address[] memory targets = new address[](1);
+        uint256[] memory values = new uint256[](1);
+        string[] memory signatures = new string[](1);
+        bytes[] memory calldatas = new bytes[](1);
+
+        targets[0] = address(endowmentManager);
+        values[0] = 0;
+        signatures[0] = "executeMonthlyDistribution()";
+        calldatas[0] = "";
+
+        uint256 proposalId = propose(
+            title,
+            description,
+            ProposalCategory.EndowmentDistribution,
+            targets,
+            values,
+            signatures,
+            calldatas
+        );
+
+        emit EndowmentDistributionProposed(proposalId, endowmentManager.getCurrentEndowmentBalance());
+        return proposalId;
+    }
+
+    // ========== PARAMETER CHANGE PROPOSALS ==========
+
+    function proposeParameterChange(
+        string memory title,
+        string memory description,
+        string memory parameter,
+        uint256 newValue
+    ) external returns (uint256) {
+        address[] memory targets = new address[](1);
+        uint256[] memory values = new uint256[](1);
+        string[] memory signatures = new string[](1);
+        bytes[] memory calldatas = new bytes[](1);
+
+        targets[0] = address(protocolGovernance);
+        values[0] = 0;
+
+        // Determine which parameter to update
+        if (keccak256(bytes(parameter)) == keccak256(bytes("minCollateralRatio"))) {
+            signatures[0] = "updateMinCollateralRatio(uint256)";
+        } else if (keccak256(bytes(parameter)) == keccak256(bytes("devFeeMint"))) {
+            signatures[0] = "updateDevFeeMint(uint256)";
+        } else if (keccak256(bytes(parameter)) == keccak256(bytes("devFeeRedeem"))) {
+            signatures[0] = "updateDevFeeRedeem(uint256)";
+        } else {
+            revert("GovernanceDAO: invalid parameter");
+        }
+
+        calldatas[0] = abi.encode(newValue);
+
+        uint256 proposalId = propose(
+            title,
+            description,
+            ProposalCategory.ParameterChange,
+            targets,
+            values,
+            signatures,
+            calldatas
+        );
+
+        emit ParameterChangeProposed(proposalId, parameter, 0, newValue);
+        return proposalId;
+    }
+
+    // ========== CONTRACT UPGRADE PROPOSALS ==========
+
+    function proposeContractUpgrade(
+        string memory title,
+        string memory description,
+        address oldContract,
+        address newContract,
+        string memory contractName
+    ) external returns (uint256) {
+        address[] memory targets = new address[](1);
+        uint256[] memory values = new uint256[](1);
+        string[] memory signatures = new string[](1);
+        bytes[] memory calldatas = new bytes[](1);
+
+        targets[0] = address(protocolGovernance);
+        values[0] = 0;
+        signatures[0] = string(abi.encodePacked("upgrade", contractName, "(address)"));
+        calldatas[0] = abi.encode(newContract);
+
+        uint256 proposalId = propose(
+            title,
+            description,
+            ProposalCategory.ContractUpgrade,
+            targets,
+            values,
+            signatures,
+            calldatas
+        );
+
+        emit ContractUpgradeProposed(proposalId, oldContract, newContract);
+        return proposalId;
+    }
+
+    // ========== VOTING ==========
+
+    function castVote(uint256 proposalId, uint8 support) external {
+        return _castVote(msg.sender, proposalId, support, "");
+    }
+
+    function castVoteWithReason(
+        uint256 proposalId,
+        uint8 support,
+        string calldata reason
+    ) external {
+        return _castVote(msg.sender, proposalId, support, reason);
+    }
+
+    function _castVote(
+        address voter,
+        uint256 proposalId,
+        uint8 support,
+        string memory reason
+    ) internal {
+        require(state(proposalId) == ProposalState.Active, "GovernanceDAO: voting is closed");
+        require(support <= 2, "GovernanceDAO: invalid vote type");
+
+        Proposal storage proposal = proposals[proposalId];
+        Receipt storage receipt = receipts[proposalId][voter];
+
+        require(!receipt.hasVoted, "GovernanceDAO: voter already voted");
+
+        uint256 votes = getVotingPower(voter);
+        require(votes > 0, "GovernanceDAO: no voting power");
+
+        receipt.hasVoted = true;
+        receipt.support = support;
+        receipt.votes = votes;
+        receipt.reason = reason;
+
+        if (support == 0) {
+            proposal.againstVotes = proposal.againstVotes.add(votes);
+        } else if (support == 1) {
+            proposal.forVotes = proposal.forVotes.add(votes);
+        } else {
+            proposal.abstainVotes = proposal.abstainVotes.add(votes);
+        }
+
+        emit VoteCast(voter, proposalId, support, votes, reason);
+    }
+
+    // ========== PROPOSAL EXECUTION ==========
+
+    function queue(uint256 proposalId) external {
+        require(
+            state(proposalId) == ProposalState.Succeeded,
+            "GovernanceDAO: proposal can only be queued if succeeded"
+        );
+
+        Proposal storage proposal = proposals[proposalId];
+        uint256 eta = block.timestamp.add(TIMELOCK_DELAY);
+        proposal.eta = eta;
+
+        emit ProposalQueued(proposalId, eta);
+    }
+
+    function execute(uint256 proposalId) external payable {
+        require(
+            state(proposalId) == ProposalState.Queued,
+            "GovernanceDAO: proposal can only be executed if queued"
+        );
+
+        Proposal storage proposal = proposals[proposalId];
+        require(block.timestamp >= proposal.eta, "GovernanceDAO: proposal hasn't surpassed timelock");
+        require(
+            block.timestamp <= proposal.eta.add(EXECUTION_WINDOW),
+            "GovernanceDAO: proposal execution window expired"
+        );
+
+        proposal.executed = true;
+
+        for (uint256 i = 0; i < proposal.targets.length; i++) {
+            _executeTransaction(
+                proposal.targets[i],
+                proposal.values[i],
+                proposal.signatures[i],
+                proposal.calldatas[i]
+            );
+        }
+
+        emit ProposalExecuted(proposalId);
+    }
+
+    function _executeTransaction(
+        address target,
+        uint256 value,
+        string memory signature,
+        bytes memory data
+    ) internal {
+        bytes memory callData;
+
+        if (bytes(signature).length == 0) {
+            callData = data;
+        } else {
+            callData = abi.encodePacked(bytes4(keccak256(bytes(signature))), data);
+        }
+
+        (bool success, ) = target.call{value: value}(callData);
+        require(success, "GovernanceDAO: transaction execution reverted");
+    }
+
+    function cancel(uint256 proposalId) external {
+        Proposal storage proposal = proposals[proposalId];
+        require(
+            msg.sender == proposal.proposer || getVotingPower(proposal.proposer) < categoryThreshold[proposal.category],
+            "GovernanceDAO: proposer above threshold"
+        );
+
+        require(
+            state(proposalId) != ProposalState.Executed,
+            "GovernanceDAO: cannot cancel executed proposal"
+        );
+
+        proposal.canceled = true;
+        emit ProposalCanceled(proposalId);
+    }
+
+    // ========== DELEGATION ==========
+
+    function delegate(address delegatee) external {
+        return _delegate(msg.sender, delegatee);
+    }
+
+    function _delegate(address delegator, address delegatee) internal {
+        address currentDelegate = delegates[delegator];
+        uint256 delegatorBalance = btc1usd.balanceOf(delegator);
+
+        delegates[delegator] = delegatee;
+
+        emit DelegateChanged(delegator, currentDelegate, delegatee);
+
+        _moveDelegates(currentDelegate, delegatee, delegatorBalance);
+    }
+
+    function _moveDelegates(address srcRep, address dstRep, uint256 amount) internal {
+        if (srcRep != dstRep && amount > 0) {
+            if (srcRep != address(0)) {
+                uint256 srcRepOld = delegatedVotes[srcRep];
+                uint256 srcRepNew = srcRepOld.sub(amount);
+                delegatedVotes[srcRep] = srcRepNew;
+                emit DelegateVotesChanged(srcRep, srcRepOld, srcRepNew);
+            }
+
+            if (dstRep != address(0)) {
+                uint256 dstRepOld = delegatedVotes[dstRep];
+                uint256 dstRepNew = dstRepOld.add(amount);
+                delegatedVotes[dstRep] = dstRepNew;
+                emit DelegateVotesChanged(dstRep, dstRepOld, dstRepNew);
+            }
+        }
+    }
+
+    // ========== VIEW FUNCTIONS ==========
+
+    function state(uint256 proposalId) public view returns (ProposalState) {
+        require(proposalId > 0 && proposalId <= proposalCount, "GovernanceDAO: invalid proposal id");
+
+        Proposal storage proposal = proposals[proposalId];
+
+        if (proposal.canceled) {
+            return ProposalState.Canceled;
+        } else if (block.number <= proposal.startBlock) {
+            return ProposalState.Pending;
+        } else if (block.number <= proposal.endBlock) {
+            return ProposalState.Active;
+        } else if (proposal.forVotes <= proposal.againstVotes || proposal.forVotes < getQuorum(proposal.category)) {
+            return ProposalState.Defeated;
+        } else if (proposal.executed) {
+            return ProposalState.Executed;
+        } else if (proposal.eta == 0) {
+            return ProposalState.Succeeded;
+        } else if (block.timestamp >= proposal.eta.add(EXECUTION_WINDOW)) {
+            return ProposalState.Expired;
+        } else {
+            return ProposalState.Queued;
+        }
+    }
+
+    function getVotingPower(address account) public view returns (uint256) {
+        address delegatee = delegates[account];
+        if (delegatee == address(0)) {
+            return btc1usd.balanceOf(account);
+        } else if (delegatee == account) {
+            return btc1usd.balanceOf(account).add(delegatedVotes[account]);
+        } else {
+            return 0; // Delegated away
+        }
+    }
+
+    function getQuorum(ProposalCategory category) public view returns (uint256) {
+        return btc1usd.totalSupply().mul(categoryQuorum[category]).div(100);
+    }
+
+    function getProposal(uint256 proposalId) external view returns (
+        address proposer,
+        string memory title,
+        string memory description,
+        ProposalCategory category,
+        uint256 forVotes,
+        uint256 againstVotes,
+        uint256 abstainVotes,
+        uint256 startBlock,
+        uint256 endBlock,
+        uint256 eta,
+        bool executed,
+        bool canceled
+    ) {
+        Proposal storage proposal = proposals[proposalId];
+        return (
+            proposal.proposer,
+            proposal.title,
+            proposal.description,
+            proposal.category,
+            proposal.forVotes,
+            proposal.againstVotes,
+            proposal.abstainVotes,
+            proposal.startBlock,
+            proposal.endBlock,
+            proposal.eta,
+            proposal.executed,
+            proposal.canceled
+        );
+    }
+
+    function getReceipt(uint256 proposalId, address voter) external view returns (Receipt memory) {
+        return receipts[proposalId][voter];
+    }
+
+    function getActions(uint256 proposalId) external view returns (
+        address[] memory targets,
+        uint256[] memory values,
+        string[] memory signatures,
+        bytes[] memory calldatas
+    ) {
+        Proposal storage proposal = proposals[proposalId];
+        return (proposal.targets, proposal.values, proposal.signatures, proposal.calldatas);
+    }
+
+    // ========== ADMIN FUNCTIONS ==========
+
+    /**
+     * @notice Transfer admin role (2-step process for safety)
+     */
+    function transferAdmin(address newAdmin) external onlyAdmin {
+        require(newAdmin != address(0), "GovernanceDAO: new admin is zero address");
+        pendingAdmin = newAdmin;
+    }
+
+    /**
+     * @notice Accept admin role
+     */
+    function acceptAdmin() external {
+        require(msg.sender == pendingAdmin, "GovernanceDAO: caller is not pending admin");
+        admin = pendingAdmin;
+        pendingAdmin = address(0);
+    }
+
+    /**
+     * @notice Toggle admin proposals on/off
+     */
+    function setAllowAdminProposals(bool allow) external onlyAdmin {
+        allowAdminProposals = allow;
+    }
+
+    /**
+     * @notice Toggle user proposals on/off
+     */
+    function setAllowUserProposals(bool allow) external onlyAdmin {
+        allowUserProposals = allow;
+    }
+
+    /**
+     * @notice Update category quorum requirement
+     */
+    function updateCategoryQuorum(ProposalCategory category, uint256 quorumPercentage) external onlyAdmin {
+        require(quorumPercentage > 0 && quorumPercentage <= 50, "GovernanceDAO: invalid quorum");
+        categoryQuorum[category] = quorumPercentage;
+    }
+
+    /**
+     * @notice Update category threshold requirement
+     */
+    function updateCategoryThreshold(ProposalCategory category, uint256 threshold) external onlyAdmin {
+        categoryThreshold[category] = threshold;
+    }
+}

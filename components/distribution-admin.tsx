@@ -9,24 +9,32 @@ import {
   Settings,
   BarChart3,
   AlertCircle,
-  Gift
+  Gift,
+  Shield
 } from 'lucide-react';
 import { formatPercentage } from '@/lib/protocol-math';
 import MerkleDistributionManagement from './merkle-distribution-management';
+import { hasUIAccess, getAuthStatus, getTransactionInstructions } from '@/lib/auth-config';
 
 interface DistributionAdminProps {
   collateralRatio: number;
   totalSupply: number;
+  onSetMerkleRoot?: (epoch: number, merkleRoot: string) => void;
+  onExecuteDistribution?: () => void;
 }
 
-export default function DistributionAdmin({ collateralRatio, totalSupply }: DistributionAdminProps) {
+export default function DistributionAdmin({ 
+  collateralRatio, 
+  totalSupply,
+  onSetMerkleRoot,
+  onExecuteDistribution 
+}: DistributionAdminProps) {
   const { address, isConnected } = useAccount();
   
-  // Admin check
-  const isAdmin = () => {
-    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835"; // From deployment
-    return address && address.toLowerCase() === adminAddress.toLowerCase();
-  };
+  // Use new auth system - separates UI access from transaction execution
+  const authStatus = getAuthStatus(address);
+  const canViewAdmin = authStatus.canViewAdmin;
+  const txInstructions = getTransactionInstructions();
 
   if (!isConnected) {
     return (
@@ -49,7 +57,7 @@ export default function DistributionAdmin({ collateralRatio, totalSupply }: Dist
     );
   }
 
-  if (!isAdmin()) {
+  if (!canViewAdmin) {
     return (
       <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-xl">
         <CardHeader>
@@ -58,15 +66,30 @@ export default function DistributionAdmin({ collateralRatio, totalSupply }: Dist
             Distribution Administration
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Access denied. This section is only available to administrators.
+              Access denied. This section is only available to UI controllers.
               <br />
               <span className="text-xs text-gray-400 mt-2 block">
                 Connected: {address?.slice(0, 6)}...{address?.slice(-4)}
               </span>
+              <span className="text-xs text-gray-400 mt-1 block">
+                Controller: {authStatus.controllerAddress?.slice(0, 6)}...{authStatus.controllerAddress?.slice(-4)}
+              </span>
+            </AlertDescription>
+          </Alert>
+          
+          <Alert className="bg-blue-500/10 border-blue-500/30">
+            <Shield className="h-4 w-4 text-blue-400" />
+            <AlertDescription className="text-blue-100">
+              <div className="font-semibold mb-2">Transaction Execution</div>
+              <div className="text-xs space-y-1">
+                {txInstructions.instructions.map((instruction, i) => (
+                  <div key={i}>• {instruction}</div>
+                ))}
+              </div>
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -76,6 +99,26 @@ export default function DistributionAdmin({ collateralRatio, totalSupply }: Dist
 
   return (
     <div className="space-y-6">
+      {/* Auth Status Banner */}
+      <Alert className={authStatus.isSafe ? "bg-green-500/10 border-green-500/30" : "bg-blue-500/10 border-blue-500/30"}>
+        <Shield className={`h-4 w-4 ${authStatus.isSafe ? 'text-green-400' : 'text-blue-400'}`} />
+        <AlertDescription className={authStatus.isSafe ? "text-green-100" : "text-blue-100"}>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-semibold">{authStatus.message}</div>
+              <div className="text-xs mt-1">
+                Connected: {address?.slice(0, 6)}...{address?.slice(-4)}
+              </div>
+            </div>
+            {!authStatus.isSafe && (
+              <Badge variant="outline" className="text-xs border-blue-400 text-blue-400">
+                Transactions via Safe
+              </Badge>
+            )}
+          </div>
+        </AlertDescription>
+      </Alert>
+
       {/* Admin Header */}
       <div className="bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 rounded-lg p-4">
         <div className="flex items-center gap-3">
@@ -100,7 +143,10 @@ export default function DistributionAdmin({ collateralRatio, totalSupply }: Dist
         <p className="text-gray-400 text-sm mb-4">
           Generate merkle trees, set roots, and manage claim distributions
         </p>
-        <MerkleDistributionManagement />
+        <MerkleDistributionManagement 
+          onSetMerkleRoot={onSetMerkleRoot}
+          onExecuteDistribution={onExecuteDistribution}
+        />
       </div>
 
       {/* Protocol Status Overview */}

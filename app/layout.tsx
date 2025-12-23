@@ -15,17 +15,20 @@ export const metadata: Metadata = {
   icons: {
     icon: '/favicon.png',
   },
-  viewport: {
+};
+
+export function generateViewport() {
+  return {
     width: 'device-width',
     initialScale: 1,
     maximumScale: 5,
     userScalable: true,
-  },
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#FAFAFA' },
-    { media: '(prefers-color-scheme: dark)', color: '#1E293B' },
-  ],
-};
+    themeColor: [
+      { media: '(prefers-color-scheme: light)', color: '#FAFAFA' },
+      { media: '(prefers-color-scheme: dark)', color: '#1E293B' },
+    ],
+  };
+}
 
 export default function RootLayout({
   children,

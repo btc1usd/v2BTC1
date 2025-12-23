@@ -11,17 +11,23 @@ import { createProviderWithFallback } from '@/lib/rpc-provider';
    CONFIG
 ===================================================== */
 
-const CHAIN_ID = 8453; // Base mainnet
+// Use the chain ID from environment variables
+const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+const IS_TESTNET = CHAIN_ID === 84532;
 const CONCURRENCY = Number(process.env.CONCURRENCY || 8);
 const FROM_BLOCK = '0x0';
 const TO_BLOCK = 'latest';
 const BTC1_DECIMALS = 8;
 
 const ALCHEMY_KEY = process.env.ALCHEMY_API_KEY!;
-const ALCHEMY_RPC = `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`;
+const ALCHEMY_RPC = IS_TESTNET
+  ? `https://base-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`
+  : `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`;
 
 const BASESCAN_API_KEY = process.env.BASESCAN_API_KEY;
-const BASESCAN_API_URL = 'https://api.basescan.org/api';
+const BASESCAN_API_URL = IS_TESTNET
+  ? 'https://api-sepolia.basescan.org/api'
+  : 'https://api.basescan.org/api';
 
 const BTC1 = ethers.getAddress(
   process.env.NEXT_PUBLIC_BTC1USD_CONTRACT!

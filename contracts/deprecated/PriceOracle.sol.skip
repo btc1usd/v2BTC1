@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import "./interfaces/IPriceOracle.sol";
+import "./libraries/SafeMath.sol";
+
+contract PriceOracle is IPriceOracle {
+    using SafeMath for uint256;
+
+    address public admin;
+    address public priceFeeder;
+    
+    uint256 private _btcPrice;
+    uint256 private _lastUpdate;
+    uint256 public constant STALE_THRESHOLD = 3600; // 1 hour
+    
+    // Mapping to store prices for different tokens
+    mapping(address => uint256) public tokenPrices;
+    mapping(address => uint256) public lastUpdates;
+    
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "PriceOracle: caller is not admin");
+        _;
+    }
+    
+    modifier onlyPriceFeeder() {
+        require(msg.sender == priceFeeder, "PriceOracle: caller is not price feeder");
+        _;
+    }
+    
+    event PriceUpdated(uint256 newPrice, uint256 timestamp);
+    event PriceFeederChanged(address indexed oldFeeder, address indexed newFeeder);
+    event TokenPriceUpdated(address indexed token, uint256 newPrice, uint256 timestamp);
+    
+    constructor(address _admin, uint256 _initialPrice) {
+        admin = _admin;
+        priceFeeder = _admin;
+        _btcPrice = _initialPrice;
+        _lastUpdate = block.timestamp;
+    }
+    
+    function setBTCPrice(uint256 _price) external onlyPriceFeeder {
+        require(_price > 0, "PriceOracle: price must be positive");
+        _btcPrice = _price;
+        _lastUpdate = block.timestamp;
+        emit PriceUpdated(_price, block.timestamp);
+    }
+    
+    // Add the missing updatePrice function for backward compatibility
+    function updatePrice() external onlyPriceFeeder {
+        _lastUpdate = block.timestamp;
+        emit PriceUpdated(_btcPrice, block.timestamp);
+    }
+    
+    // Add an overload of updatePrice that also updates the price value
+    function updatePrice(uint256 _newPrice) external onlyPriceFeeder {
+        require(_newPrice > 0, "PriceOracle: price must be positive");
+        _btcPrice = _newPrice;
+        _lastUpdate = block.timestamp;
+        emit PriceUpdated(_newPrice, block.timestamp);
+    }
+    
+    // Set price for a specific token
+    function setTokenPrice(address token, uint256 _price) external onlyPriceFeeder {
+        require(_price > 0, "PriceOracle: price must be positive");
+        tokenPrices[token] = _price;
+        lastUpdates[token] = block.timestamp;
+        emit TokenPriceUpdated(token, _price, block.timestamp);
+    }
+    
+    // Get price for a specific token
+    function getPrice(address token) external view override returns (uint256) {
+        if (token == address(0)) {
+            // Return BTC price for zero address or when specifically requested
+            require(!isStale(), "PriceOracle: price is stale");
+            return _btcPrice;
+        }
+        
+        // For other tokens, return their specific price
+        uint256 tokenPrice = tokenPrices[token];
+        uint256 lastUpdate = lastUpdates[token];
+        
+        require(tokenPrice > 0, "PriceOracle: token price not set");
+        require(block.timestamp.sub(lastUpdate) <= STALE_THRESHOLD, "PriceOracle: token price is stale");
+        
+        return tokenPrice;
+    }
+    
+    function setPriceFeeder(address _priceFeeder) external onlyAdmin {
+        address oldFeeder = priceFeeder;
+        priceFeeder = _priceFeeder;
+        emit PriceFeederChanged(oldFeeder, _priceFeeder);
+    }
+    
+    function getBTCPrice() external view override returns (uint256) {
+        require(!isStale(), "PriceOracle: price is stale");
+        return _btcPrice;
+    }
+    
+    function getLastUpdate() external view override returns (uint256) {
+        return _lastUpdate;
+    }
+    
+    function isStale() public view override returns (bool) {
+        return block.timestamp.sub(_lastUpdate) > STALE_THRESHOLD;
+    }
+    
+    function getCurrentPrice() external view returns (uint256) {
+        return _btcPrice;
+    }
+}

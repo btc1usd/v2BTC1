@@ -1,0 +1,77 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "timestamp": "2025-12-17T14:54:27.594Z",
+  "deployer": "0x0c8852280df8eF9fCb2a24e9d76f1ee4779773E9",
+  "upgradeable": true,
+  "proxyAdmin": "0xD974Dd0bc02DE60b826B3557bF90aaD3A0AfF5Ec",
+  "implementations": {
+    "btc1usd": "0x3615Ae71338eDb5632a93a3D22686C9867B6A1dC",
+    "vault": "0xe2cca9e916f8d80Ac1ed80Ff14AA77Dc62d73554",
+    "oracle": "0x96E204a2d262aB0b63309080a8Db1c383504f599",
+    "merkleDistributor": "0x640c61A6d0e2ad9A45295Ca3A72B52e5163D0834",
+    "endowmentManager": "0xAD64c84eBd73A70945828839A69ebDc7F245D2A2",
+    "oracle_old": "0xc5C6116E8e24832cE9B5Ef830eaB1E14579C111A"
+  },
+  "mockTokens": {
+    "wbtc": "0x8146e8A6994E7FBf1696708368a9EB287487D52B",
+    "cbbtc": "0xF31a775a4F903BEA15499BC57C387f558F5115b9",
+    "tbtc": "0x1C0bB5D454b0958D7b36E528276e2cb8D0D19235"
+  },
+  "wallets": {
+    "devWallet": "0x6fB4a8eAe1630c8D4706c9E7d6bd34b5E7A11FdF",
+    "endowmentWallet": "0xaE672C55A3351d3Da161d6c931A1dc4528FDA697",
+    "merklFeeCollector": "0xa7De5F83880248dCE3958c7ddDBb3f6281a38356"
+  },
+  "core": {
+    "btc1usd": "0x00979E8435bcA5F139B0D30a2D10df264Dabf6Fa",
+    "vault": "0x2544C5C6A988f31F58a645973c727691cd713449",
+    "chainlinkBTCOracle": "0xCE1f4e810a9E2fE48040C978BaC09d30b0e297D2",
+    "chainlinkFeed": "0x0FB99723Aee6f420beAD13e6bBB79b7E6F034298"
+  },
+  "distribution": {
+    "merkleDistributor": "0x9E58285682023c1058d10D7F77cD7BDB14C1Ec9D",
+    "weeklyDistribution": "0xE494004E69CeB88A423f3875f46e19e43D23d329"
+  },
+  "governance": {
+    "endowmentManager": "0x5a2680cD90E8445a6570F0794eCA40d3EBb56c87",
+    "protocolGovernance": "0xFFc7B39f756BC7d4cffCB9682674a53c687164Bd",
+    "dao": "0x5e093A03af5ceC22a8031872CeF17565B47a336e"
+  },
+  "config": {
+    "admin": "0xd315dADB86EeE6391C99FB2afae6181BC146216D",
+    "devWallet": "0x6fB4a8eAe1630c8D4706c9E7d6bd34b5E7A11FdF",
+    "endowmentWallet": "0xaE672C55A3351d3Da161d6c931A1dc4528FDA697",
+    "merklFeeCollector": "0xa7De5F83880248dCE3958c7ddDBb3f6281a38356",
+    "emergencyCouncil": "0x0c8852280df8eF9fCb2a24e9d76f1ee4779773E9",
+    "liveBTCPrice": "87564.17"
+  },
+  "explorerUrls": {
+    "mockWBTC": "https://sepolia.basescan.org/address/0x8146e8A6994E7FBf1696708368a9EB287487D52B",
+    "mockCBTC": "https://sepolia.basescan.org/address/0xF31a775a4F903BEA15499BC57C387f558F5115b9",
+    "mockTBTC": "https://sepolia.basescan.org/address/0x1C0bB5D454b0958D7b36E528276e2cb8D0D19235",
+    "devWallet": "https://sepolia.basescan.org/address/0x6fB4a8eAe1630c8D4706c9E7d6bd34b5E7A11FdF",
+    "endowmentWallet": "https://sepolia.basescan.org/address/0xaE672C55A3351d3Da161d6c931A1dc4528FDA697",
+    "merklFeeCollector": "https://sepolia.basescan.org/address/0xa7De5F83880248dCE3958c7ddDBb3f6281a38356",
+    "btc1usd": "https://sepolia.basescan.org/address/0x00979E8435bcA5F139B0D30a2D10df264Dabf6Fa",
+    "vault": "https://sepolia.basescan.org/address/0x2544C5C6A988f31F58a645973c727691cd713449",
+    "chainlinkBTCOracle": "https://sepolia.basescan.org/address/0xCE1f4e810a9E2fE48040C978BaC09d30b0e297D2",
+    "merkleDistributor": "https://sepolia.basescan.org/address/0x9E58285682023c1058d10D7F77cD7BDB14C1Ec9D",
+    "weeklyDistribution": "https://sepolia.basescan.org/address/0xE494004E69CeB88A423f3875f46e19e43D23d329",
+    "endowmentManager": "https://sepolia.basescan.org/address/0x5a2680cD90E8445a6570F0794eCA40d3EBb56c87",
+    "protocolGovernance": "https://sepolia.basescan.org/address/0xFFc7B39f756BC7d4cffCB9682674a53c687164Bd",
+    "dao": "https://sepolia.basescan.org/address/0x5e093A03af5ceC22a8031872CeF17565B47a336e"
+  },
+  "lastUpgrade": {
+    "timestamp": "2025-12-17T15:34:03.100Z",
+    "contract": "ChainlinkBTCOracle",
+    "oldImpl": "0xc5C6116E8e24832cE9B5Ef830eaB1E14579C111A",
+    "newImpl": "0x96E204a2d262aB0b63309080a8Db1c383504f599",
+    "txHash": "0x0694a48a93117fa6233bb4a6c6ecc475c1984eb6aa0062cf6ae32b7e42166c4e"
+  },
+  "lastProxyAdminUpgrade": {
+    "timestamp": "2025-12-17T15:54:49.701Z",
+    "oldProxyAdmin": "0xD974Dd0bc02DE60b826B3557bF90aaD3A0AfF5Ec",
+    "newProxyAdmin": "0xD974Dd0bc02DE60b826B3557bF90aaD3A0AfF5Ec"
+  }
+}

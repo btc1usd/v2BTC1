@@ -66,19 +66,20 @@ export function useLandingStats(): LandingStats {
     },
   });
 
-  // Fetch current collateral ratio
+  // Fetch current collateral ratio - using correct function name
   const { data: collateralRatioData, isLoading: isCollateralRatioLoading, isError: isCollateralRatioError, error: collateralRatioError } = useReadContract({
     address: CONTRACT_ADDRESSES.VAULT as `0x${string}`,
     abi: [{
       inputs: [],
-      name: "getCurrentCollateralRatio",
+      name: "getCollateralRatio",
       outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
       stateMutability: "view",
       type: "function",
     }],
-    functionName: 'getCurrentCollateralRatio',
+    functionName: 'getCollateralRatio',
     query: {
       enabled: !!CONTRACT_ADDRESSES.VAULT,
+      refetchInterval: 10000, // Refetch every 10 seconds
     },
   });
 

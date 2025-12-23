@@ -1,0 +1,296 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import "./interfaces/IBTC1USD.sol";
+import "./interfaces/IVault.sol";
+import "./WeeklyDistribution.sol";
+import "./EndowmentManager.sol";
+import "./PriceOracle.sol";
+import "./libraries/SafeMath.sol";
+
+contract ProtocolGovernance {
+    using SafeMath for uint256;
+
+    // Core contracts
+    BTC1USD public btc1usd;
+    Vault public vault;
+    WeeklyDistribution public weeklyDistribution;
+    EndowmentManager public endowmentManager;
+    PriceOracle public priceOracle;
+    
+    // Governance
+    address public admin;
+    address public pendingAdmin;
+    address public governanceDAO; // DAO contract address
+    uint256 public constant ADMIN_TRANSFER_DELAY = 2 days;
+    uint256 public adminTransferTimestamp;
+
+    // Emergency controls
+    bool public emergencyPaused;
+    address public emergencyCouncil;
+
+    // Upgrade management
+    mapping(string => address) public contractAddresses; // contract name => current implementation
+    
+    // Protocol parameters
+    struct ProtocolParams {
+        uint256 minCollateralRatio;
+        uint256 devFeeMint;
+        uint256 devFeeRedeem;
+        uint256 endowmentFeeMint;
+        bool parametersLocked;
+    }
+    
+    ProtocolParams public params;
+    
+    // Events
+    event AdminTransferInitiated(address indexed currentAdmin, address indexed newAdmin, uint256 effectiveTime);
+    event AdminTransferCompleted(address indexed oldAdmin, address indexed newAdmin);
+    event AdminTransferCancelled();
+    event EmergencyPause();
+    event EmergencyUnpause();
+    event ParametersUpdated();
+    event ParametersLocked();
+    
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "ProtocolGovernance: caller is not admin");
+        _;
+    }
+
+    modifier onlyAdminOrDAO() {
+        require(
+            msg.sender == admin || msg.sender == governanceDAO,
+            "ProtocolGovernance: caller is not admin or DAO"
+        );
+        _;
+    }
+
+    modifier onlyDAO() {
+        require(msg.sender == governanceDAO, "ProtocolGovernance: caller is not DAO");
+        _;
+    }
+
+    modifier onlyEmergencyCouncil() {
+        require(msg.sender == emergencyCouncil, "ProtocolGovernance: caller is not emergency council");
+        _;
+    }
+    
+    modifier whenNotEmergencyPaused() {
+        require(!emergencyPaused, "ProtocolGovernance: protocol is emergency paused");
+        _;
+    }
+    
+    modifier parametersNotLocked() {
+        require(!params.parametersLocked, "ProtocolGovernance: parameters are locked");
+        _;
+    }
+
+    constructor(
+        address _admin,
+        address _emergencyCouncil
+    ) {
+        admin = _admin;
+        emergencyCouncil = _emergencyCouncil;
+        
+        // Initialize default parameters
+        params = ProtocolParams({
+            minCollateralRatio: 1.10e18, // 110%
+            devFeeMint: 0.01e18, // 1%
+            devFeeRedeem: 0.001e18, // 0.1%
+            endowmentFeeMint: 0.001e18, // 0.1%
+            parametersLocked: false
+        });
+    }
+    
+    function initializeContracts(
+        address _btc1usd,
+        address _vault,
+        address _weeklyDistribution,
+        address _endowmentManager,
+        address _priceOracle
+    ) external onlyAdmin {
+        require(address(btc1usd) == address(0), "ProtocolGovernance: already initialized");
+        
+        btc1usd = BTC1USD(_btc1usd);
+        vault = Vault(_vault);
+        weeklyDistribution = WeeklyDistribution(_weeklyDistribution);
+        endowmentManager = EndowmentManager(_endowmentManager);
+        priceOracle = PriceOracle(_priceOracle);
+    }
+    
+    // Admin transfer with time delay for security
+    function initiateAdminTransfer(address newAdmin) external onlyAdmin {
+        require(newAdmin != address(0), "ProtocolGovernance: new admin is zero address");
+        require(newAdmin != admin, "ProtocolGovernance: new admin is current admin");
+        
+        pendingAdmin = newAdmin;
+        adminTransferTimestamp = block.timestamp.add(ADMIN_TRANSFER_DELAY);
+        
+        emit AdminTransferInitiated(admin, newAdmin, adminTransferTimestamp);
+    }
+    
+    function completeAdminTransfer() external {
+        require(msg.sender == pendingAdmin, "ProtocolGovernance: caller is not pending admin");
+        require(block.timestamp >= adminTransferTimestamp, "ProtocolGovernance: transfer delay not met");
+        require(pendingAdmin != address(0), "ProtocolGovernance: no pending admin");
+        
+        address oldAdmin = admin;
+        admin = pendingAdmin;
+        pendingAdmin = address(0);
+        adminTransferTimestamp = 0;
+        
+        emit AdminTransferCompleted(oldAdmin, admin);
+    }
+    
+    function cancelAdminTransfer() external onlyAdmin {
+        pendingAdmin = address(0);
+        adminTransferTimestamp = 0;
+        emit AdminTransferCancelled();
+    }
+
+    // Simple admin transfer for initial deployment (no time delay)
+    function setAdmin(address _admin) external onlyAdmin {
+        require(_admin != address(0), "ProtocolGovernance: admin is zero address");
+        admin = _admin;
+    }
+
+    // Emergency controls
+    function emergencyPause() external onlyEmergencyCouncil {
+        emergencyPaused = true;
+        
+        // Pause vault
+        vault.emergencyPause();
+        
+        emit EmergencyPause();
+    }
+    
+    function emergencyUnpause() external onlyAdmin {
+        emergencyPaused = false;
+        
+        // Unpause vault
+        vault.emergencyUnpause();
+        
+        emit EmergencyUnpause();
+    }
+    
+    // Parameter management
+    function updateMinCollateralRatio(uint256 newRatio) external onlyAdmin parametersNotLocked {
+        require(newRatio >= 1.05e18, "ProtocolGovernance: ratio too low"); // Minimum 105%
+        require(newRatio <= 1.50e18, "ProtocolGovernance: ratio too high"); // Maximum 150%
+        
+        params.minCollateralRatio = newRatio;
+        emit ParametersUpdated();
+    }
+    
+    function updateDevFees(uint256 mintFee, uint256 redeemFee) external onlyAdmin parametersNotLocked {
+        require(mintFee <= 0.05e18, "ProtocolGovernance: mint fee too high"); // Max 5%
+        require(redeemFee <= 0.01e18, "ProtocolGovernance: redeem fee too high"); // Max 1%
+        
+        params.devFeeMint = mintFee;
+        params.devFeeRedeem = redeemFee;
+        emit ParametersUpdated();
+    }
+    
+    function updateEndowmentFee(uint256 fee) external onlyAdmin parametersNotLocked {
+        require(fee <= 0.01e18, "ProtocolGovernance: endowment fee too high"); // Max 1%
+        
+        params.endowmentFeeMint = fee;
+        emit ParametersUpdated();
+    }
+    
+    function lockParameters() external onlyAdmin {
+        params.parametersLocked = true;
+        emit ParametersLocked();
+    }
+    
+    // Contract management
+    function addCollateralToken(address token) external onlyAdmin whenNotEmergencyPaused {
+        vault.addCollateral(token);
+    }
+    
+    function removeCollateralToken(address token) external onlyAdmin {
+        vault.removeCollateral(token);
+    }
+    
+    function updatePriceOracle(address newOracle) external onlyAdminOrDAO {
+        priceOracle = PriceOracle(newOracle);
+        contractAddresses["PriceOracle"] = newOracle;
+    }
+
+    function setEmergencyCouncil(address newCouncil) external onlyAdminOrDAO {
+        emergencyCouncil = newCouncil;
+    }
+
+    // DAO Integration Functions
+    function setGovernanceDAO(address _governanceDAO) external onlyAdmin {
+        require(_governanceDAO != address(0), "ProtocolGovernance: DAO is zero address");
+        governanceDAO = _governanceDAO;
+    }
+
+    // Contract Upgrade Functions (DAO-controlled)
+    function upgradeVault(address newVault) external onlyDAO {
+        require(newVault != address(0), "ProtocolGovernance: new vault is zero address");
+        vault = Vault(newVault);
+        contractAddresses["Vault"] = newVault;
+    }
+
+    function upgradeWeeklyDistribution(address newDistribution) external onlyDAO {
+        require(newDistribution != address(0), "ProtocolGovernance: new distribution is zero address");
+        weeklyDistribution = WeeklyDistribution(newDistribution);
+        contractAddresses["WeeklyDistribution"] = newDistribution;
+    }
+
+    function upgradeEndowmentManager(address newEndowment) external onlyDAO {
+        require(newEndowment != address(0), "ProtocolGovernance: new endowment is zero address");
+        endowmentManager = EndowmentManager(newEndowment);
+        contractAddresses["EndowmentManager"] = newEndowment;
+    }
+
+    function upgradeBTC1USD(address newToken) external onlyDAO {
+        require(newToken != address(0), "ProtocolGovernance: new token is zero address");
+        btc1usd = BTC1USD(newToken);
+        contractAddresses["BTC1USD"] = newToken;
+    }
+
+    // Parameter updates accessible by DAO
+    function updateMinCollateralRatioDAO(uint256 newRatio) external onlyDAO parametersNotLocked {
+        require(newRatio >= 1.05e18, "ProtocolGovernance: ratio too low");
+        require(newRatio <= 1.50e18, "ProtocolGovernance: ratio too high");
+
+        params.minCollateralRatio = newRatio;
+        emit ParametersUpdated();
+    }
+
+    function updateDevFeeMint(uint256 newFee) external onlyDAO parametersNotLocked {
+        require(newFee <= 0.05e18, "ProtocolGovernance: fee too high");
+
+        params.devFeeMint = newFee;
+        emit ParametersUpdated();
+    }
+
+    function updateDevFeeRedeem(uint256 newFee) external onlyDAO parametersNotLocked {
+        require(newFee <= 0.01e18, "ProtocolGovernance: fee too high");
+
+        params.devFeeRedeem = newFee;
+        emit ParametersUpdated();
+    }
+    
+    // View functions
+    function getProtocolStatus() external view returns (
+        bool isHealthy,
+        uint256 collateralRatio,
+        uint256 totalSupply,
+        uint256 totalCollateralValue,
+        bool isPaused
+    ) {
+        isHealthy = vault.isHealthy();
+        collateralRatio = vault.getCurrentCollateralRatio();
+        totalSupply = btc1usd.totalSupply();
+        totalCollateralValue = vault.getTotalCollateralValue();
+        isPaused = emergencyPaused;
+    }
+    
+    function getProtocolParams() external view returns (ProtocolParams memory) {
+        return params;
+    }
+}

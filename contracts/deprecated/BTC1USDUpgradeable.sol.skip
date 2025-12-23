@@ -1,0 +1,121 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+
+/**
+ * @title BTC1USDUpgradeable
+ * @notice Upgradeable ERC20 stablecoin used by Vault
+ *
+ * SECURITY DESIGN:
+ * - ❌ No forced burns
+ * - ✅ Vault can burn ONLY tokens it owns
+ * - ✅ No arbitrary balance modification
+ * - ✅ Minting restricted to Vault / Distribution
+ * - ✅ Upgrade-safe (initializer protected)
+ */
+contract BTC1USDUpgradeable is
+    Initializable,
+    ERC20Upgradeable,
+    OwnableUpgradeable
+{
+    /// @dev Authorized minters
+    address public vault;
+    address public weeklyDistribution;
+
+    /// @dev Emergency pause flag (transfer-level)
+    bool public paused;
+
+    /// @dev Events
+    event VaultSet(address indexed vault);
+    event WeeklyDistributionSet(address indexed distribution);
+    event Paused();
+    event Unpaused();
+
+    /// @dev Modifiers
+    modifier onlyVaultOrDistribution() {
+        require(
+            msg.sender == vault || msg.sender == weeklyDistribution,
+            "BTC1USD: not authorized"
+        );
+        _;
+    }
+
+    modifier onlyVault() {
+        require(msg.sender == vault, "BTC1USD: caller is not vault");
+        _;
+    }
+
+    modifier whenNotPaused() {
+        require(!paused, "BTC1USD: paused");
+        _;
+    }
+
+    // ===== Initializer =====
+    function initialize(address initialOwner) external initializer {
+        require(initialOwner != address(0), "BTC1USD: owner zero");
+
+        __ERC20_init("BTC1USD", "BTC1");
+        __Ownable_init(initialOwner);
+    }
+
+    // ===== Admin configuration =====
+    function setVault(address _vault) external onlyOwner {
+        require(_vault != address(0), "BTC1USD: vault zero");
+        vault = _vault;
+        emit VaultSet(_vault);
+    }
+
+    function setWeeklyDistribution(address _distribution) external onlyOwner {
+        require(_distribution != address(0), "BTC1USD: distribution zero");
+        weeklyDistribution = _distribution;
+        emit WeeklyDistributionSet(_distribution);
+    }
+
+    function pause() external onlyOwner {
+        paused = true;
+        emit Paused();
+    }
+
+    function unpause() external onlyOwner {
+        paused = false;
+        emit Unpaused();
+    }
+
+    // ===== Minting =====
+    function mint(address to, uint256 amount) external onlyVaultOrDistribution {
+        require(to != address(0), "BTC1USD: mint to zero");
+        _mint(to, amount);
+    }
+
+    // ===== Burning =====
+    /**
+     * @dev Vault burns tokens from a specific address.
+     *      This matches the interface requirement.
+     */
+    function burn(address from, uint256 amount) external onlyVault whenNotPaused {
+        // Security check - can only burn from the specified address
+        require(from != address(0), "BTC1USD: burn from zero address");
+        require(from == msg.sender, "BTC1USD: can only burn own tokens");
+        _burn(from, amount);
+    }
+
+    /**
+     * @dev Internal burn function for burning own tokens
+     */
+    function burn(uint256 amount) public whenNotPaused {
+        _burn(msg.sender, amount);
+    }
+
+    /**
+     * @dev Disable burnFrom to prevent allowance-based forced burns.
+     *      Redemption MUST use transfer → burn pattern in Vault.
+     */
+    function burnFrom(address, uint256) public pure {
+        revert("BTC1USD: burnFrom disabled");
+    }
+
+
+}

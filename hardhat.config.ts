@@ -19,6 +19,7 @@ const config: HardhatUserConfig = {
         runs: 200,
       },
       viaIR: true,
+      evmVersion: "shanghai", // Latest stable EVM version for Solidity 0.8.20
     },
   },
   networks: {

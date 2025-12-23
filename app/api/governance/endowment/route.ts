@@ -27,7 +27,9 @@ export async function GET(request: NextRequest) {
     if (action === 'stats') {
       // Return overview stats
       try {
-        const provider = await createProviderWithFallback(8453, {
+        // Use the chain ID from environment variables
+        const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+        const provider = await createProviderWithFallback(chainId, {
           timeout: 15000,
           maxRetries: 3,
           retryDelay: 2000,
@@ -77,8 +79,10 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Use the chain ID from environment variables
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
     // Use robust provider with fallback
-    const provider = await createProviderWithFallback(8453, {
+    const provider = await createProviderWithFallback(chainId, {
       timeout: 15000, // Increased timeout
       maxRetries: 3,
       retryDelay: 2000, // Increased delay

@@ -24,8 +24,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Use robust provider with fallback
-    const provider = await createProviderWithFallback(8453, {
+    // Use the chain ID from environment variables
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+    const provider = await createProviderWithFallback(chainId, {
       timeout: 15000, // Increased timeout
       maxRetries: 3,
       retryDelay: 2000, // Increased delay
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
     });
 
     const governanceDAO = new ethers.Contract(
-      process.env.NEXT_PUBLIC_GOVERNANCE_DAO_CONTRACT || CONTRACT_ADDRESSES.GOVERNANCE_DAO,
+      process.env.NEXT_PUBLIC_DAO_CONTRACT || CONTRACT_ADDRESSES.GOVERNANCE_DAO,
       GOVERNANCE_DAO_ABI,
       provider
     );
@@ -74,8 +75,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use robust provider with fallback
-    const provider = await createProviderWithFallback(8453, {
+    // Use the chain ID from environment variables
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+    const provider = await createProviderWithFallback(chainId, {
       timeout: 15000, // Increased timeout
       maxRetries: 3,
       retryDelay: 2000, // Increased delay
@@ -83,7 +85,7 @@ export async function POST(request: NextRequest) {
     });
 
     const governanceDAO = new ethers.Contract(
-      process.env.NEXT_PUBLIC_GOVERNANCE_DAO_CONTRACT || CONTRACT_ADDRESSES.GOVERNANCE_DAO,
+      process.env.NEXT_PUBLIC_DAO_CONTRACT || CONTRACT_ADDRESSES.GOVERNANCE_DAO,
       GOVERNANCE_DAO_ABI,
       provider
     );

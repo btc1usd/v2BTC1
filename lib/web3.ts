@@ -22,7 +22,9 @@ export const getProvider = async () => {
   
   // For server-side usage, use fallback RPC providers
   try {
-    return await createProviderWithFallback(8453, {
+    // Use the chain ID from environment variables
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+    return await createProviderWithFallback(chainId, {
       timeout: 15000, // Increased timeout
       maxRetries: 3,
       retryDelay: 2000, // Increased delay
@@ -31,7 +33,11 @@ export const getProvider = async () => {
   } catch (error) {
     console.error("Failed to create provider with fallback:", error);
     // Final fallback to default provider
-    return new JsonRpcProvider("https://mainnet.base.org", 8453);
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+    const rpcUrl = chainId === 84532 
+      ? "https://sepolia.base.org" 
+      : "https://mainnet.base.org";
+    return new JsonRpcProvider(rpcUrl, chainId);
   }
 }
 
@@ -178,7 +184,7 @@ export const getProtocolStats = async () => {
         canDistribute,
         nextDistribution: Number(nextDistribution),
       }
-    }, 8453, { // Base Mainnet chain ID
+    }, Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453"), { // Use chain ID from environment
       timeout: 15000, // Increased timeout
       maxRetries: 3,
       retryDelay: 2000,

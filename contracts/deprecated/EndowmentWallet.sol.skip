@@ -1,0 +1,253 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/**
+ * @title EndowmentWallet
+ * @notice Manages endowment wallet addresses and distributes ERC20 tokens to multiple recipients.
+ */
+contract EndowmentWallet is ReentrancyGuard, Ownable {
+    using SafeERC20 for IERC20;
+
+    constructor(address initialOwner) Ownable(initialOwner) {}
+
+    // Structure to hold wallet information
+    struct WalletInfo {
+        string name;
+        string description;
+        bool isActive;
+    }
+
+    // Mapping of wallet addresses to their information
+    mapping(address => WalletInfo) public walletInfos;
+
+    // List of all wallet addresses
+    address[] public walletAddresses;
+
+    // Distribution tracking
+    struct DistributionStats {
+        uint256 totalDistributions;      // Total number of batch distributions
+        uint256 totalAmountDistributed;  // Total amount distributed (in token decimals)
+        uint256 totalRecipients;         // Total recipients across all distributions
+        uint256 totalFailed;             // Total failed transfers
+    }
+
+    // Per-token distribution statistics
+    mapping(address => DistributionStats) public distributionStats;
+
+    // Global distribution count (across all tokens)
+    uint256 public totalDistributionCount;
+
+    // Events
+    event IndividualTransfer(address indexed token, address indexed to, uint256 amount);
+    event TransferFailed(address indexed token, address indexed to, uint256 amount);
+    event BatchTransferCompleted(address indexed token, uint256 totalRecipients, uint256 totalSent, uint256 totalFailed);
+    event WalletAdded(address indexed wallet, string name);
+    event WalletUpdated(address indexed wallet, string name);
+    event WalletRemoved(address indexed wallet);
+    event WalletActivated(address indexed wallet);
+    event WalletDeactivated(address indexed wallet);
+
+    /**
+     * @notice Add a new wallet to the distribution list
+     * @param wallet Wallet address to add
+     * @param name Name of the wallet
+     * @param description Description of the wallet
+     */
+    function addWallet(
+        address wallet,
+        string memory name,
+        string memory description
+    ) external onlyOwner {
+        require(wallet != address(0), "EndowmentWallet: invalid wallet address");
+        require(bytes(name).length > 0, "EndowmentWallet: name cannot be empty");
+        require(!walletInfos[wallet].isActive, "EndowmentWallet: wallet already exists");
+
+        walletInfos[wallet] = WalletInfo({
+            name: name,
+            description: description,
+            isActive: true
+        });
+        
+        walletAddresses.push(wallet);
+        
+        emit WalletAdded(wallet, name);
+    }
+
+    /**
+     * @notice Update an existing wallet's information
+     * @param wallet Wallet address to update
+     * @param name New name of the wallet
+     * @param description New description of the wallet
+     */
+    function updateWallet(
+        address wallet,
+        string memory name,
+        string memory description
+    ) external onlyOwner {
+        require(wallet != address(0), "EndowmentWallet: invalid wallet address");
+        require(bytes(name).length > 0, "EndowmentWallet: name cannot be empty");
+        require(walletInfos[wallet].isActive, "EndowmentWallet: wallet does not exist");
+        
+        walletInfos[wallet].name = name;
+        walletInfos[wallet].description = description;
+        
+        emit WalletUpdated(wallet, name);
+    }
+
+    /**
+     * @notice Remove a wallet from the distribution list
+     * @param wallet Wallet address to remove
+     */
+    function removeWallet(address wallet) external onlyOwner {
+        require(wallet != address(0), "EndowmentWallet: invalid wallet address");
+        require(walletInfos[wallet].isActive, "EndowmentWallet: wallet does not exist");
+        
+        // Remove wallet from mapping
+        delete walletInfos[wallet];
+        
+        // Remove wallet from array
+        for (uint256 i = 0; i < walletAddresses.length; i++) {
+            if (walletAddresses[i] == wallet) {
+                walletAddresses[i] = walletAddresses[walletAddresses.length - 1];
+                walletAddresses.pop();
+                break;
+            }
+        }
+        
+        emit WalletRemoved(wallet);
+    }
+
+    /**
+     * @notice Activate a wallet
+     * @param wallet Wallet address to activate
+     */
+    function activateWallet(address wallet) external onlyOwner {
+        require(wallet != address(0), "EndowmentWallet: invalid wallet address");
+        require(walletInfos[wallet].isActive == false, "EndowmentWallet: wallet already active");
+        
+        walletInfos[wallet].isActive = true;
+        emit WalletActivated(wallet);
+    }
+
+    /**
+     * @notice Deactivate a wallet
+     * @param wallet Wallet address to deactivate
+     */
+    function deactivateWallet(address wallet) external onlyOwner {
+        require(wallet != address(0), "EndowmentWallet: invalid wallet address");
+        require(walletInfos[wallet].isActive, "EndowmentWallet: wallet not active");
+        
+        walletInfos[wallet].isActive = false;
+        emit WalletDeactivated(wallet);
+    }
+
+    /**
+     * @notice Get all wallet addresses
+     * @return Array of wallet addresses
+     */
+    function getWalletAddresses() external view returns (address[] memory) {
+        return walletAddresses;
+    }
+
+   
+    function getWalletInfo(address wallet) external view returns (
+        string memory name,
+        string memory description,
+        bool isActive
+    ) {
+        WalletInfo memory info = walletInfos[wallet];
+        return (info.name, info.description, info.isActive);
+    }
+
+    /**
+     * @notice Batch transfer tokens (non-reverting best-effort mode).
+     * @param token ERC20 token address to distribute.
+     * @param recipients List of recipient wallet addresses.
+     * @param amounts List of token amounts corresponding to each recipient.
+     */
+    function batchTransfer(
+        IERC20 token,
+        address[] calldata recipients,
+        uint256[] calldata amounts
+    ) external nonReentrant onlyOwner {
+        require(recipients.length == amounts.length, "length mismatch");
+        require(recipients.length > 0, "no recipients");
+
+        uint256 totalSent = 0;
+        uint256 totalFailed = 0;
+
+        for (uint256 i = 0; i < recipients.length; ++i) {
+            address to = recipients[i];
+            uint256 amount = amounts[i];
+
+            // attempt safeTransfer in low-level call to catch reverts
+            (bool success, bytes memory data) = address(token).call(
+                abi.encodeWithSelector(token.transfer.selector, to, amount)
+            );
+
+            // Some tokens return false instead of reverting — check that too
+            if (success && (data.length == 0 || abi.decode(data, (bool)))) {
+                emit IndividualTransfer(address(token), to, amount);
+                totalSent += amount;
+            } else {
+                emit TransferFailed(address(token), to, amount);
+                totalFailed++;
+            }
+        }
+
+        // Update distribution statistics
+        address tokenAddress = address(token);
+        DistributionStats storage stats = distributionStats[tokenAddress];
+        stats.totalDistributions++;
+        stats.totalAmountDistributed += totalSent;
+        stats.totalRecipients += recipients.length;
+        stats.totalFailed += totalFailed;
+
+        // Increment global distribution count
+        totalDistributionCount++;
+
+        emit BatchTransferCompleted(tokenAddress, recipients.length, totalSent, totalFailed);
+    }
+
+    /**
+     * @notice Get distribution statistics for a specific token
+     * @param token Token address to query
+     * @return totalDistributions Total number of batch distributions
+     * @return totalAmountDistributed Total amount distributed
+     * @return totalRecipients Total recipients across all distributions
+     * @return totalFailed Total failed transfers
+     */
+    function getDistributionStats(address token) external view returns (
+        uint256 totalDistributions,
+        uint256 totalAmountDistributed,
+        uint256 totalRecipients,
+        uint256 totalFailed
+    ) {
+        DistributionStats memory stats = distributionStats[token];
+        return (
+            stats.totalDistributions,
+            stats.totalAmountDistributed,
+            stats.totalRecipients,
+            stats.totalFailed
+        );
+    }
+
+    /**
+     * @notice Get total distribution count across all tokens
+     * @return Total number of distributions
+     */
+    function getTotalDistributionCount() external view returns (uint256) {
+        return totalDistributionCount;
+    }
+
+    /**
+     * @notice Allows owner to recover any ERC20 tokens mistakenly sent to this contract.
+     */
+    function withdrawToken(IERC20 token, address to, uint256 amount) external onlyOwner {
+        token.safeTransfer(to, amount);
+    }
+}

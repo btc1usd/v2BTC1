@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import "./interfaces/IBTC1USD.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
+
+contract BTC1USD is ERC20, Ownable2Step, IBTC1USD {
+    address public vault;
+    address public weeklyDistribution;
+    bool public criticalParamsLocked;
+
+    modifier onlyVaultOrDistribution() {
+        require(vault != address(0), "BTC1USD: vault not set");
+        require(weeklyDistribution != address(0), "BTC1USD: distribution not set");
+        require(
+            msg.sender == vault || msg.sender == weeklyDistribution,
+            "BTC1USD: unauthorized minter"
+        );
+        _;
+    }
+
+    modifier onlyOwnerUnlocked() {
+        require(!criticalParamsLocked, "BTC1USD: params locked");
+        _;
+    }
+
+    event VaultChanged(address indexed oldVault, address indexed newVault);
+    event WeeklyDistributionChanged(address indexed oldDistribution, address indexed newDistribution);
+    event CriticalParamsLocked(address indexed owner);
+
+    constructor(address initialOwner)
+        ERC20("BTC1USD", "BTC1")
+        Ownable(initialOwner)
+    {
+        // Owner validation is handled by Ownable constructor in OZ v5.x
+    }
+
+    function decimals() public pure override returns (uint8) {
+        return 8;
+    }
+
+    function setVault(address _vault) external onlyOwnerUnlocked onlyOwner {
+        require(_vault != address(0), "BTC1USD: vault zero address");
+        address old = vault;
+        vault = _vault;
+        emit VaultChanged(old, _vault);
+    }
+
+    function setWeeklyDistribution(address _weeklyDistribution)
+        external
+        onlyOwnerUnlocked
+        onlyOwner
+    {
+        require(_weeklyDistribution != address(0), "BTC1USD: distribution zero address");
+        address old = weeklyDistribution;
+        weeklyDistribution = _weeklyDistribution;
+        emit WeeklyDistributionChanged(old, _weeklyDistribution);
+    }
+
+    function lockCriticalParams() external onlyOwner {
+        require(!criticalParamsLocked, "BTC1USD: already locked");
+        criticalParamsLocked = true;
+        emit CriticalParamsLocked(owner());
+    }
+
+    function mint(address to, uint256 amount)
+        external
+        override
+        onlyVaultOrDistribution
+    {
+        _mint(to, amount);
+    }
+
+    function burn(uint256 amount) external {
+        _burn(msg.sender, amount);
+    }
+
+    function burnFrom(address from, uint256 amount) external {
+        _spendAllowance(from, msg.sender, amount);
+        _burn(from, amount);
+    }
+}

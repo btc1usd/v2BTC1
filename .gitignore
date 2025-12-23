@@ -60,3 +60,8 @@ typechain-types/
 
 # RPC Cache
 .rpc-provider-cache.json
+
+# Documentation files (except README.md files)
+*.md
+!README.md
+!**/README.md

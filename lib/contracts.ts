@@ -1,72 +1,72 @@
 // Contract addresses and ABIs for BTC1USD Protocol
 export const CONTRACT_ADDRESSES = {
-  // Updated from deployment-base-mainnet.json (2025-12-06T18:24:12.589Z)
+  // Updated from deployment-base-sepolia.json (2025-12-20T16:27:32.928Z)
   BTC1USD:
     process.env.NEXT_PUBLIC_BTC1USD_CONTRACT ||
-    "0xcC1e248Dd444d7ce05822AffBb3001e4a3b779da",
+    "0xcb0d52E338A2d00ee452eDC5Be16bD79b104e367",
   BTC1USD_CONTRACT:
     process.env.NEXT_PUBLIC_BTC1USD_CONTRACT ||
-    "0xcC1e248Dd444d7ce05822AffBb3001e4a3b779da",
+    "0xcb0d52E338A2d00ee452eDC5Be16bD79b104e367",
   VAULT:
     process.env.NEXT_PUBLIC_VAULT_CONTRACT ||
-    "0x6926C757e990C8f2999c09bAE3F91D6b5dB0c398",
+    "0xF34b74275e91C00E9B62AFDc144ed908BeB95a3B",
   CHAINLINK_BTC_ORACLE:
     process.env.NEXT_PUBLIC_PRICE_ORACLE_CONTRACT ||
-    "0xc7d7a18abC782AaE0dcdf7e2e554831c3d3c28E0",
+    "0xAACE9dDdC7710ee9B00f5E7B3871a0d76A4f6B2A",
   PRICE_ORACLE_CONTRACT:
     process.env.NEXT_PUBLIC_PRICE_ORACLE_CONTRACT ||
-    "0xc7d7a18abC782AaE0dcdf7e2e554831c3d3c28E0",
+    "0xAACE9dDdC7710ee9B00f5E7B3871a0d76A4f6B2A",
   CHAINLINK_FEED:
     process.env.NEXT_PUBLIC_CHAINLINK_FEED ||
     "0x0FB99723Aee6f420beAD13e6bBB79b7E6F034298",
   WEEKLY_DISTRIBUTION:
     process.env.NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT ||
-    "0x6952F350074418b4fe0B7b3d577222C3Bd481d66",
+    "0x0e9cbA01190FaBe96780accC2c3CD5e2E4F56AEB",
   MERKLE_DISTRIBUTOR:
     process.env.NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT ||
-    "0x4adc998041Fa711D78633021901C09610e27c76C",
+    "0x3B08DF928De339F782C0864A2ea512070F9A004e",
   ENDOWMENT_MANAGER:
     process.env.NEXT_PUBLIC_ENDOWMENT_MANAGER_CONTRACT ||
-    "0x88E1fB45EAf4630f2b83c159467F24E5E3d67C3e",
+    "0xfC4F7EF60037deb67A141939aec1A68F7b7d8b38",
   PROTOCOL_GOVERNANCE:
     process.env.NEXT_PUBLIC_PROTOCOL_GOVERNANCE_CONTRACT ||
-    "0xab2836D0E2145a7491b3dD1B342FE9ea524F9728",
+    "0xB86975f4F3998d37DC5533D885b2FEe9c84EECD0",
   GOVERNANCE_DAO:
     process.env.NEXT_PUBLIC_DAO_CONTRACT ||
-    "0x89C3Ef75Bfc380151Da6Ca821b44447418c2Df18",
+    "0x91f62074663d8646fc1633Cd9147EE47A82527D9",
   PROXY_ADMIN:
     process.env.NEXT_PUBLIC_PROXY_ADMIN_CONTRACT ||
-    "0x0000000000000000000000000000000000000000",
+    "0x953A81127155944149E6E8452E5fB57A09a8cf3C",
 
   // Wallet Smart Contract addresses (with on-chain distribution tracking)
   DEV_WALLET:
     process.env.NEXT_PUBLIC_DEV_WALLET_CONTRACT ||
-    "0x98696877e7FFA6B96465f94E28c9E0253ed5DA05",
+    "0x7f0b40041EB95Bd116B61B25476E36dF40560e41",
   ENDOWMENT_WALLET:
     process.env.NEXT_PUBLIC_ENDOWMENT_WALLET_CONTRACT ||
-    "0x2DF48B9d946053C8cb658970b604FA68E200A23A",
+    "0x70fE344EFc6FCE4CFc9664dF2a828E9Bcf2067C9",
   MERKLE_FEE_COLLECTOR:
     process.env.NEXT_PUBLIC_MERKLE_FEE_COLLECTOR_CONTRACT ||
-    "0xBca6Bd0B9F579d7Bf7fdf854e4Ea42C601Bde0e4",
+    "0x94423868074D0D4a7C9d1CD62e6054f2e5fCBE28",
   MERKLE_DISTRIBUTOR_WALLET:
     process.env.NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT ||
-    "0x4adc998041Fa711D78633021901C09610e27c76C",
+    "0x3B08DF928De339F782C0864A2ea512070F9A004e",
 
-  // Collateral Token addresses
+  // Collateral Token addresses (Mock tokens for Base Sepolia)
   WBTC_TOKEN:
     process.env.NEXT_PUBLIC_WBTC_TOKEN ||
-    "0x0b7fCdb2Ac3B6f1821e6FEbcAb6B94ec321802C2",
+    "0x8A2d17696D5A6dc3dbaFB374d5C633E1a2BA88C6",
   CBBTC_TOKEN:
     process.env.NEXT_PUBLIC_CBBTC_TOKEN ||
-    "0xC5D5eC386e7D07ca0aF779031e2a43bBA79353A8",
+    "0xbd282E5BE062B97c50b3f7d7c113308EFB673cC8",
   TBTC_TOKEN:
     process.env.NEXT_PUBLIC_TBTC_TOKEN ||
-    "0x977422a3E5a5974c7411e704d2d312848A74a896",
+    "0x22463d37f88D79a2eEDC7C236CA0bb5DA5E1B108",
 
   // Admin wallet address
   ADMIN:
     process.env.NEXT_PUBLIC_ADMIN_WALLET ||
-    "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835",
+    "0xd315dADB86EeE6391C99FB2afae6181BC146216D",
   EMERGENCY_COUNCIL:
     process.env.NEXT_PUBLIC_EMERGENCY_COUNCIL ||
     "0x0c8852280df8eF9fCb2a24e9d76f1ee4779773E9",
@@ -83,6 +83,13 @@ export const ABIS = {
     "function transfer(address to, uint256 amount) returns (bool)",
     "function approve(address spender, uint256 amount) returns (bool)",
     "function allowance(address owner, address spender) view returns (uint256)",
+    // EIP-2612 Permit functions for gasless approvals
+    "function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s)",
+    "function nonces(address owner) view returns (uint256)",
+    "function DOMAIN_SEPARATOR() view returns (bytes32)",
+    // Burn functions
+    "function burn(uint256 amount)",
+    "function burnFrom(address from, uint256 amount)",
     "event Transfer(address indexed from, address indexed to, uint256 value)",
     "event Approval(address indexed owner, address indexed spender, uint256 value)",
   ],
@@ -90,7 +97,12 @@ export const ABIS = {
   VAULT: [
     "function mint(address collateralToken, uint256 btcAmount)",
     "function redeem(uint256 tokenAmount, address collateralToken)",
+    // Permit2 SignatureTransfer for minting (gasless collateral approval)
+    "function mintWithPermit2(address collateral, uint256 amount, tuple(tuple(address token, uint256 amount) permitted, uint256 nonce, uint256 deadline) permit, bytes signature)",
+    // EIP-2612 Permit for redeeming (gasless BTC1USD approval)
+    "function redeemWithPermit(uint256 btc1Amount, address collateral, uint256 deadline, uint8 v, bytes32 r, bytes32 s)",
     "function getCurrentCollateralRatio() view returns (uint256)",
+    "function getCollateralRatio() view returns (uint256)",
     "function getTotalCollateralValue() view returns (uint256)",
     "function isHealthy() view returns (bool)",
     "function getSupportedCollateral() view returns (address[])",
@@ -98,8 +110,8 @@ export const ABIS = {
     "function removeCollateral(address token)",
     "function supportedCollateral(address token) view returns (bool)",
     "function collateralBalances(address token) view returns (uint256)",
-    "event Mint(address indexed user, uint256 btcAmount, uint256 tokensIssued, address collateralToken)",
-    "event Redeem(address indexed user, uint256 tokensRedeemed, uint256 btcAmount, address collateralToken)",
+    "event Mint(address indexed user, address collateral, uint256 amountIn, uint256 btc1Out)",
+    "event Redeem(address indexed user, address collateral, uint256 btc1In, uint256 collateralOut)",
     "event CollateralAdded(address indexed token)",
     "event CollateralRemoved(address indexed token)",
   ],
@@ -797,17 +809,129 @@ export const ABIS = {
   ] as const,
 
   ERC20: [
-    "function name() view returns (string)",
-    "function symbol() view returns (string)",
-    "function decimals() view returns (uint8)",
-    "function totalSupply() view returns (uint256)",
-    "function balanceOf(address account) view returns (uint256)",
-    "function transfer(address to, uint256 amount) returns (bool)",
-    "function approve(address spender, uint256 amount) returns (bool)",
-    "function allowance(address owner, address spender) view returns (uint256)",
-    "event Transfer(address indexed from, address indexed to, uint256 value)",
-    "event Approval(address indexed owner, address indexed spender, uint256 value)",
-  ],
+    {
+      type: "function",
+      name: "name",
+      inputs: [],
+      outputs: [{ name: "", type: "string" }],
+      stateMutability: "view"
+    },
+    {
+      type: "function",
+      name: "symbol",
+      inputs: [],
+      outputs: [{ name: "", type: "string" }],
+      stateMutability: "view"
+    },
+    {
+      type: "function",
+      name: "decimals",
+      inputs: [],
+      outputs: [{ name: "", type: "uint8" }],
+      stateMutability: "view"
+    },
+    {
+      type: "function",
+      name: "totalSupply",
+      inputs: [],
+      outputs: [{ name: "", type: "uint256" }],
+      stateMutability: "view"
+    },
+    {
+      type: "function",
+      name: "balanceOf",
+      inputs: [{ name: "account", type: "address" }],
+      outputs: [{ name: "", type: "uint256" }],
+      stateMutability: "view"
+    },
+    {
+      type: "function",
+      name: "transfer",
+      inputs: [
+        { name: "to", type: "address" },
+        { name: "amount", type: "uint256" }
+      ],
+      outputs: [{ name: "", type: "bool" }],
+      stateMutability: "nonpayable"
+    },
+    {
+      type: "function",
+      name: "approve",
+      inputs: [
+        { name: "spender", type: "address" },
+        { name: "amount", type: "uint256" }
+      ],
+      outputs: [{ name: "", type: "bool" }],
+      stateMutability: "nonpayable"
+    },
+    {
+      type: "function",
+      name: "allowance",
+      inputs: [
+        { name: "owner", type: "address" },
+        { name: "spender", type: "address" }
+      ],
+      outputs: [{ name: "", type: "uint256" }],
+      stateMutability: "view"
+    },
+    {
+      type: "event",
+      name: "Transfer",
+      inputs: [
+        { name: "from", type: "address", indexed: true },
+        { name: "to", type: "address", indexed: true },
+        { name: "value", type: "uint256", indexed: false }
+      ]
+    },
+    {
+      type: "event",
+      name: "Approval",
+      inputs: [
+        { name: "owner", type: "address", indexed: true },
+        { name: "spender", type: "address", indexed: true },
+        { name: "value", type: "uint256", indexed: false }
+      ]
+    }
+  ] as const,
+
+  PROXY_ADMIN: [
+    {
+      type: "function",
+      name: "getProxyImplementation",
+      inputs: [{ name: "proxy", type: "address" }],
+      outputs: [{ name: "", type: "address" }],
+      stateMutability: "view"
+    },
+    {
+      type: "function",
+      name: "upgrade",
+      inputs: [
+        { name: "proxy", type: "address" },
+        { name: "implementation", type: "address" }
+      ],
+      outputs: [],
+      stateMutability: "nonpayable"
+    },
+    {
+      type: "function",
+      name: "upgradeAndCall",
+      inputs: [
+        { name: "proxy", type: "address" },
+        { name: "implementation", type: "address" },
+        { name: "data", type: "bytes" }
+      ],
+      outputs: [],
+      stateMutability: "payable"
+    },
+    {
+      type: "event",
+      name: "AdminChanged",
+      inputs: [
+        { name: "previousAdmin", type: "address", indexed: false },
+        { name: "newAdmin", type: "address", indexed: false }
+      ]
+    }
+  ] as const,
 };
 
 // Endowment Category Enum mapping
@@ -833,10 +957,10 @@ export const CATEGORY_NAMES = [
 
 // Network configuration
 export const NETWORK_CONFIG = {
-  chainId: Number.parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "1337"),
-  chainName: process.env.NEXT_PUBLIC_CHAIN_NAME || "Hardhat Local",
-  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "http://127.0.0.1:8545",
-  blockExplorer: "http://localhost:8545",
+  chainId: Number.parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "84532"),
+  chainName: process.env.NEXT_PUBLIC_CHAIN_NAME || "Base Sepolia",
+  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "https://sepolia.base.org",
+  blockExplorer: "https://sepolia.basescan.org",
   nativeCurrency: {
     name: "Ether",
     symbol: "ETH",
@@ -844,14 +968,14 @@ export const NETWORK_CONFIG = {
   },
 };
 
-// Collateral token configuration - updated from deployment-base-mainnet.json (2025-12-06)
+// Collateral token configuration - updated from deployment-base-sepolia.json (2025-12-20)
 export const COLLATERAL_TOKENS = [
   {
     symbol: "WBTC",
     name: "Wrapped Bitcoin",
     address:
       process.env.NEXT_PUBLIC_WBTC_TOKEN ||
-      "0x9F6CFA55Fc895E7A75c8a384caA9c5dEa8670D7F",
+      "0x8A2d17696D5A6dc3dbaFB374d5C633E1a2BA88C6",
     decimals: 8,
     icon: "/icons/wbtc.svg",
   },
@@ -860,7 +984,7 @@ export const COLLATERAL_TOKENS = [
     name: "Coinbase Wrapped Bitcoin",
     address:
       process.env.NEXT_PUBLIC_CBBTC_TOKEN ||
-      "0x40b80260E466BF92740fD98BF4a68712aeAe4cE7",
+      "0xbd282E5BE062B97c50b3f7d7c113308EFB673cC8",
     decimals: 8,
     icon: "/icons/cbbtc.svg",
   },
@@ -869,7 +993,7 @@ export const COLLATERAL_TOKENS = [
     name: "Threshold Bitcoin",
     address:
       process.env.NEXT_PUBLIC_TBTC_TOKEN ||
-      "0xBb8CF642C4F111e3A6c6D87BB1346102300ADa24",
+      "0x22463d37f88D79a2eEDC7C236CA0bb5DA5E1B108",
     decimals: 8,
     icon: "/icons/tbtc.svg",
   },

@@ -1,17 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useAccount } from "wagmi";
 import { ethers } from "ethers";
-import { parseUnits } from "viem";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, Plus, Trash2, CheckCircle, Coins, Info } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertCircle, Plus, Trash2, CheckCircle, Settings, Shield, Copy, ExternalLink, ArrowRight } from "lucide-react";
 import { CONTRACT_ADDRESSES, ABIS } from "@/lib/contracts";
+import { encodeFunctionData } from "viem";
 
 interface CollateralToken {
   address: string;
@@ -42,11 +44,13 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
   const [transactionStatus, setTransactionStatus] = useState("");
   const [isLoadingCollaterals, setIsLoadingCollaterals] = useState(true);
   
-  // Test minting states
-  const [selectedMintCollateral, setSelectedMintCollateral] = useState("WBTC");
-  const [mintAmount, setMintAmount] = useState("");
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  // Proxy upgrade states
+  const [selectedContract, setSelectedContract] = useState<string>("");
+  const [newImplementation, setNewImplementation] = useState("");
+  const [currentImplementation, setCurrentImplementation] = useState<string>("");
+  const [showSafeModal, setShowSafeModal] = useState(false);
+  const [upgradeCalldata, setUpgradeCalldata] = useState<string>("");
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // Load supported collaterals
   useEffect(() => {
@@ -290,84 +294,93 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
     }
   };
 
-  const handleTestMint = async () => {
-    if (!isConnected || !address) {
-      setTransactionStatus("Please connect your wallet");
-      return;
-    }
+  // Helper function for copying to clipboard
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
-    if (!isAdmin) {
-      setTransactionStatus("Only admin can mint test collateral tokens");
-      return;
+  // Load current implementation when contract is selected
+  useEffect(() => {
+    if (selectedContract) {
+      loadCurrentImplementation(selectedContract);
     }
+  }, [selectedContract]);
 
-    if (!mintAmount) {
-      setTransactionStatus("Please enter an amount");
-      return;
-    }
-
-    const amountFloat = parseFloat(mintAmount);
-    if (isNaN(amountFloat) || amountFloat <= 0) {
-      setTransactionStatus("Please enter a valid amount");
+  const loadCurrentImplementation = async (contractName: string) => {
+    if (!isConnected || typeof window === "undefined" || !window.ethereum) {
       return;
     }
 
     try {
-      setTransactionStatus("Preparing transaction...");
-      
-      let contractAddress: string;
-      switch (selectedMintCollateral) {
-        case "WBTC":
-          contractAddress = protocolState?.contractAddresses?.wbtc || CONTRACT_ADDRESSES.WBTC_TOKEN;
-          break;
-        case "cbBTC":
-          contractAddress = protocolState?.contractAddresses?.cbbtc || CONTRACT_ADDRESSES.CBBTC_TOKEN;
-          break;
-        case "tBTC":
-          contractAddress = protocolState?.contractAddresses?.tbtc || CONTRACT_ADDRESSES.TBTC_TOKEN;
-          break;
-        default:
-          throw new Error("Invalid collateral type");
-      }
+      const provider = new ethers.BrowserProvider(window.ethereum as any);
+      const proxyAdminAbi = [
+        "function getProxyImplementation(address proxy) view returns (address)"
+      ];
+      const proxyAdmin = new ethers.Contract(
+        CONTRACT_ADDRESSES.PROXY_ADMIN,
+        proxyAdminAbi,
+        provider
+      );
 
-      const amount = parseUnits(mintAmount, 8);
-      
-      setTransactionStatus(`Minting ${mintAmount} ${selectedMintCollateral}...`);
-      
-      writeContract({
-        address: contractAddress as `0x${string}`,
-        abi: [
-          {
-            name: "mint",
-            type: "function",
-            stateMutability: "nonpayable",
-            inputs: [
-              { name: "to", type: "address" },
-              { name: "amount", type: "uint256" },
-            ],
-            outputs: [],
-          },
-        ],
-        functionName: "mint",
-        args: [address, amount],
-      });
-    } catch (error: any) {
-      console.error("Error minting:", error);
-      setTransactionStatus(`Error: ${error.message || "Failed to mint"}`);
+      const proxyAddress = UPGRADEABLE_CONTRACTS.find(c => c.name === contractName)?.address;
+      if (!proxyAddress) return;
+
+      const implAddress = await proxyAdmin.getProxyImplementation(proxyAddress);
+      setCurrentImplementation(implAddress);
+    } catch (error) {
+      console.error("Error loading implementation:", error);
+      setCurrentImplementation("Unable to load");
     }
   };
 
-  // Update status based on transaction state
-  useEffect(() => {
-    if (isConfirming) {
-      setTransactionStatus("Waiting for confirmation...");
-    } else if (isSuccess) {
-      setTransactionStatus(`✅ Successfully minted ${mintAmount} ${selectedMintCollateral}!`);
-      setMintAmount("");
-    } else if (error) {
-      setTransactionStatus(`Error: ${error.message}`);
+  const handleGenerateUpgradeTx = async () => {
+    if (!selectedContract || !newImplementation) {
+      setTransactionStatus("Please select a contract and enter new implementation address");
+      return;
     }
-  }, [isConfirming, isSuccess, error, mintAmount, selectedMintCollateral]);
+
+    if (!ethers.isAddress(newImplementation)) {
+      setTransactionStatus("Invalid implementation address");
+      return;
+    }
+
+    try {
+      const proxyAddress = UPGRADEABLE_CONTRACTS.find(c => c.name === selectedContract)?.address;
+      if (!proxyAddress) {
+        setTransactionStatus("Contract not found");
+        return;
+      }
+
+      // Encode the upgrade function call
+      const proxyAdminAbi = [
+        "function upgrade(address proxy, address implementation)"
+      ];
+      const iface = new ethers.Interface(proxyAdminAbi);
+      const calldata = iface.encodeFunctionData("upgrade", [proxyAddress, newImplementation]);
+
+      setUpgradeCalldata(calldata);
+      setShowSafeModal(true);
+    } catch (error: any) {
+      console.error("Error generating transaction:", error);
+      setTransactionStatus(`Error: ${error.message || "Failed to generate transaction"}`);
+    }
+  };
+
+  // Upgradeable contracts list
+  const UPGRADEABLE_CONTRACTS = [
+    { name: "DevWallet", address: CONTRACT_ADDRESSES.DEV_WALLET },
+    { name: "EndowmentWallet", address: CONTRACT_ADDRESSES.ENDOWMENT_WALLET },
+    { name: "MerkleFeeCollector", address: CONTRACT_ADDRESSES.MERKLE_FEE_COLLECTOR },
+    { name: "Vault", address: CONTRACT_ADDRESSES.VAULT },
+    { name: "ChainlinkBTCOracle", address: CONTRACT_ADDRESSES.CHAINLINK_BTC_ORACLE },
+    { name: "MerkleDistributor", address: CONTRACT_ADDRESSES.MERKLE_DISTRIBUTOR },
+    { name: "WeeklyDistribution", address: CONTRACT_ADDRESSES.WEEKLY_DISTRIBUTION },
+    { name: "EndowmentManager", address: CONTRACT_ADDRESSES.ENDOWMENT_MANAGER },
+    { name: "ProtocolGovernance", address: CONTRACT_ADDRESSES.PROTOCOL_GOVERNANCE },
+    { name: "DAO", address: CONTRACT_ADDRESSES.GOVERNANCE_DAO },
+  ];
 
   if (!isAdmin) {
     return (
@@ -395,11 +408,11 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
             Manage Collateral
           </TabsTrigger>
           <TabsTrigger 
-            value="test-mint"
-            className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-orange-600 data-[state=active]:text-white"
+            value="proxy-upgrades"
+            className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-purple-600 data-[state=active]:text-white"
           >
-            <Coins className="h-4 w-4 mr-2" />
-            Test Mint
+            <Settings className="h-4 w-4 mr-2" />
+            Proxy Upgrades
           </TabsTrigger>
         </TabsList>
 
@@ -571,127 +584,115 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
 
         </TabsContent>
 
-        {/* Test Mint Tab */}
-        <TabsContent value="test-mint" className="space-y-6">
+        {/* Proxy Upgrades Tab */}
+        <TabsContent value="proxy-upgrades" className="space-y-6">
           <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-xl">
             <CardHeader>
               <div className="flex items-center space-x-2">
-                <Coins className="h-5 w-5 text-orange-400" />
-                <CardTitle className="text-white">Test Mint Collateral (Admin Only)</CardTitle>
+                <Shield className="h-5 w-5 text-purple-400" />
+                <CardTitle className="text-white">Proxy Upgrades (Safe Multisig)</CardTitle>
               </div>
               <CardDescription className="text-gray-400">
-                Mint test collateral tokens for development and testing purposes
+                Generate Safe transactions to upgrade contract implementations via ProxyAdmin
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="bg-orange-900/20 border border-orange-500/30 rounded-lg p-4">
+              <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-4">
                 <div className="flex items-start space-x-2">
-                  <Info className="h-5 w-5 text-orange-400 mt-0.5" />
+                  <Shield className="h-5 w-5 text-purple-400 mt-0.5" />
                   <div className="space-y-1">
-                    <p className="text-orange-300 text-sm font-medium">Development Only</p>
-                    <p className="text-orange-300/80 text-xs">
-                      This feature is for testing purposes only. Use it to mint collateral tokens on testnet.
-                      Admin wallet: {CONTRACT_ADDRESSES.ADMIN.slice(0, 6)}...{CONTRACT_ADDRESSES.ADMIN.slice(-4)}
+                    <p className="text-purple-300 text-sm font-medium">Safe Multisig Required</p>
+                    <p className="text-purple-300/80 text-xs">
+                      All proxy upgrades must be executed through the Safe multisig wallet.
+                      This tool generates the transaction data you need to propose in Safe.
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* Collateral Type Selector */}
+              {/* Contract Selector */}
               <div className="space-y-3">
                 <Label className="text-gray-300 text-sm font-medium">
-                  Select Collateral Type
+                  Select Contract to Upgrade
                 </Label>
-                <div className="grid grid-cols-3 gap-3">
-                  {["WBTC", "cbBTC", "tBTC"].map((token) => (
-                    <Button
-                      key={token}
-                      variant={selectedMintCollateral === token ? "default" : "outline"}
-                      onClick={() => setSelectedMintCollateral(token)}
-                      className={
-                        selectedMintCollateral === token
-                          ? "bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white border-0 shadow-lg"
-                          : "border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
-                      }
-                    >
-                      <Coins className="h-4 w-4 mr-2" />
-                      {token}
-                    </Button>
-                  ))}
-                </div>
+                <Select value={selectedContract} onValueChange={setSelectedContract}>
+                  <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+                    <SelectValue placeholder="Choose an upgradeable contract..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-800 border-gray-700">
+                    {UPGRADEABLE_CONTRACTS.map((contract) => (
+                      <SelectItem 
+                        key={contract.name} 
+                        value={contract.name}
+                        className="text-white hover:bg-gray-700"
+                      >
+                        {contract.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
-              {/* Amount Input */}
+              {/* Current Implementation */}
+              {selectedContract && (
+                <div className="bg-gray-900/50 rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-300">Proxy Address</p>
+                      <code className="text-xs text-gray-400 font-mono break-all">
+                        {UPGRADEABLE_CONTRACTS.find(c => c.name === selectedContract)?.address}
+                      </code>
+                    </div>
+                  </div>
+                  <div className="border-t border-gray-700 pt-2">
+                    <p className="text-sm font-medium text-gray-300">Current Implementation</p>
+                    <code className="text-xs text-gray-400 font-mono break-all">
+                      {currentImplementation || "Loading..."}
+                    </code>
+                  </div>
+                </div>
+              )}
+
+              {/* New Implementation Input */}
               <div className="space-y-3">
-                <Label htmlFor="test-mint-amount" className="text-gray-300 text-sm font-medium">
-                  Amount to Mint
+                <Label htmlFor="new-implementation" className="text-gray-300 text-sm font-medium">
+                  New Implementation Address
                 </Label>
-                <div className="relative">
-                  <Input
-                    id="test-mint-amount"
-                    type="number"
-                    placeholder="10.0"
-                    value={mintAmount}
-                    onChange={(e) => setMintAmount(e.target.value)}
-                    className="bg-gray-900 border-2 border-gray-700 focus:border-orange-500 text-white text-lg placeholder:text-gray-500 pr-24 h-14"
-                  />
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-4">
-                    <span className="text-gray-400 font-semibold">
-                      {selectedMintCollateral}
-                    </span>
-                  </div>
-                </div>
+                <Input
+                  id="new-implementation"
+                  type="text"
+                  placeholder="0x..."
+                  value={newImplementation}
+                  onChange={(e) => setNewImplementation(e.target.value)}
+                  className="bg-gray-900 border-2 border-gray-700 focus:border-purple-500 text-white placeholder:text-gray-500"
+                />
+                <p className="text-xs text-gray-500">
+                  Enter the address of the new implementation contract
+                </p>
               </div>
 
-              {/* Quick Amount Buttons */}
-              <div className="grid grid-cols-4 gap-2">
-                {[1, 5, 10, 50].map((amount) => (
-                  <Button
-                    key={amount}
-                    variant="outline"
-                    size="sm"
-                    className="border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white hover:border-orange-500"
-                    onClick={() => setMintAmount(amount.toString())}
-                  >
-                    {amount}
-                  </Button>
-                ))}
-              </div>
-
-              {/* Mint Button */}
+              {/* Generate Transaction Button */}
               <Button
-                onClick={handleTestMint}
-                disabled={!isConnected || !mintAmount || isPending || isConfirming}
-                className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold h-12 shadow-lg"
+                onClick={handleGenerateUpgradeTx}
+                disabled={!isConnected || !selectedContract || !newImplementation}
+                className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-bold h-12 shadow-lg"
               >
-                {isPending || isConfirming ? (
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>
-                      {isPending ? "Confirming in wallet..." : "Processing transaction..."}
-                    </span>
-                  </div>
-                ) : (
-                  <>
-                    <Coins className="h-5 w-5 mr-2" />
-                    Mint {selectedMintCollateral} Tokens
-                  </>
-                )}
+                <Settings className="h-5 w-5 mr-2" />
+                Generate Safe Transaction
               </Button>
 
-              {/* Alternative Script Method */}
+              {/* Info Section */}
               <div className="border-t border-gray-700 pt-4">
-                <div className="bg-gray-900/50 rounded-lg p-4">
-                  <div className="text-sm font-medium text-gray-300 mb-2 flex items-center">
-                    <Info className="h-4 w-4 mr-2 text-blue-400" />
-                    Alternative: Use Script
-                  </div>
-                  <code className="text-xs bg-gray-800 px-3 py-2 rounded text-gray-400 block font-mono">
-                    npx hardhat run scripts/mint-collateral.js --network localhost
-                  </code>
-                  <p className="text-xs text-gray-500 mt-2">
-                    The script will mint test tokens to your account for testing.
-                  </p>
+                <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
+                  <p className="text-sm font-medium text-blue-300 mb-2">How it works:</p>
+                  <ol className="text-xs text-blue-300/80 space-y-1 list-decimal list-inside">
+                    <li>Select the contract you want to upgrade</li>
+                    <li>Enter the new implementation contract address</li>
+                    <li>Click "Generate Safe Transaction" to create the upgrade calldata</li>
+                    <li>A modal will open with transaction details to paste into Safe</li>
+                    <li>Propose the transaction in Safe and get required signatures</li>
+                    <li>Execute the upgrade through Safe multisig</li>
+                  </ol>
                 </div>
               </div>
             </CardContent>
@@ -732,6 +733,123 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
           </AlertDescription>
         </Alert>
       )}
+
+      {/* Safe Transaction Modal - Custom Dialog matching Treasury Dashboard */}
+      <Dialog open={showSafeModal} onOpenChange={setShowSafeModal}>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto bg-gradient-to-br from-gray-900 via-purple-950 to-gray-900 border-2 border-purple-500/70 shadow-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2 sm:gap-3 mb-2">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/50">
+                <Settings className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg sm:text-2xl font-bold text-white">
+                  Upgrade {selectedContract}
+                </DialogTitle>
+                <DialogDescription className="text-xs sm:text-sm text-purple-200">
+                  Safe Multi-Signature Transaction
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+            {/* Contract Address */}
+            <div className="bg-gradient-to-br from-green-900/20 to-emerald-900/20 border-2 border-green-500/50 rounded-lg p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                <Label className="text-xs sm:text-sm text-green-300 font-bold uppercase">1️⃣ ProxyAdmin Contract</Label>
+                <Button
+                  size="sm"
+                  className="h-8 px-3 sm:px-4 bg-green-600 hover:bg-green-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                  onClick={() => copyToClipboard(CONTRACT_ADDRESSES.PROXY_ADMIN, 'contract')}
+                >
+                  {copiedField === 'contract' ? (
+                    <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                  ) : (
+                    <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy</>
+                  )}
+                </Button>
+              </div>
+              <code className="text-xs sm:text-sm text-green-300 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto border border-green-500/40 break-all">
+                {CONTRACT_ADDRESSES.PROXY_ADMIN}
+              </code>
+            </div>
+
+            {/* Encoded Calldata */}
+            <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 border-2 border-cyan-500/50 rounded-lg p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                <Label className="text-xs sm:text-sm text-cyan-300 font-bold uppercase">2️⃣ Encoded Calldata</Label>
+                <Button
+                  size="sm"
+                  className="h-8 px-3 sm:px-4 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                  onClick={() => copyToClipboard(upgradeCalldata, 'calldata')}
+                >
+                  {copiedField === 'calldata' ? (
+                    <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                  ) : (
+                    <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy Calldata</>
+                  )}
+                </Button>
+              </div>
+              <code className="text-xs sm:text-sm text-cyan-200 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto max-h-32 border border-cyan-500/40 break-all">
+                {upgradeCalldata || '0x...'}
+              </code>
+            </div>
+
+            {/* Transaction Summary */}
+            <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-gray-600/50 rounded-lg p-3 sm:p-4">
+              <h3 className="text-xs sm:text-sm font-bold text-white mb-2 sm:mb-3">Upgrade Summary</h3>
+              <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Function:</span>
+                  <code className="text-purple-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">upgrade(address,address)</code>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Contract:</span>
+                  <code className="text-white bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">{selectedContract}</code>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Proxy Address:</span>
+                  <code className="text-xs text-green-200 bg-black/40 px-2 py-1 rounded font-mono max-w-full sm:max-w-[300px] truncate">
+                    {UPGRADEABLE_CONTRACTS.find(c => c.name === selectedContract)?.address}
+                  </code>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">New Implementation:</span>
+                  <code className="text-xs text-blue-200 bg-black/40 px-2 py-1 rounded font-mono max-w-full sm:max-w-[300px] truncate">
+                    {newImplementation}
+                  </code>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Value:</span>
+                  <code className="text-yellow-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">0 ETH</code>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-3 border-t-2 border-purple-700 pt-3 sm:pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowSafeModal(false)}
+              className="flex-1 border-2 border-gray-600 hover:bg-gray-800 text-gray-200 font-semibold h-10 sm:h-auto"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const safeUrl = `https://app.safe.global/base:${process.env.NEXT_PUBLIC_SAFE_ADDRESS || CONTRACT_ADDRESSES.ADMIN}`;
+                window.open(safeUrl, '_blank');
+              }}
+              className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-lg shadow-purple-500/40 border-2 border-purple-400/60 font-semibold h-10 sm:h-auto"
+            >
+              <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              Open Safe UI
+              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -7,7 +7,7 @@ async function main() {
   if (!process.env.DEPLOYER_PRIVATE_KEY) {
     throw new Error(
       "DEPLOYER_PRIVATE_KEY environment variable is required.\n" +
-      "Please add your Base Sepolia private key to .env file:\n" +
+      "Please add your Base Sepolia private key to .env.local file:\n" +
       "DEPLOYER_PRIVATE_KEY=0xYourPrivateKeyHere"
     );
   }
@@ -45,12 +45,12 @@ async function main() {
 
   // Configuration for Base Sepolia - Using verified Chainlink BTC/USD feed
   const config = {
-    admin: "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835",
-    emergencyCouncil: process.env.EMERGENCY_COUNCIL || deployer.address,
+    admin: "0xd315dADB86EeE6391C99FB2afae6181BC146216D",
+    safeAddress: "0xd315dADB86EeE6391C99FB2afae6181BC146216D",
+    emergencyCouncil: "0xd315dADB86EeE6391C99FB2afae6181BC146216D", // Use Safe address for emergency council
     // Verified Base Sepolia Chainlink BTC/USD feed address
     chainlinkBtcUsdFeed: "0x0FB99723Aee6f420beAD13e6bBB79b7E6F034298",
   };
-
   // Fetch live BTC price from Chainlink with improved error handling
   console.log("\n📊 Fetching live BTC price from Chainlink...");
   let liveBtcPrice = "65000"; // Default fallback price
@@ -96,6 +96,49 @@ async function main() {
   console.log("  Chainlink Feed:   ", config.chainlinkBtcUsdFeed);
   console.log(`  Live BTC Price:    $${liveBtcPrice}`);
   console.log("\n  Note: DevWallet, EndowmentWallet, and MerkleFeeCollector will be deployed as smart contracts\n");
+
+  // Helper function to send transaction with improved retry logic
+  async function sendTransaction(name, txPromise, maxRetries = 5) { // Increased retries
+    let retries = maxRetries;
+    while (retries > 0) {
+      try {
+        const tx = await txPromise();
+        await tx.wait();
+        console.log(`  ✅ ${name}`);
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Increased delay between txs
+        return true;
+      } catch (error) {
+        if (error.message.includes("nonce") && retries > 1) {
+          console.log(`  ⚠️  ${name} - nonce issue, retrying... (${retries - 1} attempts left)`);
+          await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
+          retries--;
+        } 
+        // Handle connection timeouts and RPC errors
+        else if ((error.code === 'UND_ERR_CONNECT_TIMEOUT' ||
+                  error.message.includes('timeout') ||
+                  error.message.includes('ETIMEDOUT') ||
+                  error.message.includes('ECONNRESET') ||
+                  error.message.includes('Forwarder error') ||
+                  error.message.includes('Too Many Requests')) && retries > 1) {
+          console.log(`  ⚠️  ${name} - connection issue or rate limit, retrying... (${retries - 1} attempts left)`);
+          console.log(`  ℹ️  Waiting 30 seconds before retry...`); // Increased delay
+          await new Promise(resolve => setTimeout(resolve, 30000)); // Longer wait
+          retries--;
+        }
+        // Handle rate limiting
+        else if ((error.message.includes('rate limit') ||
+                  error.message.includes('429')) && retries > 1) {
+          console.log(`  ⚠️  ${name} - rate limited, waiting 60 seconds... (${retries - 1} attempts left)`); // Increased delay
+          await new Promise(resolve => setTimeout(resolve, 60000)); // 1 minute wait
+          retries--;
+        } else {
+          console.log(`  ❌ ${name} failed:`, error.message.split('\n')[0]);
+          return false;
+        }
+      }
+    }
+    return false;
+  }
 
   // Helper function to wait for deployment with improved retry logic
   async function deployContract(name, factory, ...args) {
@@ -177,77 +220,169 @@ async function main() {
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 2: DEPLOY WALLET CONTRACTS ====================
-  console.log("\n💳 STEP 2: Deploying wallet contracts...\n");
+  // ==================== STEP 2: DEPLOY PROXY ADMIN ====================
+  console.log("\n🏗️  STEP 2: Deploying ProxyAdmin (Governance Controller)...\n");
 
-  // Deploy DevWallet contract
-  const DevWallet = await ethers.getContractFactory("DevWallet");
-  const { contract: devWallet, address: devWalletAddress } = await deployContract(
-    "DevWallet",
-    DevWallet
+  const ProxyAdmin = await ethers.getContractFactory("ProxyAdmin");
+  const { contract: proxyAdmin, address: proxyAdminAddress } = await deployContract(
+    "ProxyAdmin",
+    ProxyAdmin,
+    deployer.address // Temporary, will transfer to DAO later
   );
 
-  await new Promise(resolve => setTimeout(resolve, 5000)); // Delay between deployments
+  console.log("  ℹ️  ProxyAdmin will control all proxy upgrades");
 
-  // Deploy EndowmentWallet contract
-  const EndowmentWallet = await ethers.getContractFactory("EndowmentWallet");
-  const { contract: endowmentWallet, address: endowmentWalletAddress } = await deployContract(
-    "EndowmentWallet",
-    EndowmentWallet
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // ==================== STEP 3: DEPLOY WALLET CONTRACTS (UPGRADEABLE) ====================
+  console.log("\n💳 STEP 3: Deploying upgradeable wallet contracts...\n");
+
+  const UpgradeableProxy = await ethers.getContractFactory("UpgradeableProxy");
+
+  // Deploy DevWalletUpgradeable
+  const DevWalletUpgradeable = await ethers.getContractFactory("DevWalletUpgradeable");
+  const { address: devWalletImplAddress } = await deployContract(
+    "DevWallet Implementation",
+    DevWalletUpgradeable
   );
+  await new Promise(resolve => setTimeout(resolve, 5000));
 
-  await new Promise(resolve => setTimeout(resolve, 5000)); // Delay between deployments
-
-  // Deploy MerkleFeeCollector contract
-  const MerkleFeeCollector = await ethers.getContractFactory("MerkleFeeCollector");
-  const { contract: merklFeeCollector, address: merklFeeCollectorAddress } = await deployContract(
-    "MerkleFeeCollector",
-    MerkleFeeCollector
+  const { address: devWalletProxyAddress } = await deployContract(
+    "DevWallet Proxy",
+    UpgradeableProxy,
+    devWalletImplAddress,
+    proxyAdminAddress
   );
+  await new Promise(resolve => setTimeout(resolve, 5000));
 
-  console.log("\n  ⏳ Waiting for confirmations...");
+  const devWallet = DevWalletUpgradeable.attach(devWalletProxyAddress);
+  await sendTransaction("DevWallet Initialized", () => devWallet.initialize(deployer.address));  const devWalletAddress = devWalletProxyAddress;
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Deploy EndowmentWalletUpgradeable
+  const EndowmentWalletUpgradeable = await ethers.getContractFactory("EndowmentWalletUpgradeable");
+  const { address: endowmentWalletImplAddress } = await deployContract(
+    "EndowmentWallet Implementation",
+    EndowmentWalletUpgradeable
+  );
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  const { address: endowmentWalletProxyAddress } = await deployContract(
+    "EndowmentWallet Proxy",
+    UpgradeableProxy,
+    endowmentWalletImplAddress,
+    proxyAdminAddress
+  );
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  const endowmentWallet = EndowmentWalletUpgradeable.attach(endowmentWalletProxyAddress);
+  await sendTransaction("EndowmentWallet Initialized", () => endowmentWallet.initialize(deployer.address));  const endowmentWalletAddress = endowmentWalletProxyAddress;
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Deploy MerkleFeeCollectorUpgradeable
+  const MerkleFeeCollectorUpgradeable = await ethers.getContractFactory("MerkleFeeCollectorUpgradeable");
+  const { address: merklFeeCollectorImplAddress } = await deployContract(
+    "MerkleFeeCollector Implementation",
+    MerkleFeeCollectorUpgradeable
+  );
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  const { address: merklFeeCollectorProxyAddress } = await deployContract(
+    "MerkleFeeCollector Proxy",
+    UpgradeableProxy,
+    merklFeeCollectorImplAddress,
+    proxyAdminAddress
+  );
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  const merklFeeCollector = MerkleFeeCollectorUpgradeable.attach(merklFeeCollectorProxyAddress);
+  await sendTransaction("MerkleFeeCollector Initialized", () => merklFeeCollector.initialize(deployer.address));
+  const merklFeeCollectorAddress = merklFeeCollectorProxyAddress;  console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 3: DEPLOY CORE CONTRACTS ====================
-  console.log("\n🏗️  STEP 3: Deploying core contracts...\n");
+  // ==================== STEP 4: DEPLOY UPGRADEABLE CORE CONTRACTS ====================
+  console.log("\n🏗️  STEP 4: Deploying upgradeable core contracts...\n");
 
-  // Deploy BTC1USD token (deployer as initial admin for setup)
-  const BTC1USD = await ethers.getContractFactory("BTC1USD");
+  // Deploy BTC1USDWithPermit (Non-Upgradeable)
+  console.log("  ℹ️  BTC1USD is non-upgradeable (important for CEX listings)");
+  console.log("  ℹ️  Using BTC1USDWithPermit for EIP-2612 permit support");
+  const BTC1USD = await ethers.getContractFactory("BTC1USDWithPermit");
   const { contract: btc1usd, address: btc1usdAddress } = await deployContract(
-    "BTC1USD",
+    "BTC1USDWithPermit (Non-Upgradeable)",
     BTC1USD,
     deployer.address
   );
 
-  await new Promise(resolve => setTimeout(resolve, 5000)); // Delay between deployments
+  await new Promise(resolve => setTimeout(resolve, 5000));
 
-  // Deploy Chainlink BTC Oracle (deployer as initial admin for setup)
-  const ChainlinkBTCOracle = await ethers.getContractFactory("ChainlinkBTCOracle");
-  const { contract: priceOracle, address: priceOracleAddress } = await deployContract(
-    "ChainlinkBTCOracle",
-    ChainlinkBTCOracle,
-    deployer.address
+  // Deploy ChainlinkBTCOracle Implementation
+  const ChainlinkBTCOracleUpgradeable = await ethers.getContractFactory("ChainlinkBTCOracleUpgradeable");
+  const { address: oracleImplAddress } = await deployContract(
+    "ChainlinkBTCOracle Implementation",
+    ChainlinkBTCOracleUpgradeable
   );
 
-  await new Promise(resolve => setTimeout(resolve, 5000)); // Delay between deployments
+  await new Promise(resolve => setTimeout(resolve, 5000));
 
-  // Deploy Vault (deployer as initial admin for setup)
-  const Vault = await ethers.getContractFactory("Vault");
-  const { contract: vault, address: vaultAddress } = await deployContract(
-    "Vault",
-    Vault,
-    btc1usdAddress,
-    priceOracleAddress,
-    deployer.address,
-    devWalletAddress, // Use the deployed DevWallet address
-    endowmentWalletAddress, // Use the deployed EndowmentWallet address
+  // Deploy Oracle Proxy
+  const { address: oracleProxyAddress } = await deployContract(
+    "ChainlinkBTCOracle Proxy (USER-FACING)",
+    UpgradeableProxy,
+    oracleImplAddress,
+    proxyAdminAddress
   );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Initialize Oracle via proxy
+  const priceOracle = ChainlinkBTCOracleUpgradeable.attach(oracleProxyAddress);
+  await sendTransaction(
+    "ChainlinkBTCOracle initialized",
+    () => priceOracle.initialize(deployer.address, config.chainlinkBtcUsdFeed)  );
+  const priceOracleAddress = oracleProxyAddress;
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Deploy VaultUpgradeableWithPermit Implementation
+  const VaultUpgradeable = await ethers.getContractFactory("VaultUpgradeableWithPermit");
+  const { address: vaultImplAddress } = await deployContract(
+    "VaultUpgradeableWithPermit Implementation",
+    VaultUpgradeable
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Deploy Vault Proxy
+  const { address: vaultProxyAddress } = await deployContract(
+    "Vault Proxy (USER-FACING)",
+    UpgradeableProxy,
+    vaultImplAddress,
+    proxyAdminAddress
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Initialize VaultUpgradeableWithPermit via proxy
+  const vault = VaultUpgradeable.attach(vaultProxyAddress);
+  await sendTransaction(
+    "Vault initialized",
+    () => vault.initialize(
+      deployer.address,      // initialOwner
+      btc1usdAddress,        // _btc1usd
+      priceOracleAddress,    // _priceOracle
+      devWalletAddress,      // _devWallet
+      endowmentWalletAddress // _endowmentWallet
+    )
+  );
+  const vaultAddress = vaultProxyAddress;
 
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 4: DEPLOY DISTRIBUTION SYSTEM ====================
-  console.log("\n💰 STEP 4: Deploying distribution system...\n");
+  // ==================== STEP 5: DEPLOY UPGRADEABLE DISTRIBUTION SYSTEM ====================
+  console.log("\n💰 STEP 5: Deploying upgradeable distribution system...\n");
 
   // CIRCULAR DEPENDENCY RESOLUTION:
   // MerkleDistributor requires WeeklyDistribution address in constructor
@@ -265,15 +400,36 @@ async function main() {
 
   console.log("  📝 Note: Resolving circular dependency between contracts...");
 
-  // Deploy MerkleDistributor FIRST with zero address (deployer as initial admin for setup)
-  const MerkleDistributor = await ethers.getContractFactory("MerkleDistributor");
-  const { contract: merkleDistributor, address: merkleDistributorAddress } = await deployContract(
-    "MerkleDistributor",
-    MerkleDistributor,
-    btc1usdAddress,
-    deployer.address,
-    ethers.ZeroAddress // Temporary zero address - will be updated in STEP 6
+  // Deploy MerkleDistributor Implementation
+  const MerkleDistributorUpgradeable = await ethers.getContractFactory("MerkleDistributorUpgradeable");
+  const { address: merkleImplAddress } = await deployContract(
+    "MerkleDistributor Implementation",
+    MerkleDistributorUpgradeable
   );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Deploy MerkleDistributor Proxy
+  const { address: merkleProxyAddress } = await deployContract(
+    "MerkleDistributor Proxy (USER-FACING)",
+    UpgradeableProxy,
+    merkleImplAddress,
+    proxyAdminAddress
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Initialize MerkleDistributor with zero address (will update later)
+  const merkleDistributor = MerkleDistributorUpgradeable.attach(merkleProxyAddress);
+  await sendTransaction(
+    "MerkleDistributor initialized (temp weeklyDist: zero)",
+    () => merkleDistributor.initialize(
+      deployer.address,      // initialOwner
+      btc1usdAddress,        // token_
+      ethers.ZeroAddress     // weeklyDistribution_ - Temporary, will be updated after WeeklyDistribution
+    )
+  );
+  const merkleDistributorAddress = merkleProxyAddress;
 
   await new Promise(resolve => setTimeout(resolve, 5000)); // Delay between deployments
 
@@ -290,19 +446,40 @@ async function main() {
   console.log(`    merklFeeCollectorAddress: ${merklFeeCollectorAddress}`);
   console.log(`    merkleDistributorAddress: ${merkleDistributorAddress}`);
 
-  // Deploy WeeklyDistribution SECOND with actual MerkleDistributor address (deployer as initial admin for setup)
-  const WeeklyDistribution = await ethers.getContractFactory("WeeklyDistribution");
-  const { contract: weeklyDistribution, address: weeklyDistributionAddress } = await deployContract(
-    "WeeklyDistribution",
-    WeeklyDistribution,
-    btc1usdAddress,
-    vaultAddress,
-    deployer.address,
-    devWalletAddress, // Use the deployed DevWallet address
-    endowmentWalletAddress, // Use the deployed EndowmentWallet address
-    merklFeeCollectorAddress, // Use the deployed MerkleFeeCollector address
-    merkleDistributorAddress // Use actual MerkleDistributor address (for exclusion from rewards)
+  // Deploy WeeklyDistributionUpgradeable Implementation
+  const WeeklyDistributionUpgradeable = await ethers.getContractFactory("WeeklyDistributionUpgradeable");
+  const { address: weeklyDistImplAddress } = await deployContract(
+    "WeeklyDistribution Implementation",
+    WeeklyDistributionUpgradeable
   );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Deploy WeeklyDistribution Proxy
+  const { address: weeklyDistProxyAddress } = await deployContract(
+    "WeeklyDistribution Proxy (USER-FACING)",
+    UpgradeableProxy,
+    weeklyDistImplAddress,
+    proxyAdminAddress
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Initialize WeeklyDistribution via proxy
+  const weeklyDistribution = WeeklyDistributionUpgradeable.attach(weeklyDistProxyAddress);
+  await sendTransaction(
+    "WeeklyDistribution initialized",
+    () => weeklyDistribution.initialize(
+      deployer.address,       // initialOwner
+      btc1usdAddress,         // _btc1usd
+      vaultAddress,           // _vault
+      devWalletAddress,       // _devWallet
+      endowmentWalletAddress, // _endowmentWallet
+      merklFeeCollectorAddress, // _merklFeeCollector
+      merkleDistributorAddress  // _merklDistributor
+    )
+  );
+  const weeklyDistributionAddress = weeklyDistProxyAddress;
 
   console.log("  ✅ WeeklyDistribution has correct MerkleDistributor address");
   console.log("  ✅ MerkleDistributor excluded from receiving holder rewards");
@@ -311,89 +488,109 @@ async function main() {
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 5: DEPLOY GOVERNANCE ====================
-  console.log("\n🏛️  STEP 5: Deploying governance system...\n");
+  // ==================== STEP 6: DEPLOY UPGRADEABLE GOVERNANCE ====================
+  console.log("\n🏛️  STEP 6: Deploying upgradeable governance system...\n");
 
-  // Deploy Endowment Manager (deployer as initial admin for setup)
-  const EndowmentManager = await ethers.getContractFactory("EndowmentManager");
-  const { contract: endowmentManager, address: endowmentManagerAddress } = await deployContract(
-    "EndowmentManager",
-    EndowmentManager,
-    btc1usdAddress,
-    deployer.address,
-    endowmentWalletAddress // Use the deployed EndowmentWallet address
+  // Deploy EndowmentManager Implementation
+  const EndowmentManagerUpgradeable = await ethers.getContractFactory("EndowmentManagerUpgradeable");
+  const { address: endowmentImplAddress } = await deployContract(
+    "EndowmentManager Implementation",
+    EndowmentManagerUpgradeable
   );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Deploy EndowmentManager Proxy
+  const { address: endowmentProxyAddress } = await deployContract(
+    "EndowmentManager Proxy (USER-FACING)",
+    UpgradeableProxy,
+    endowmentImplAddress,
+    proxyAdminAddress
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Initialize EndowmentManager via proxy
+  const endowmentManager = EndowmentManagerUpgradeable.attach(endowmentProxyAddress);
+  await sendTransaction(
+    "EndowmentManager initialized",
+    () => endowmentManager.initialize(
+      deployer.address,      // initialOwner
+      btc1usdAddress,        // _btc1usd
+      endowmentWalletAddress // _endowmentWallet
+    )
+  );
+  const endowmentManagerAddress = endowmentProxyAddress;
 
   await new Promise(resolve => setTimeout(resolve, 5000)); // Delay between deployments
 
-  // Deploy Protocol Governance (deployer as initial admin for setup)
-  const ProtocolGovernance = await ethers.getContractFactory("ProtocolGovernance");
-  const { contract: protocolGovernance, address: protocolGovernanceAddress } = await deployContract(
-    "ProtocolGovernance",
-    ProtocolGovernance,
-    deployer.address,
-    config.emergencyCouncil
+  // Deploy ProtocolGovernanceUpgradeable Implementation
+  const ProtocolGovernanceUpgradeable = await ethers.getContractFactory("ProtocolGovernanceUpgradeable");
+  const { address: protocolGovImplAddress } = await deployContract(
+    "ProtocolGovernance Implementation",
+    ProtocolGovernanceUpgradeable
   );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Deploy ProtocolGovernance Proxy
+  const { address: protocolGovProxyAddress } = await deployContract(
+    "ProtocolGovernance Proxy (USER-FACING)",
+    UpgradeableProxy,
+    protocolGovImplAddress,
+    proxyAdminAddress
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Initialize ProtocolGovernance via proxy
+  const protocolGovernance = ProtocolGovernanceUpgradeable.attach(protocolGovProxyAddress);
+  await sendTransaction(
+    "ProtocolGovernance initialized",
+    () => protocolGovernance.initialize(
+      deployer.address,
+      config.emergencyCouncil
+    )
+  );
+  const protocolGovernanceAddress = protocolGovProxyAddress;
 
   await new Promise(resolve => setTimeout(resolve, 5000)); // Delay between deployments
 
-  // Deploy DAO
-  const DAO = await ethers.getContractFactory("DAO");
-  const { contract: dao, address: daoAddress } = await deployContract(
-    "DAO",
-    DAO,
-    btc1usdAddress,
-    protocolGovernanceAddress
+  // Deploy DAOUpgradeable Implementation
+  const DAOUpgradeable = await ethers.getContractFactory("DAOUpgradeable");
+  const { address: daoImplAddress } = await deployContract(
+    "DAO Implementation",
+    DAOUpgradeable
   );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Deploy DAO Proxy
+  const { address: daoProxyAddress } = await deployContract(
+    "DAO Proxy (USER-FACING)",
+    UpgradeableProxy,
+    daoImplAddress,
+    proxyAdminAddress
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Initialize DAO via proxy
+  const dao = DAOUpgradeable.attach(daoProxyAddress);
+  await sendTransaction(
+    "DAO initialized",
+    () => dao.initialize(
+      btc1usdAddress,
+      protocolGovernanceAddress
+    )
+  );
+  const daoAddress = daoProxyAddress;
 
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 6: INITIALIZE CONNECTIONS ====================
-  console.log("\n🔗 STEP 6: Initializing contract connections...\n");
-
-  // Helper function to send transaction with improved retry logic
-  async function sendTransaction(name, txPromise, maxRetries = 5) { // Increased retries
-    let retries = maxRetries;
-    while (retries > 0) {
-      try {
-        const tx = await txPromise();
-        await tx.wait();
-        console.log(`  ✅ ${name}`);
-        await new Promise(resolve => setTimeout(resolve, 3000)); // Increased delay between txs
-        return true;
-      } catch (error) {
-        if (error.message.includes("nonce") && retries > 1) {
-          console.log(`  ⚠️  ${name} - nonce issue, retrying... (${retries - 1} attempts left)`);
-          await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
-          retries--;
-        } 
-        // Handle connection timeouts and RPC errors
-        else if ((error.code === 'UND_ERR_CONNECT_TIMEOUT' ||
-                  error.message.includes('timeout') ||
-                  error.message.includes('ETIMEDOUT') ||
-                  error.message.includes('ECONNRESET') ||
-                  error.message.includes('Forwarder error') ||
-                  error.message.includes('Too Many Requests')) && retries > 1) {
-          console.log(`  ⚠️  ${name} - connection issue or rate limit, retrying... (${retries - 1} attempts left)`);
-          console.log(`  ℹ️  Waiting 30 seconds before retry...`); // Increased delay
-          await new Promise(resolve => setTimeout(resolve, 30000)); // Longer wait
-          retries--;
-        }
-        // Handle rate limiting
-        else if ((error.message.includes('rate limit') ||
-                  error.message.includes('429')) && retries > 1) {
-          console.log(`  ⚠️  ${name} - rate limited, waiting 60 seconds... (${retries - 1} attempts left)`); // Increased delay
-          await new Promise(resolve => setTimeout(resolve, 60000)); // 1 minute wait
-          retries--;
-        } else {
-          console.log(`  ❌ ${name} failed:`, error.message.split('\n')[0]);
-          return false;
-        }
-      }
-    }
-    return false;
-  }
+  // ==================== STEP 7: INITIALIZE CONNECTIONS ====================
+  console.log("\n🔗 STEP 7: Initializing contract connections...\n");
 
   // Set vault reference in BTC1USD
   await sendTransaction(
@@ -413,7 +610,7 @@ async function main() {
 
   // IMPORTANT: Complete circular dependency resolution
   // Update MerkleDistributor with actual WeeklyDistribution address
-  // (it was deployed with zero address in STEP 4)
+  // (it was deployed with zero address in STEP 5)
   console.log("\n  📝 Completing circular dependency resolution...");
   await sendTransaction(
     "MerkleDistributor weeklyDistribution set (completing circular dependency)",
@@ -438,8 +635,8 @@ async function main() {
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 7: CONFIGURE COLLATERAL ====================
-  console.log("\n🔐 STEP 7: Adding collateral tokens...\n");
+  // ==================== STEP 8: CONFIGURE COLLATERAL ====================
+  console.log("\n🔐 STEP 8: Adding collateral tokens...\n");
 
   await sendTransaction(
     "Added MockWBTC as collateral",
@@ -463,8 +660,8 @@ async function main() {
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 8: MINT TEST TOKENS ====================
-  console.log("\n🪙  STEP 8: Minting test tokens...\n");
+  // ==================== STEP 9: MINT TEST TOKENS ====================
+  console.log("\n🪙  STEP 9: Minting test tokens...\n");
 
   const testAmount = ethers.parseUnits("100", 8); // 100 tokens with 8 decimals
 
@@ -490,73 +687,74 @@ async function main() {
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 9: TRANSFER ADMIN ROLES ====================
-  console.log("\n👑 STEP 9: Transferring admin roles to configured admin...\n");
-  console.log(`  ℹ️  Transferring admin roles from deployer (${deployer.address}) to ${config.admin}`);
+  // ==================== STEP 10: TRANSFER OWNERSHIP TO SAFE ====================
+  console.log("\n👑 STEP 10: Transferring ownership to Safe multisig...\n");
+  console.log(`  ℹ️  Transferring ownership from deployer (${deployer.address}) to Safe (${config.admin})`);
+  console.log(`  ℹ️  Note: Upgradeable contracts use Ownable.transferOwnership()\n`);
 
-  // Transfer admin role for BTC1USD (uses setAdmin)
+  // Transfer ownership for BTC1USD (uses Ownable.transferOwnership)
   await sendTransaction(
-    "BTC1USD admin transferred",
-    () => btc1usd.setAdmin(config.admin)
+    "BTC1USD ownership transferred to Safe",
+    () => btc1usd.transferOwnership(config.admin)
   );
 
   await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
 
-  // Transfer admin role for Vault (uses setAdmin)
+  // Transfer ownership for Vault (uses Ownable.transferOwnership)
   await sendTransaction(
-    "Vault admin transferred",
-    () => vault.setAdmin(config.admin)
+    "Vault ownership transferred to Safe",
+    () => vault.transferOwnership(config.admin)
   );
 
   await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
 
-  // Transfer admin role for ChainlinkBTCOracle (uses transferAdmin)
+  // Transfer ownership for ChainlinkBTCOracle (uses Ownable.transferOwnership)
   await sendTransaction(
-    "ChainlinkBTCOracle admin transferred",
-    () => priceOracle.transferAdmin(config.admin)
+    "ChainlinkBTCOracle ownership transferred to Safe",
+    () => priceOracle.transferOwnership(config.admin)
   );
 
   await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
 
-  // Transfer admin role for MerkleDistributor (uses setAdmin)
+  // Transfer ownership for MerkleDistributor (uses Ownable.transferOwnership)
   await sendTransaction(
-    "MerkleDistributor admin transferred",
-    () => merkleDistributor.setAdmin(config.admin)
+    "MerkleDistributor ownership transferred to Safe",
+    () => merkleDistributor.transferOwnership(config.admin)
   );
 
   await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
 
-  // Transfer admin role for WeeklyDistribution (uses setAdmin)
+  // Transfer ownership for WeeklyDistribution (uses Ownable.transferOwnership)
   await sendTransaction(
-    "WeeklyDistribution admin transferred",
-    () => weeklyDistribution.setAdmin(config.admin)
+    "WeeklyDistribution ownership transferred to Safe",
+    () => weeklyDistribution.transferOwnership(config.admin)
   );
 
   await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
 
-  // Transfer admin role for EndowmentManager (uses setAdmin)
+  // Transfer ownership for EndowmentManager (uses Ownable.transferOwnership)
   await sendTransaction(
-    "EndowmentManager admin transferred",
-    () => endowmentManager.setAdmin(config.admin)
+    "EndowmentManager ownership transferred to Safe",
+    () => endowmentManager.transferOwnership(config.admin)
   );
 
   await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
 
-  // Transfer admin role for ProtocolGovernance (uses setAdmin)
+  // Transfer ownership for ProtocolGovernance (uses Ownable.transferOwnership)
   await sendTransaction(
-    "ProtocolGovernance admin transferred",
-    () => protocolGovernance.setAdmin(config.admin)
+    "ProtocolGovernance ownership transferred to Safe",
+    () => protocolGovernance.transferOwnership(config.admin)
   );
 
   await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
 
   // ==================== TRANSFER OWNERSHIP OF WALLET CONTRACTS ====================
   console.log("\n💳 Transferring ownership of wallet contracts...\n");
-  console.log(`  ℹ️  Transferring ownership from deployer (${deployer.address}) to ${config.admin}`);
+  console.log(`  ℹ️  Transferring ownership from deployer (${deployer.address}) to Safe (${config.admin})`);
 
   // Transfer ownership of DevWallet (uses transferOwnership from Ownable)
   await sendTransaction(
-    "DevWallet ownership transferred",
+    "DevWallet ownership transferred to Safe",
     () => devWallet.transferOwnership(config.admin)
   );
 
@@ -564,7 +762,7 @@ async function main() {
 
   // Transfer ownership of EndowmentWallet (uses transferOwnership from Ownable)
   await sendTransaction(
-    "EndowmentWallet ownership transferred",
+    "EndowmentWallet ownership transferred to Safe",
     () => endowmentWallet.transferOwnership(config.admin)
   );
 
@@ -572,51 +770,42 @@ async function main() {
 
   // Transfer ownership of MerkleFeeCollector (uses transferOwnership from Ownable)
   await sendTransaction(
-    "MerkleFeeCollector ownership transferred",
+    "MerkleFeeCollector ownership transferred to Safe",
     () => merklFeeCollector.transferOwnership(config.admin)
   );
 
   await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
 
-  // ==================== TRANSFER ADMIN OF MOCK TOKENS ====================
-  console.log("\n🪙 Transferring admin of mock collateral tokens...\n");
-  console.log(`  ℹ️  Transferring admin from deployer (${deployer.address}) to ${config.admin}`);
+  // ==================== SKIP MOCK TOKEN OWNERSHIP TRANSFER ====================
+  console.log("\n🪙 Mock collateral tokens...\n");
+  console.log(`  ℹ️  Mock tokens (WBTC, cbBTC, tBTC) remain under deployer control`);
+  console.log(`  ℹ️  These are test tokens only - no ownership transfer needed`);
 
-  // Transfer admin of MockWBTC (uses setAdmin)
+  // ==================== TRANSFER PROXYADMIN TO SAFE ====================
+  console.log("\n🔐 Transferring ProxyAdmin ownership to Safe...\n");
+  console.log(`  ℹ️  ProxyAdmin controls all proxy upgrades`);
+  console.log(`  ℹ️  Transferring from deployer to Safe multisig: ${config.admin}`);
+  
   await sendTransaction(
-    "MockWBTC admin transferred",
-    () => mockWBTC.setAdmin(config.admin)
+    "ProxyAdmin ownership transferred to Safe",
+    () => proxyAdmin.transferOwnership(config.admin)
   );
 
-  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
-
-  // Transfer admin of MockCBTC (uses setAdmin)
-  await sendTransaction(
-    "MockCBTC admin transferred",
-    () => mockCBTC.setAdmin(config.admin)
-  );
-
-  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
-
-  // Transfer admin of MockTBTC (uses setAdmin)
-  await sendTransaction(
-    "MockTBTC admin transferred",
-    () => mockTBTC.setAdmin(config.admin)
-  );
-
-  console.log("\n  ✅ All admin roles successfully transferred to:", config.admin);
-  console.log("  ✅ All wallet contract ownerships successfully transferred to:", config.admin);
-  console.log("  ✅ All mock token admins successfully transferred to:", config.admin);
-  console.log("  ℹ️  Deployer can no longer perform admin operations");
-  console.log("  ℹ️  Admin can now manage wallet contracts (add/remove wallets, distribute funds)");
-  console.log("  ℹ️  Admin can now mint mock collateral tokens (WBTC, cbBTC, tBTC) for testing");
-  console.log("  ℹ️  Future admin changes should use the secure two-step transfer process");
+  console.log("\n  ✅ All ownership successfully transferred to Safe multisig:", config.admin);
+  console.log("  ✅ Safe multisig now controls:");
+  console.log("     - All core protocol contracts (BTC1USD, Vault, Oracle, etc.)");
+  console.log("     - All wallet contracts (DevWallet, EndowmentWallet, MerkleFeeCollector)");
+  console.log("     - All governance contracts (ProtocolGovernance, EndowmentManager)");
+  console.log("     - ProxyAdmin (controls all proxy upgrades)");
+  console.log("  ℹ️  Mock tokens remain under deployer control (test tokens only)");
+  console.log("  ℹ️  Deployer can no longer perform admin operations on production contracts");
+  console.log("  ℹ️  All production changes now require Safe multisig approval");
 
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 10: VERIFY CHAINLINK ORACLE ====================
-  console.log("\n📈 STEP 10: Verifying Chainlink price oracle...\n");
+  // ==================== STEP 11: VERIFY CHAINLINK ORACLE ====================
+  console.log("\n📈 STEP 11: Verifying Chainlink price oracle...\n");
 
   try {
     const feedAddress = await priceOracle.getPriceFeedAddress();
@@ -641,19 +830,16 @@ async function main() {
     console.log("  ⚠️  Oracle verification failed:", error.message);
   }
 
-  // ==================== STEP 11: VERIFY DEPLOYMENT ====================
-  console.log("\n✅ STEP 11: Verifying deployment...\n");
+  // ==================== STEP 12: VERIFY DEPLOYMENT ====================
+  console.log("\n✅ STEP 12: Verifying deployment...\n");
 
   try {
     // Verify DAO configuration
     const daoQuorum = await dao.quorumVotes();
     console.log(`  ✅ DAO quorum: ${ethers.formatUnits(daoQuorum, 8)} BTC1USD`);
 
-    const daoThreshold = await dao.PROPOSAL_THRESHOLD();
+    const daoThreshold = await dao.proposalThreshold();
     console.log(`  ✅ DAO proposal threshold: ${ethers.formatUnits(daoThreshold, 8)} BTC1USD`);
-
-    const endowmentThreshold = await endowmentManager.PROPOSAL_THRESHOLD();
-    console.log(`  ✅ Endowment proposal threshold: ${ethers.formatUnits(endowmentThreshold, 8)} BTC1USD`);
 
     // Verify circular dependency resolution
     console.log("\n  📝 Verifying circular dependency resolution...");
@@ -789,10 +975,21 @@ async function main() {
   console.log("  MerkleFeeCollector:  ", merklFeeCollectorAddress);
 
   console.log("\n🏦 Core Contracts:");
-  console.log("  BTC1USD Token:        ", btc1usdAddress);
-  console.log("  Vault:                ", vaultAddress);
-  console.log("  ChainlinkBTCOracle:   ", priceOracleAddress);
-  console.log("  Chainlink Feed:       ", "0x0FB99723Aee6f420beAD13e6bBB79b7E6F034298");
+  console.log("  BTC1USD Token (Non-Upgradeable): ", btc1usdAddress);
+  console.log("  Vault (Proxy):                   ", vaultAddress);
+  console.log("  ChainlinkBTCOracle (Proxy):      ", priceOracleAddress);
+  console.log("  Chainlink Feed:                  ", "0x0FB99723Aee6f420beAD13e6bBB79b7E6F034298");
+  console.log("");
+  console.log("🔧 Upgradeable Implementations (For Reference):");
+  console.log("  Vault Impl:           ", vaultImplAddress);
+  console.log("  Oracle Impl:          ", oracleImplAddress);
+  console.log("  Merkle Impl:          ", merkleImplAddress);
+  console.log("  Endowment Impl:       ", endowmentImplAddress);
+  console.log("");
+  console.log("  ℹ️  BTC1USD is non-upgradeable for CEX compatibility");
+  console.log("");
+  console.log("🔐 Governance:");
+  console.log("  ProxyAdmin:           ", proxyAdminAddress);
 
   console.log("\n💰 Distribution:");
   console.log("  MerkleDistributor:  ", merkleDistributorAddress);
@@ -845,6 +1042,17 @@ async function main() {
     chainId: 84532,
     timestamp: new Date().toISOString(),
     deployer: deployer.address,
+    upgradeable: true,
+    proxyAdmin: proxyAdminAddress,
+    implementations: {
+      vault: vaultImplAddress,
+      oracle: oracleImplAddress,
+      merkleDistributor: merkleImplAddress,
+      endowmentManager: endowmentImplAddress,
+    },
+    nonUpgradeable: {
+      btc1usd: btc1usdAddress, // Non-upgradeable for CEX compatibility
+    },
     mockTokens: {
       wbtc: mockWBTCAddress,
       cbbtc: mockCBTCAddress,

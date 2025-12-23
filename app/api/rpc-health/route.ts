@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
         console.error("Provider test failed:", error);
         throw error;
       }
-        }, 8453, { // Base Mainnet chain ID
+        }, Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453"), { // Use chain ID from environment
           timeout: 15000, // Increased timeout
           maxRetries: 3,
           retryDelay: 2000,

@@ -2,6 +2,10 @@
   command = "npm run build"
   publish = ".next"
 
+# Disable Netlify Blobs to avoid deployment errors
+[blobs]
+  deploy = false
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 

@@ -30,6 +30,7 @@ describe("MerkleDistributor", function () {
     // Deploy MerkleDistributor
     const MerkleDistributorFactory = await ethers.getContractFactory("MerkleDistributor");
     merkleDistributor = await MerkleDistributorFactory.deploy(
+      admin.address, // initialOwner for Ownable
       await token.getAddress(),
       admin.address,
       weeklyDistribution.address

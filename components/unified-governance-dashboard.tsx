@@ -553,7 +553,7 @@ export function UnifiedGovernanceDashboard({ userBalance = 0, isAdmin = false }:
 
     try {
       writeContract({
-        address: (process.env.NEXT_PUBLIC_GOVERNANCE_DAO_CONTRACT || CONTRACT_ADDRESSES.PROTOCOL_GOVERNANCE) as `0x${string}`,
+        address: (process.env.NEXT_PUBLIC_DAO_CONTRACT || CONTRACT_ADDRESSES.GOVERNANCE_DAO) as `0x${string}`,
         abi: GOVERNANCE_DAO_ABI,
         functionName: 'queue',
         args: [BigInt(proposalId)],
@@ -572,7 +572,7 @@ export function UnifiedGovernanceDashboard({ userBalance = 0, isAdmin = false }:
 
     try {
       writeContract({
-        address: (process.env.NEXT_PUBLIC_GOVERNANCE_DAO_CONTRACT || CONTRACT_ADDRESSES.PROTOCOL_GOVERNANCE) as `0x${string}`,
+        address: (process.env.NEXT_PUBLIC_DAO_CONTRACT || CONTRACT_ADDRESSES.GOVERNANCE_DAO) as `0x${string}`,
         abi: GOVERNANCE_DAO_ABI,
         functionName: 'execute',
         args: [BigInt(proposalId)],
@@ -683,7 +683,7 @@ export function UnifiedGovernanceDashboard({ userBalance = 0, isAdmin = false }:
 
       // Call the propose function
       writeContract({
-        address: (process.env.NEXT_PUBLIC_GOVERNANCE_DAO_CONTRACT || CONTRACT_ADDRESSES.GOVERNANCE_DAO) as `0x${string}`,
+        address: (process.env.NEXT_PUBLIC_DAO_CONTRACT || CONTRACT_ADDRESSES.GOVERNANCE_DAO) as `0x${string}`,
         abi: GOVERNANCE_DAO_ABI,
         functionName: 'propose',
         args: [
