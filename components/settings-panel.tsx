@@ -28,6 +28,7 @@ import {
 import type { ProtocolState } from "@/lib/protocol-math"
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi"
 import { CONTRACT_ADDRESSES } from "@/lib/contracts"
+import BTC1USDTimelockManager from "@/components/btc1usd-timelock-manager"
 
 interface SettingsPanelProps {
   isAdmin: boolean
@@ -111,6 +112,7 @@ export function SettingsPanel({ isAdmin, protocolState, onProtocolStateChange }:
         vault: "0x0000000000000000000000000000000000000000",
         priceOracle: "0x0000000000000000000000000000000000000000",
         weeklyDistribution: "0x0000000000000000000000000000000000000000",
+        merkleDistributor: "0x0000000000000000000000000000000000000000",
         endowmentManager: "0x0000000000000000000000000000000000000000",
         protocolGovernance: "0x0000000000000000000000000000000000000000",
         wbtc: "0x0000000000000000000000000000000000000000",
@@ -184,6 +186,7 @@ export function SettingsPanel({ isAdmin, protocolState, onProtocolStateChange }:
         vault: "0x0000000000000000000000000000000000000000",
         priceOracle: "0x0000000000000000000000000000000000000000",
         weeklyDistribution: "0x0000000000000000000000000000000000000000",
+        merkleDistributor: "0x0000000000000000000000000000000000000000",
         endowmentManager: "0x0000000000000000000000000000000000000000",
         protocolGovernance: "0x0000000000000000000000000000000000000000",
         wbtc: "0x0000000000000000000000000000000000000000",
@@ -934,6 +937,13 @@ export function SettingsPanel({ isAdmin, protocolState, onProtocolStateChange }:
         </TabsContent>
 
         <TabsContent value="security" className="space-y-4">
+          {/* BTC1USD Timelock Manager - Admin Only */}
+          {isAdmin && (
+            <div className="mb-6">
+              <BTC1USDTimelockManager />
+            </div>
+          )}
+
           {/* Admin Security Controls */}
           {isAdmin && (
             <Card className="gradient-card border-orange-500/20 border-2">

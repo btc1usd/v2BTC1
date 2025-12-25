@@ -71,12 +71,12 @@ export function useLandingStats(): LandingStats {
     address: CONTRACT_ADDRESSES.VAULT as `0x${string}`,
     abi: [{
       inputs: [],
-      name: "getCollateralRatio",
+      name: "getCurrentCollateralRatio",
       outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
       stateMutability: "view",
       type: "function",
     }],
-    functionName: 'getCollateralRatio',
+    functionName: 'getCurrentCollateralRatio',
     query: {
       enabled: !!CONTRACT_ADDRESSES.VAULT,
       refetchInterval: 10000, // Refetch every 10 seconds

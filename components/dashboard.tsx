@@ -31,6 +31,7 @@ import { EndowmentManager } from "@/components/endowment-manager";
 import { SecurityMonitoring } from "@/components/security-monitoring";
 import { TreasuryDashboard } from "@/components/treasury-dashboard";
 import DistributionAdmin from "@/components/distribution-admin";
+import BTC1USDTimelockManager from "@/components/btc1usd-timelock-manager";
 import FixedMerkleClaim from "@/components/fixed-merkle-claim";
 import EnhancedMerkleClaim from "@/components/enhanced-merkle-claim";
 import CollateralManagement from "@/components/collateral-management";
@@ -70,6 +71,7 @@ import {
   ChevronDown,
   Moon,
   Sun,
+  Lock as LockIcon,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
@@ -4343,12 +4345,17 @@ function Dashboard() {
             <div className="space-y-6">
               <div className="mb-6">
                 <h2 className="text-2xl font-bold text-foreground mb-2">
-                  Security Monitoring
+                  Security & Access Control
                 </h2>
                 <p className="text-muted-foreground">
-                  Monitor protocol security and system health
+                  Monitor protocol security, manage critical address changes, and system health
                 </p>
               </div>
+              
+              {/* BTC1USD Timelock Manager */}
+              <BTC1USDTimelockManager />
+              
+              {/* Security Monitoring */}
               <SecurityMonitoring
                 isAdmin={!!isAdminUser}
                 collateralRatio={collateralRatio}

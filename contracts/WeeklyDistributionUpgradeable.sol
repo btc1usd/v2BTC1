@@ -71,12 +71,12 @@ contract WeeklyDistributionUpgradeable is Initializable, OwnableUpgradeable, Ree
 
     uint256 public lastDistributionTime;
 
-    // Distribution every 4 minutes (for testing)
-    uint256 public constant DISTRIBUTION_INTERVAL = 4 minutes;
-    // Claims expire after 10 minutes
-    uint256 public constant CLAIM_EXPIRY = 10 minutes;
-    uint256 public constant FRIDAY_14_UTC = 14 * 3600; // 14:00 UTC in seconds
+   // Weekly distributions - 7 days (production)
+    uint256 public constant DISTRIBUTION_INTERVAL = 7 days;
 
+    uint256 public constant FRIDAY_14_UTC = 14 * 3600; // 14:00 UTC in seconds
+    uint256 public constant CLAIM_EXPIRY = 365 days;
+    
     // Protocol wallets excluded from receiving holder rewards
     mapping(address => bool) public isExcludedFromRewards;
     address[] public excludedAddresses;
@@ -194,9 +194,11 @@ contract WeeklyDistributionUpgradeable is Initializable, OwnableUpgradeable, Ree
         uint256 rewardPerToken = getRewardPerToken(collateralRatio);
         uint256 totalHolderRewards = eligibleSupply.mul(rewardPerToken).div(1e8);
 
-        uint256 merklFee = totalHolderRewards.mul(MERKL_FEE).div(1e8);
-        uint256 endowmentFee = totalHolderRewards.mul(ENDOWMENT_FEE).div(1e8);
-        uint256 devFee = totalHolderRewards.mul(DEV_FEE).div(1e8);
+        // OPTIMIZED: Calculate fees with proper rounding to ensure fairness
+        // Round up to prevent fees from being underpaid
+        uint256 merklFee = (totalHolderRewards.mul(MERKL_FEE).add(1e8 - 1)).div(1e8);
+        uint256 endowmentFee = (totalHolderRewards.mul(ENDOWMENT_FEE).add(1e8 - 1)).div(1e8);
+        uint256 devFee = (totalHolderRewards.mul(DEV_FEE).add(1e8 - 1)).div(1e8);
         
         uint256 totalNewTokens = totalHolderRewards.add(merklFee).add(endowmentFee).add(devFee);
         

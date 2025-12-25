@@ -19,9 +19,9 @@ const VAULT_ABI = [
   {
     "inputs": [
       { "indexed": true, "name": "user", "type": "address" },
-      { "indexed": false, "name": "btcAmount", "type": "uint256" },
-      { "indexed": false, "name": "tokensIssued", "type": "uint256" },
-      { "indexed": false, "name": "collateralToken", "type": "address" }
+      { "indexed": false, "name": "collateral", "type": "address" },
+      { "indexed": false, "name": "amountIn", "type": "uint256" },
+      { "indexed": false, "name": "btc1Out", "type": "uint256" }
     ],
     "name": "Mint",
     "type": "event"
@@ -29,9 +29,9 @@ const VAULT_ABI = [
   {
     "inputs": [
       { "indexed": true, "name": "user", "type": "address" },
-      { "indexed": false, "name": "tokensRedeemed", "type": "uint256" },
-      { "indexed": false, "name": "btcAmount", "type": "uint256" },
-      { "indexed": false, "name": "collateralToken", "type": "address" }
+      { "indexed": false, "name": "collateral", "type": "address" },
+      { "indexed": false, "name": "btc1In", "type": "uint256" },
+      { "indexed": false, "name": "collateralOut", "type": "uint256" }
     ],
     "name": "Redeem",
     "type": "event"
@@ -70,6 +70,14 @@ export function useRecentActivity() {
   const [activities, setActivities] = useState<ActivityEvent[]>([])
   const [isLoading, setIsLoading] = useState(false)
 
+  // Log when hook initializes
+  useEffect(() => {
+    console.log('🔍 useRecentActivity initialized with:')
+    console.log('  Wallet address:', address)
+    console.log('  Vault address:', CONTRACT_ADDRESSES.VAULT)
+    console.log('  PublicClient available:', !!publicClient)
+  }, [address, publicClient])
+
   // Watch Mint events
   useWatchContractEvent({
     address: CONTRACT_ADDRESSES.VAULT as `0x${string}`,
@@ -84,8 +92,8 @@ export function useRecentActivity() {
           return isMatch
         })
         .map((log: any) => {
-          const btcAmount = parseFloat(formatUnits(log.args.btcAmount || 0n, 8)).toFixed(2)
-          const tokenAmount = parseFloat(formatUnits(log.args.tokensIssued || 0n, 8)).toFixed(2)
+          const btcAmount = parseFloat(formatUnits(log.args.amountIn || 0n, 8)).toFixed(2)
+          const tokenAmount = parseFloat(formatUnits(log.args.btc1Out || 0n, 8)).toFixed(2)
           return {
             id: `mint-${log.transactionHash}-${log.logIndex}`,
             type: 'mint' as const,
@@ -125,8 +133,8 @@ export function useRecentActivity() {
           return isMatch
         })
         .map((log: any) => {
-          const btcAmount = parseFloat(formatUnits(log.args.btcAmount || 0n, 8)).toFixed(2)
-          const tokenAmount = parseFloat(formatUnits(log.args.tokensRedeemed || 0n, 8)).toFixed(2)
+          const btcAmount = parseFloat(formatUnits(log.args.collateralOut || 0n, 8)).toFixed(2)
+          const tokenAmount = parseFloat(formatUnits(log.args.btc1In || 0n, 8)).toFixed(2)
           return {
             id: `redeem-${log.transactionHash}-${log.logIndex}`,
             type: 'redeem' as const,
@@ -239,14 +247,17 @@ export function useRecentActivity() {
       setIsLoading(true)
       try {
         const currentBlock = await publicClient.getBlockNumber()
-        // Fetch last 100,000 blocks (approximately last 2-3 days on Base with ~2 sec block time)
-        // Increase range to ensure we capture activity
-        const fromBlock = currentBlock > 100000n ? currentBlock - 100000n : 0n
+        // Reduced to 10,000 blocks to avoid RPC limits (approximately last 5-6 hours on Base with ~2 sec block time)
+        // This is well within the 100,000 block limit imposed by most RPC providers
+        const fromBlock = currentBlock > 10000n ? currentBlock - 10000n : 0n
+        
+        console.log(`📊 Fetching events from block ${fromBlock} to ${currentBlock} (${10000} blocks)`)
 
         const allActivities: ActivityEvent[] = []
 
         // Fetch Mint events
         try {
+          console.log('📥 Fetching Mint events...')
           const mintLogs = await publicClient.getLogs({
             address: CONTRACT_ADDRESSES.VAULT as `0x${string}`,
             event: VAULT_ABI[0],
@@ -256,11 +267,12 @@ export function useRecentActivity() {
             fromBlock,
             toBlock: 'latest',
           })
+          console.log(`✅ Found ${mintLogs.length} Mint events`)
 
           const mintActivities = await Promise.all(mintLogs.map(async (log: any) => {
             const block = await publicClient.getBlock({ blockNumber: log.blockNumber })
-            const btcAmount = parseFloat(formatUnits(log.args.btcAmount || 0n, 8)).toFixed(2)
-            const tokenAmount = parseFloat(formatUnits(log.args.tokensIssued || 0n, 8)).toFixed(2)
+            const btcAmount = parseFloat(formatUnits(log.args.amountIn || 0n, 8)).toFixed(2)
+            const tokenAmount = parseFloat(formatUnits(log.args.btc1Out || 0n, 8)).toFixed(2)
             return {
               id: `mint-${log.transactionHash}-${log.logIndex}`,
               type: 'mint' as const,
@@ -274,12 +286,14 @@ export function useRecentActivity() {
             }
           }))
           allActivities.push(...mintActivities)
+          console.log(`✅ Added ${mintActivities.length} mint activities`)
         } catch (error) {
           console.error('Error fetching mint events:', error)
         }
 
         // Fetch Redeem events
         try {
+          console.log('📥 Fetching Redeem events...')
           const redeemLogs = await publicClient.getLogs({
             address: CONTRACT_ADDRESSES.VAULT as `0x${string}`,
             event: VAULT_ABI[1],
@@ -289,11 +303,12 @@ export function useRecentActivity() {
             fromBlock,
             toBlock: 'latest',
           })
+          console.log(`✅ Found ${redeemLogs.length} Redeem events`)
 
           const redeemActivities = await Promise.all(redeemLogs.map(async (log: any) => {
             const block = await publicClient.getBlock({ blockNumber: log.blockNumber })
-            const btcAmount = parseFloat(formatUnits(log.args.btcAmount || 0n, 8)).toFixed(2)
-            const tokenAmount = parseFloat(formatUnits(log.args.tokensRedeemed || 0n, 8)).toFixed(2)
+            const btcAmount = parseFloat(formatUnits(log.args.collateralOut || 0n, 8)).toFixed(2)
+            const tokenAmount = parseFloat(formatUnits(log.args.btc1In || 0n, 8)).toFixed(2)
             return {
               id: `redeem-${log.transactionHash}-${log.logIndex}`,
               type: 'redeem' as const,
@@ -307,12 +322,14 @@ export function useRecentActivity() {
             }
           }))
           allActivities.push(...redeemActivities)
+          console.log(`✅ Added ${redeemActivities.length} redeem activities`)
         } catch (error) {
           console.error('Error fetching redeem events:', error)
         }
 
         // Fetch Claim events
         try {
+          console.log('📥 Fetching Claim events...')
           const claimLogs = await publicClient.getLogs({
             address: CONTRACT_ADDRESSES.MERKLE_DISTRIBUTOR as `0x${string}`,
             event: DISTRIBUTOR_ABI[0],
@@ -322,6 +339,7 @@ export function useRecentActivity() {
             fromBlock,
             toBlock: 'latest',
           })
+          console.log(`✅ Found ${claimLogs.length} Claim events`)
 
           const claimActivities = await Promise.all(claimLogs.map(async (log: any) => {
             const block = await publicClient.getBlock({ blockNumber: log.blockNumber })
@@ -339,18 +357,21 @@ export function useRecentActivity() {
             }
           }))
           allActivities.push(...claimActivities)
+          console.log(`✅ Added ${claimActivities.length} claim activities`)
         } catch (error) {
           console.error('Error fetching claim events:', error)
         }
 
         // Fetch Distribution events (for all users, not filtered by address)
         try {
+          console.log('📥 Fetching Distribution events...')
           const distributionLogs = await publicClient.getLogs({
             address: CONTRACT_ADDRESSES.WEEKLY_DISTRIBUTION as `0x${string}`,
             event: WEEKLY_DISTRIBUTION_ABI[0],
             fromBlock,
             toBlock: 'latest',
           })
+          console.log(`✅ Found ${distributionLogs.length} Distribution events`)
 
           const distributionActivities = await Promise.all(distributionLogs.map(async (log: any) => {
             const block = await publicClient.getBlock({ blockNumber: log.blockNumber })
@@ -368,6 +389,7 @@ export function useRecentActivity() {
             }
           }))
           allActivities.push(...distributionActivities)
+          console.log(`✅ Added ${distributionActivities.length} distribution activities`)
         } catch (error) {
           console.error('Error fetching distribution events:', error)
         }
@@ -382,7 +404,7 @@ export function useRecentActivity() {
         
         // If no activities found, log it clearly
         if (sortedActivities.length === 0) {
-          console.log('ℹ️ No recent activity found for this wallet in the last 100,000 blocks')
+          console.log('ℹ️ No recent activity found for this wallet in the last 10,000 blocks (~5-6 hours)')
         }
       } catch (error) {
         console.error('Error fetching historical activities:', error)

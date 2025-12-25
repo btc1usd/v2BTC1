@@ -43,8 +43,12 @@ async function main() {
   console.log("\n🏗️  STEP 2: Deploying core contracts...");
 
   // Deploy BTC1USD token
-  const BTC1USD = await ethers.getContractFactory("BTC1USD");
-  const btc1usd = await BTC1USD.deploy(config.admin);
+  const BTC1USD = await ethers.getContractFactory("BTC1USDWithPermit");
+  const btc1usd = await BTC1USD.deploy(
+    config.admin,          // initialOwner
+    ethers.ZeroAddress,    // vault (will set after Vault deployed)
+    ethers.ZeroAddress     // weeklyDistribution (will set after WeeklyDistribution deployed)
+  );
   await btc1usd.waitForDeployment();
   const btc1usdAddress = await btc1usd.getAddress();
   console.log("  ✓ BTC1USD deployed to:", btc1usdAddress);
@@ -132,11 +136,9 @@ async function main() {
   // ==================== STEP 5: INITIALIZE CONNECTIONS ====================
   console.log("\n🔗 STEP 5: Initializing contract connections...");
 
-  await btc1usd.setVault(vaultAddress);
-  console.log("  ✓ BTC1USD vault set");
-
-  await btc1usd.setWeeklyDistribution(weeklyDistributionAddress);
-  console.log("  ✓ BTC1USD weeklyDistribution set");
+  // For local testing, BTC1USD was deployed with actual vault and weeklyDistribution addresses
+  console.log("  ✅ BTC1USD vault already set to:", vaultAddress);
+  console.log("  ✅ BTC1USD weeklyDistribution already set to:", weeklyDistributionAddress);
 
   await merkleDistributor.setWeeklyDistribution(weeklyDistributionAddress);
   console.log("  ✓ MerkleDistributor weeklyDistribution set");

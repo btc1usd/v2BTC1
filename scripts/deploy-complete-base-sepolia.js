@@ -95,6 +95,14 @@ async function main() {
   console.log("  Emergency Council:", config.emergencyCouncil);
   console.log("  Chainlink Feed:   ", config.chainlinkBtcUsdFeed);
   console.log(`  Live BTC Price:    $${liveBtcPrice}`);
+  
+  // Calculate min/max BTC price bounds (with 50% buffer from current price)
+  const liveBtcPrice8Decimals = Math.floor(parseFloat(liveBtcPrice) * 1e8);
+  const minBtcPrice = Math.floor(liveBtcPrice8Decimals * 0.5); // 50% below current
+  const maxBtcPrice = Math.floor(liveBtcPrice8Decimals * 2.0); // 100% above current
+  
+  console.log(`  Oracle Min BTC Price: $${ethers.formatUnits(minBtcPrice, 8)}`);
+  console.log(`  Oracle Max BTC Price: $${ethers.formatUnits(maxBtcPrice, 8)}`);
   console.log("\n  Note: DevWallet, EndowmentWallet, and MerkleFeeCollector will be deployed as smart contracts\n");
 
   // Helper function to send transaction with improved retry logic
@@ -302,21 +310,27 @@ async function main() {
   const merklFeeCollectorAddress = merklFeeCollectorProxyAddress;  console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 4: DEPLOY UPGRADEABLE CORE CONTRACTS ====================
   console.log("\n🏗️  STEP 4: Deploying upgradeable core contracts...\n");
 
-  // Deploy BTC1USDWithPermit (Non-Upgradeable)
+  // Deploy BTC1USD FIRST with zero addresses (will set via one-time setters after Vault/WeeklyDistribution)
   console.log("  ℹ️  BTC1USD is non-upgradeable (important for CEX listings)");
   console.log("  ℹ️  Using BTC1USDWithPermit for EIP-2612 permit support");
+  console.log("  ℹ️  Deploying with zero addresses for vault and weeklyDistribution\n");
+  
   const BTC1USD = await ethers.getContractFactory("BTC1USDWithPermit");
   const { contract: btc1usd, address: btc1usdAddress } = await deployContract(
     "BTC1USDWithPermit (Non-Upgradeable)",
     BTC1USD,
-    deployer.address
+    deployer.address,      // initialOwner
+    ethers.ZeroAddress,    // vault (will set via one-time setter after Vault deployed)
+    ethers.ZeroAddress     // weeklyDistribution (will set via one-time setter after WeeklyDistribution deployed)
   );
 
   await new Promise(resolve => setTimeout(resolve, 5000));
-
+  
+  console.log("  ✅ BTC1USD deployed with placeholder addresses");
+  console.log("  ℹ️  Will use one-time setters to set vault and weeklyDistribution after deployment\n");
+  
   // Deploy ChainlinkBTCOracle Implementation
   const ChainlinkBTCOracleUpgradeable = await ethers.getContractFactory("ChainlinkBTCOracleUpgradeable");
   const { address: oracleImplAddress } = await deployContract(
@@ -419,10 +433,10 @@ async function main() {
 
   await new Promise(resolve => setTimeout(resolve, 5000));
 
-  // Initialize MerkleDistributor with zero address (will update later)
+  // Initialize MerkleDistributor with actual BTC1USD address
   const merkleDistributor = MerkleDistributorUpgradeable.attach(merkleProxyAddress);
   await sendTransaction(
-    "MerkleDistributor initialized (temp weeklyDist: zero)",
+    "MerkleDistributor initialized",
     () => merkleDistributor.initialize(
       deployer.address,      // initialOwner
       btc1usdAddress,        // token_
@@ -433,8 +447,8 @@ async function main() {
 
   await new Promise(resolve => setTimeout(resolve, 5000)); // Delay between deployments
 
-  console.log("  ℹ️  MerkleDistributor.weeklyDistribution is temporarily zero address");
-  console.log("  ℹ️  This will be updated after WeeklyDistribution is deployed");
+  console.log("  ✅ MerkleDistributor initialized with BTC1USD address");
+  console.log("  ℹ️  WeeklyDistribution will be set after it's deployed");
 
   // Debug: Log all addresses before WeeklyDistribution deployment
   console.log("\n  📝 Verifying addresses before WeeklyDistribution deployment...");
@@ -487,6 +501,28 @@ async function main() {
 
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
+
+  // ==================== STEP 5.5: SET VAULT AND WEEKLY DISTRIBUTION ====================
+  console.log("\n🔗 STEP 5.5: Setting Vault and WeeklyDistribution in BTC1USD...\n");
+  
+  // Now set vault and weeklyDistribution in BTC1USD using one-time setters
+  // These functions can ONLY execute once (when current address is zero)
+  await sendTransaction(
+    "BTC1USD vault address set",
+    () => btc1usd.setVault(vaultAddress)
+  );
+  
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  
+  await sendTransaction(
+    "BTC1USD weeklyDistribution address set",
+    () => btc1usd.setWeeklyDistribution(weeklyDistributionAddress)
+  );
+  
+  console.log("  ✅ BTC1USD vault set to:", vaultAddress);
+  console.log("  ✅ BTC1USD weeklyDistribution set to:", weeklyDistributionAddress);
+  console.log("  ℹ️  These addresses can ONLY be set once during deployment");
+  console.log("  ℹ️  Future changes require 2-day timelock via Safe UI modal");
 
   // ==================== STEP 6: DEPLOY UPGRADEABLE GOVERNANCE ====================
   console.log("\n🏛️  STEP 6: Deploying upgradeable governance system...\n");
@@ -592,31 +628,15 @@ async function main() {
   // ==================== STEP 7: INITIALIZE CONNECTIONS ====================
   console.log("\n🔗 STEP 7: Initializing contract connections...\n");
 
-  // Set vault reference in BTC1USD
-  await sendTransaction(
-    "BTC1USD vault set",
-    () => btc1usd.setVault(vaultAddress)
-  );
-
-  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
-
-  // Set weeklyDistribution reference in BTC1USD
-  await sendTransaction(
-    "BTC1USD weeklyDistribution set",
-    () => btc1usd.setWeeklyDistribution(weeklyDistributionAddress)
-  );
-
-  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
-
   // IMPORTANT: Complete circular dependency resolution
   // Update MerkleDistributor with actual WeeklyDistribution address
   // (it was deployed with zero address in STEP 5)
-  console.log("\n  📝 Completing circular dependency resolution...");
+  console.log("  📝 Completing circular dependency resolution...");
   await sendTransaction(
     "MerkleDistributor weeklyDistribution set (completing circular dependency)",
     () => merkleDistributor.setWeeklyDistribution(weeklyDistributionAddress)
   );
-  console.log("  ✅ Circular dependency resolved - both contracts now reference each other");
+  console.log("  ✅ Circular dependency resolved - both contracts now reference each other\n");
 
   await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
 

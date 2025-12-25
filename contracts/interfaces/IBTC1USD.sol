@@ -10,9 +10,8 @@ interface IBTC1USD is IERC20 {
     function criticalParamsLocked() external view returns (bool);
     function decimals() external pure returns (uint8);
     
-    // Admin functions
-    function setVault(address _vault) external;
-    function setWeeklyDistribution(address _wd) external;
+    // Admin functions (note: vault and weeklyDistribution are set via constructor)
+    // Changes to vault/weeklyDistribution require 2-day timelock via initiate/execute functions
     function lockCriticalParams() external;
     
     // Minting and burning

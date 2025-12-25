@@ -7,197 +7,173 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 /**
- * @title ChainlinkBTCOracleUpgradeable
- * @notice Upgradeable Chainlink price oracle supporting multiple collateral tokens
+ * @title ChainlinkBTCOracleUpgradeable (Liveness-Safe)
+ * @notice Upgradeable Chainlink oracle without deviation or hard bounds
  *
- * UPGRADEABLE DESIGN:
- * - Uses OpenZeppelin upgradeable patterns
- * - No constructor (uses initialize function)
- * - Storage layout preserved for future upgrades
+ * SECURITY GUARANTEES:
+ * - Stale timestamp protection
+ * - Round completeness validation
+ * - Minimum round age (anti-flash)
+ * - No manual price injection
+ *
+ * All prices returned in 8 decimals (USD-8)
+ *
+ * NOTE:
+ * - Relies on Chainlink security guarantees
+ * - Economic safety handled in Vault (CR + stress logic)
  */
-contract ChainlinkBTCOracleUpgradeable is Initializable, IPriceOracle, OwnableUpgradeable {
+contract ChainlinkBTCOracleUpgradeable is
+    Initializable,
+    IPriceOracle,
+    OwnableUpgradeable
+{
+    /*//////////////////////////////////////////////////////////////
+                                STORAGE
+    //////////////////////////////////////////////////////////////*/
+
     AggregatorV3Interface internal btcPriceFeed;
-    
+
     mapping(address => AggregatorV3Interface) public collateralFeeds;
     mapping(address => uint8) public collateralDecimals;
 
-    uint256 public constant STALE_THRESHOLD = 3600; // 1 hour
+    // ---- Safety parameters ----
+    uint256 public constant STALE_THRESHOLD = 1800; // 30 minutes
+    uint256 public constant MIN_ROUND_DELAY = 10;   // 10 Seconds
+
+    /*//////////////////////////////////////////////////////////////
+                                EVENTS
+    //////////////////////////////////////////////////////////////*/
 
     event PriceUpdated(uint256 newPrice, uint256 timestamp);
     event CollateralFeedUpdated(address indexed token, address indexed feed, uint8 decimals);
     event Initialized(address indexed owner);
 
-    /**
-     * @dev Initialize function replaces constructor for upgradeable pattern
-     * @param initialOwner Owner address for managing the oracle
-     * @param _btcPriceFeedAddress BTC/USD price feed address
-     */
-    function initialize(address initialOwner, address _btcPriceFeedAddress) external initializer {
-        require(initialOwner != address(0), "ChainlinkBTCOracle: owner is zero address");
-        require(_btcPriceFeedAddress != address(0), "ChainlinkBTCOracle: BTC price feed is zero address");
-        
+    /*//////////////////////////////////////////////////////////////
+                                INIT
+    //////////////////////////////////////////////////////////////*/
+
+    function initialize(
+        address initialOwner,
+        address btcFeed
+    ) external initializer {
+        require(initialOwner != address(0), "oracle: zero owner");
+        require(btcFeed != address(0), "oracle: zero feed");
+
         __Ownable_init(initialOwner);
-        btcPriceFeed = AggregatorV3Interface(_btcPriceFeedAddress);
-        
+        btcPriceFeed = AggregatorV3Interface(btcFeed);
+
         emit Initialized(initialOwner);
     }
 
-    /**
-     * @dev Update the BTC price feed address (for mainnet/testnet switching or feed updates)
-     */
-    function setBTCPriceFeed(address feedAddress) external onlyOwner {
-        require(feedAddress != address(0), "ChainlinkBTCOracle: feed is zero address");
-        btcPriceFeed = AggregatorV3Interface(feedAddress);
+    /*//////////////////////////////////////////////////////////////
+                                ADMIN
+    //////////////////////////////////////////////////////////////*/
+
+    function setBTCPriceFeed(address feed) external onlyOwner {
+        require(feed != address(0), "oracle: zero feed");
+        btcPriceFeed = AggregatorV3Interface(feed);
     }
 
-    function setCollateralFeed(address token, address feed, uint8 decimals) external onlyOwner {
-        require(token != address(0), "ChainlinkBTCOracle: token is zero address");
-        require(feed != address(0), "ChainlinkBTCOracle: feed is zero address");
-        
+    function setCollateralFeed(
+        address token,
+        address feed,
+        uint8 decimals_
+    ) external onlyOwner {
+        require(token != address(0), "oracle: zero token");
+        require(feed != address(0), "oracle: zero feed");
+
         collateralFeeds[token] = AggregatorV3Interface(feed);
-        collateralDecimals[token] = decimals;
-        emit CollateralFeedUpdated(token, feed, decimals);
+        collateralDecimals[token] = decimals_;
+
+        emit CollateralFeedUpdated(token, feed, decimals_);
     }
 
-    function getLatestPrice() public view returns (int) {
+    /*//////////////////////////////////////////////////////////////
+                            INTERNAL CORE
+    //////////////////////////////////////////////////////////////*/
+
+    function _readFeed(
+        AggregatorV3Interface feed,
+        uint8 feedDecimals
+    ) internal view returns (uint256) {
         (
-            /*uint80 roundID*/,
-            int price,
-            /*uint startedAt*/,
-            /*uint timeStamp*/,
-            /*uint80 answeredInRound*/
-        ) = btcPriceFeed.latestRoundData();
+            uint80 roundID,
+            int256 answer,
+            ,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        ) = feed.latestRoundData();
+
+        require(answer > 0, "oracle: bad price");
+        require(updatedAt > 0, "oracle: no timestamp");
+        require(answeredInRound >= roundID, "oracle: stale round");
+        require(block.timestamp - updatedAt <= STALE_THRESHOLD, "oracle: stale price");
+        require(block.timestamp >= updatedAt + MIN_ROUND_DELAY, "oracle: round too fresh");
+
+        uint256 price = uint256(answer);
+
+        // Normalize to 8 decimals
+        if (feedDecimals < 8) {
+            price *= 10 ** (8 - feedDecimals);
+        } else if (feedDecimals > 8) {
+            price /= 10 ** (feedDecimals - 8);
+        }
 
         return price;
     }
 
-    function getLatestPriceNormalized() public view returns (uint256) {
-        (, int price, , , ) = btcPriceFeed.latestRoundData();
-        uint8 decimals = btcPriceFeed.decimals();
-        return uint256(price) / (10 ** decimals);
-    }
+    /*//////////////////////////////////////////////////////////////
+                            PRICE INTERFACE
+    //////////////////////////////////////////////////////////////*/
 
     function getBTCPrice() external view override returns (uint256) {
-        (
-            /*uint80 roundID*/,
-            int price,
-            /*uint startedAt*/,
-            uint256 timeStamp,
-            /*uint80 answeredInRound*/
-        ) = btcPriceFeed.latestRoundData();
-
-        require(price > 0, "ChainlinkBTCOracle: invalid price");
-        require(timeStamp > 0, "ChainlinkBTCOracle: incomplete round");
-        require(block.timestamp - timeStamp <= STALE_THRESHOLD, "ChainlinkBTCOracle: stale price");
-
-        uint8 feedDecimals = btcPriceFeed.decimals();
-        uint256 btcPrice = uint256(price);
-
-        if (feedDecimals < 8) {
-            btcPrice = btcPrice * (10 ** (8 - feedDecimals));
-        } else if (feedDecimals > 8) {
-            btcPrice = btcPrice / (10 ** (feedDecimals - 8));
-        }
-
-        return btcPrice;
+        return _readFeed(
+            btcPriceFeed,
+            btcPriceFeed.decimals()
+        );
     }
 
     function getPrice(address token) external view override returns (uint256) {
         if (token != address(0) && address(collateralFeeds[token]) != address(0)) {
-            AggregatorV3Interface feed = collateralFeeds[token];
-            uint8 targetDecimals = collateralDecimals[token];
-            
-            (
-                /*uint80 roundID*/,
-                int price,
-                /*uint startedAt*/,
-                uint256 timeStamp,
-                /*uint80 answeredInRound*/
-            ) = feed.latestRoundData();
-
-            require(price > 0, "ChainlinkBTCOracle: invalid price");
-            require(timeStamp > 0, "ChainlinkBTCOracle: incomplete round");
-            require(block.timestamp - timeStamp <= STALE_THRESHOLD, "ChainlinkBTCOracle: stale price");
-
-            uint256 tokenPrice = uint256(price);
-
-            if (targetDecimals < 8) {
-                tokenPrice = tokenPrice * (10 ** (8 - targetDecimals));
-            } else if (targetDecimals > 8) {
-                tokenPrice = tokenPrice / (10 ** (targetDecimals - 8));
-            }
-
-            return tokenPrice;
-        }
-        
-        (
-            /*uint80 roundID*/,
-            int price,
-            /*uint startedAt*/,
-            uint256 timeStamp,
-            /*uint80 answeredInRound*/
-        ) = btcPriceFeed.latestRoundData();
-
-        require(price > 0, "ChainlinkBTCOracle: invalid price");
-        require(timeStamp > 0, "ChainlinkBTCOracle: incomplete round");
-        require(block.timestamp - timeStamp <= STALE_THRESHOLD, "ChainlinkBTCOracle: stale price");
-
-        uint8 feedDecimals = btcPriceFeed.decimals();
-        uint256 btcPrice = uint256(price);
-
-        if (feedDecimals < 8) {
-            btcPrice = btcPrice * (10 ** (8 - feedDecimals));
-        } else if (feedDecimals > 8) {
-            btcPrice = btcPrice / (10 ** (feedDecimals - 8));
+            return _readFeed(
+                collateralFeeds[token],
+                collateralDecimals[token]
+            );
         }
 
-        return btcPrice;
+        return _readFeed(
+            btcPriceFeed,
+            btcPriceFeed.decimals()
+        );
     }
 
     function getLastUpdate() external view override returns (uint256) {
-        (
-            /*uint80 roundID*/,
-            /*int price*/,
-            /*uint startedAt*/,
-            uint256 timeStamp,
-            /*uint80 answeredInRound*/
-        ) = btcPriceFeed.latestRoundData();
-        
-        return timeStamp;
+        (, , , uint256 ts, ) = btcPriceFeed.latestRoundData();
+        return ts;
     }
 
     function isStale() external view override returns (bool) {
-        (
-            /*uint80 roundID*/,
-            /*int price*/,
-            /*uint startedAt*/,
-            uint256 timeStamp,
-            /*uint80 answeredInRound*/
-        ) = btcPriceFeed.latestRoundData();
-        
-        return block.timestamp - timeStamp > STALE_THRESHOLD;
-    }
-
-
-    function getPriceFeedAddress() external view returns (address) {
-        return address(btcPriceFeed);
+        (, , , uint256 ts, ) = btcPriceFeed.latestRoundData();
+        return block.timestamp - ts > STALE_THRESHOLD;
     }
 
     function decimals() external pure returns (uint8) {
         return 8;
     }
 
-    /**
-     * @dev Chainlink oracles are automatic - these functions are no-ops for compatibility
-     */
+    /*//////////////////////////////////////////////////////////////
+                        COMPATIBILITY FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
     function updatePrice() external override onlyOwner {
-        // Chainlink automatically updates prices - this is a no-op for interface compatibility
         emit PriceUpdated(this.getBTCPrice(), block.timestamp);
     }
 
-    function updatePrice(uint256 _newPrice) external override onlyOwner {
-        // Chainlink automatically updates prices - manual price setting not supported
-        // This function exists only for interface compatibility
-        revert("ChainlinkBTCOracle: manual price updates not supported");
+    function updatePrice(uint256) external override onlyOwner {
+        revert("oracle: manual price updates disabled");
+    }
+
+    function getPriceFeedAddress() external view returns (address) {
+        return address(btcPriceFeed);
     }
 }

@@ -289,20 +289,11 @@ async function main() {
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 3: DEPLOY UPGRADEABLE CORE CONTRACTS ====================
   console.log("\n🏗️  STEP 3: Deploying upgradeable core contracts...\n");
 
-  // Deploy BTC1USD (Non-Upgradeable)
-  console.log("  ℹ️  BTC1USD is non-upgradeable (important for CEX listings)");
-  const BTC1USD = await ethers.getContractFactory("BTC1USD");
-  const { contract: btc1usd, address: btc1usdAddress } = await deployContract(
-    "BTC1USD (Non-Upgradeable)",
-    BTC1USD,
-    config.safeAddress // Use Safe as initial owner
-  );
-
-  await new Promise(resolve => setTimeout(resolve, 5000));
-
+  // NOTE: We deploy ChainlinkBTCOracle and Vault BEFORE BTC1USD
+  // because BTC1USD constructor now requires vault and weeklyDistribution addresses
+  
   // Deploy ChainlinkBTCOracle Implementation
   const ChainlinkBTCOracleUpgradeable = await ethers.getContractFactory("ChainlinkBTCOracleUpgradeable");
   const { address: oracleImplAddress } = await deployContract(
@@ -475,6 +466,28 @@ async function main() {
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
+  // ==================== STEP 4.5: DEPLOY BTC1USD TOKEN ====================
+  console.log("\n💵 STEP 4.5: Deploying BTC1USD token...\n");
+  console.log("  ℹ️  BTC1USD is non-upgradeable (important for CEX listings)");
+  console.log("  ℹ️  Using BTC1USDWithPermit for EIP-2612 permit support");
+  console.log("  ℹ️  Now that Vault and WeeklyDistribution are deployed, we can set them in constructor\n");
+  
+  const BTC1USD = await ethers.getContractFactory("BTC1USDWithPermit");
+  const { contract: btc1usd, address: btc1usdAddress } = await deployContract(
+    "BTC1USDWithPermit (Non-Upgradeable)",
+    BTC1USD,
+    config.safeAddress,         // initialOwner - Use Safe
+    vaultAddress,               // vault
+    weeklyDistributionAddress   // weeklyDistribution
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  
+  console.log("  ✅ BTC1USD vault set to:", vaultAddress);
+  console.log("  ✅ BTC1USD weeklyDistribution set to:", weeklyDistributionAddress);
+  console.log("  ℹ️  Future changes to vault/weeklyDistribution require 2-day timelock");
+  console.log("  ℹ️  Use Safe UI modal to initiate and execute timelock changes");
+
   // ==================== STEP 5: DEPLOY UPGRADEABLE GOVERNANCE ====================
   console.log("\n🏛️  STEP 5: Deploying upgradeable governance system...\n");
 
@@ -579,31 +592,15 @@ async function main() {
   // ==================== STEP 6: INITIALIZE CONNECTIONS ====================
   console.log("\n🔗 STEP 6: Initializing contract connections...\n");
 
-  // Set vault reference in BTC1USD
-  await sendTransaction(
-    "BTC1USD vault set",
-    () => btc1usd.setVault(vaultAddress)
-  );
-
-  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
-
-  // Set weeklyDistribution reference in BTC1USD
-  await sendTransaction(
-    "BTC1USD weeklyDistribution set",
-    () => btc1usd.setWeeklyDistribution(weeklyDistributionAddress)
-  );
-
-  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
-
   // IMPORTANT: Complete circular dependency resolution
   // Update MerkleDistributor with actual WeeklyDistribution address
   // (it was deployed with zero address in STEP 3)
-  console.log("\n  📝 Completing circular dependency resolution...");
+  console.log("  📝 Completing circular dependency resolution...");
   await sendTransaction(
     "MerkleDistributor weeklyDistribution set (completing circular dependency)",
     () => merkleDistributor.setWeeklyDistribution(weeklyDistributionAddress)
   );
-  console.log("  ✅ Circular dependency resolved - both contracts now reference each other");
+  console.log("  ✅ Circular dependency resolved - both contracts now reference each other\n");
 
   await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
 

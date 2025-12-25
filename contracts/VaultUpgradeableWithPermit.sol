@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -12,7 +13,11 @@ import "./interfaces/IBTC1USD.sol";
 import "./interfaces/IPriceOracle.sol";
 import "./interfaces/IPermit2.sol";
 
-contract VaultUpgradeableWithPermit is Initializable, OwnableUpgradeable {
+contract VaultUpgradeableWithPermit is
+    Initializable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable
+{
     using SafeERC20 for IERC20;
 
     /*//////////////////////////////////////////////////////////////
@@ -83,7 +88,18 @@ contract VaultUpgradeableWithPermit is Initializable, OwnableUpgradeable {
         address dev_,
         address endowment_
     ) external initializer {
+        require(
+            owner_ != address(0) &&
+            btc1_ != address(0) &&
+            oracle_ != address(0) &&
+            dev_ != address(0) &&
+            endowment_ != address(0),
+            "zero address"
+        );
+
         __Ownable_init(owner_);
+        __ReentrancyGuard_init();
+
         btc1usd = IBTC1USD(btc1_);
         oracle = IPriceOracle(oracle_);
         devWallet = dev_;
@@ -95,13 +111,19 @@ contract VaultUpgradeableWithPermit is Initializable, OwnableUpgradeable {
     //////////////////////////////////////////////////////////////*/
 
     function addCollateral(address token) external onlyOwner {
+        require(token != address(0), "zero token");
+        require(!supportedCollateral[token], "already added");
+
         supportedCollateral[token] = true;
         collateralTokens.push(token);
+
         emit CollateralAdded(token);
     }
 
     function removeCollateral(address token) external onlyOwner {
-        require(collateralBalances[token] == 0, "in use");
+        require(collateralBalances[token] == 0, "accounting balance not zero");
+        require(IERC20(token).balanceOf(address(this)) == 0, "actual balance not zero");
+
         supportedCollateral[token] = false;
         emit CollateralRemoved(token);
     }
@@ -117,16 +139,34 @@ contract VaultUpgradeableWithPermit is Initializable, OwnableUpgradeable {
     }
 
     /*//////////////////////////////////////////////////////////////
+                        INTERNAL HELPERS
+    //////////////////////////////////////////////////////////////*/
+
+    function _getTotalCollateralValueInternal() internal view returns (uint256 totalValue) {
+        for (uint256 i = 0; i < collateralTokens.length; i++) {
+            address token = collateralTokens[i];
+            uint256 bal = collateralBalances[token];
+            if (bal == 0) continue;
+
+            uint256 price = oracle.getPrice(token);
+            require(price > 0, "oracle price zero");
+
+            uint8 dec = IERC20Metadata(token).decimals();
+            totalValue += bal * price / (10 ** dec);
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////
                                 MINT
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Single-tx mint using Permit2 (works for wBTC, cbBTC, tBTC)
     function mintWithPermit2(
         address collateral,
         uint256 amount,
         IPermit2.PermitTransferFrom calldata permit,
         bytes calldata signature
-    ) external whenNotPaused validCollateral(collateral) {
+    ) external whenNotPaused validCollateral(collateral) nonReentrant {
+        require(amount > 0, "zero amount");
         require(!oracle.isStale(), "oracle stale");
         require(permit.permitted.token == collateral, "token mismatch");
         require(permit.permitted.amount >= amount, "permit too small");
@@ -143,36 +183,43 @@ contract VaultUpgradeableWithPermit is Initializable, OwnableUpgradeable {
         );
 
         collateralBalances[collateral] += amount;
-
         _mintInternal(msg.sender, collateral, amount);
     }
 
-    function _mintInternal(
-        address user,
-        address collateral,
-        uint256 amount
-    ) internal {
+    function _mintInternal(address user, address collateral, uint256 amount) internal {
+        uint256 prevUSD = _getTotalCollateralValueInternal();
+        uint256 prevSupply = btc1usd.totalSupply();
+
+        uint256 prevCR = prevSupply == 0
+            ? MIN_COLLATERAL_RATIO
+            : (prevUSD * DECIMALS) / prevSupply;
+
+        uint256 mintPrice = prevCR >= MIN_COLLATERAL_RATIO
+            ? prevCR
+            : MIN_COLLATERAL_RATIO;
+
         uint256 price = oracle.getPrice(collateral);
+        require(price > 0, "oracle price zero");
+
         uint8 dec = IERC20Metadata(collateral).decimals();
-
         uint256 usdValue = amount * price / (10 ** dec);
-        uint256 btc1Out = usdValue * DECIMALS / MIN_COLLATERAL_RATIO;
 
-        uint256 devFee = btc1Out * DEV_FEE_MINT / DECIMALS;
-        uint256 endFee = btc1Out * ENDOWMENT_FEE_MINT / DECIMALS;
+        uint256 userMint = usdValue * DECIMALS / mintPrice;
 
-        btc1usd.mint(user, btc1Out);
+        uint256 devFee = userMint * DEV_FEE_MINT / DECIMALS;
+        uint256 endFee = userMint * ENDOWMENT_FEE_MINT / DECIMALS;
+
+        btc1usd.mint(user, userMint);
         if (devFee > 0) btc1usd.mint(devWallet, devFee);
         if (endFee > 0) btc1usd.mint(endowmentWallet, endFee);
 
-        emit Mint(user, collateral, amount, btc1Out);
+        emit Mint(user, collateral, amount, userMint);
     }
 
     /*//////////////////////////////////////////////////////////////
                                 REDEEM
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Single-tx redeem using ERC20Permit
     function redeemWithPermit(
         uint256 btc1Amount,
         address collateral,
@@ -180,7 +227,7 @@ contract VaultUpgradeableWithPermit is Initializable, OwnableUpgradeable {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external whenNotPaused validCollateral(collateral) {
+    ) external whenNotPaused validCollateral(collateral) nonReentrant {
         IERC20Permit(address(btc1usd)).permit(
             msg.sender,
             address(this),
@@ -192,26 +239,45 @@ contract VaultUpgradeableWithPermit is Initializable, OwnableUpgradeable {
         _redeem(msg.sender, btc1Amount, collateral);
     }
 
-    function _redeem(
-        address user,
-        uint256 btc1Amount,
-        address collateral
-    ) internal {
+    function _redeem(address user, uint256 btc1Amount, address collateral) internal {
         require(!oracle.isStale(), "oracle stale");
 
-        uint256 price = oracle.getPrice(collateral);
-        uint8 dec = IERC20Metadata(collateral).decimals();
+        uint256 prevUSD = _getTotalCollateralValueInternal();
+        uint256 prevSupply = btc1usd.totalSupply();
 
-        uint256 collateralOut = btc1Amount * (10 ** dec) / price;
+        uint256 prevCR = prevSupply == 0
+            ? MIN_COLLATERAL_RATIO
+            : (prevUSD * DECIMALS) / prevSupply;
+
+        uint256 usdValue;
+        if (prevCR >= MIN_COLLATERAL_RATIO_STABLE) {
+            usdValue = btc1Amount;
+        } else {
+            uint256 stressPrice = prevCR * STRESS_REDEMPTION_FACTOR / DECIMALS;
+            usdValue = btc1Amount * stressPrice / DECIMALS;
+        }
+
+        uint256 price = oracle.getPrice(collateral);
+        require(price > 0, "oracle price zero");
+
+        uint8 dec = IERC20Metadata(collateral).decimals();
+        uint256 collateralOut = usdValue * (10 ** dec) / price;
+
         uint256 devFee = collateralOut * DEV_FEE_REDEEM / DECIMALS;
+        uint256 sendAmount = collateralOut - devFee;
 
         require(collateralBalances[collateral] >= collateralOut, "insufficient collateral");
 
-        btc1usd.burnFrom(user, btc1Amount);
+        if (prevCR >= MIN_COLLATERAL_RATIO && prevSupply > btc1Amount) {
+            uint256 newUSD = prevUSD - (collateralOut * price / (10 ** dec));
+            uint256 newSupply = prevSupply - btc1Amount;
+            require(newUSD * DECIMALS / newSupply >= MIN_COLLATERAL_RATIO, "breaks min CR");
+        }
 
+        btc1usd.burnFrom(user, btc1Amount);
         collateralBalances[collateral] -= collateralOut;
 
-        IERC20(collateral).safeTransfer(user, collateralOut - devFee);
+        IERC20(collateral).safeTransfer(user, sendAmount);
         if (devFee > 0) IERC20(collateral).safeTransfer(devWallet, devFee);
 
         emit Redeem(user, collateral, btc1Amount, collateralOut);
@@ -221,62 +287,19 @@ contract VaultUpgradeableWithPermit is Initializable, OwnableUpgradeable {
                             VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Get total USD value of all collateral in vault
     function getTotalCollateralValue() external view returns (uint256) {
-        uint256 totalValue = 0;
-        
-        for (uint256 i = 0; i < collateralTokens.length; i++) {
-            address token = collateralTokens[i];
-            uint256 balance = collateralBalances[token];
-            
-            if (balance > 0) {
-                uint256 price = oracle.getPrice(token);
-                uint8 dec = IERC20Metadata(token).decimals();
-                totalValue += balance * price / (10 ** dec);
-            }
-        }
-        
-        return totalValue;
+        return _getTotalCollateralValueInternal();
     }
 
-    /// @notice Get current collateral ratio (total collateral / total supply)
     function getCurrentCollateralRatio() external view returns (uint256) {
-        uint256 totalSupply = btc1usd.totalSupply();
-        if (totalSupply == 0) return 0;
-        
-        uint256 totalValue = 0;
-        for (uint256 i = 0; i < collateralTokens.length; i++) {
-            address token = collateralTokens[i];
-            uint256 balance = collateralBalances[token];
-            
-            if (balance > 0) {
-                uint256 price = oracle.getPrice(token);
-                uint8 dec = IERC20Metadata(token).decimals();
-                totalValue += balance * price / (10 ** dec);
-            }
-        }
-        
-        return totalValue * DECIMALS / totalSupply;
+        uint256 supply = btc1usd.totalSupply();
+        if (supply == 0) return 0;
+        return _getTotalCollateralValueInternal() * DECIMALS / supply;
     }
 
-    /// @notice Check if protocol is healthy (ratio >= minimum)
     function isHealthy() external view returns (bool) {
-        uint256 totalSupply = btc1usd.totalSupply();
-        if (totalSupply == 0) return true;
-        
-        uint256 totalValue = 0;
-        for (uint256 i = 0; i < collateralTokens.length; i++) {
-            address token = collateralTokens[i];
-            uint256 balance = collateralBalances[token];
-            
-            if (balance > 0) {
-                uint256 price = oracle.getPrice(token);
-                uint8 dec = IERC20Metadata(token).decimals();
-                totalValue += balance * price / (10 ** dec);
-            }
-        }
-        
-        uint256 ratio = totalValue * DECIMALS / totalSupply;
-        return ratio >= MIN_COLLATERAL_RATIO;
+        uint256 supply = btc1usd.totalSupply();
+        if (supply == 0) return true;
+        return _getTotalCollateralValueInternal() * DECIMALS / supply >= MIN_COLLATERAL_RATIO;
     }
 }
