@@ -324,7 +324,7 @@ async function main() {
   await new Promise(resolve => setTimeout(resolve, 5000));
 
   // Deploy Vault Implementation
-  const VaultUpgradeable = await ethers.getContractFactory("VaultUpgradeable");
+  const VaultUpgradeable = await ethers.getContractFactory("Vault");
   const { address: vaultImplAddress } = await deployContract(
     "Vault Implementation",
     VaultUpgradeable
@@ -469,12 +469,12 @@ async function main() {
   // ==================== STEP 4.5: DEPLOY BTC1USD TOKEN ====================
   console.log("\n💵 STEP 4.5: Deploying BTC1USD token...\n");
   console.log("  ℹ️  BTC1USD is non-upgradeable (important for CEX listings)");
-  console.log("  ℹ️  Using BTC1USDWithPermit for EIP-2612 permit support");
+  console.log("  ℹ️  Using BTC1USD with EIP-2612 permit support");
   console.log("  ℹ️  Now that Vault and WeeklyDistribution are deployed, we can set them in constructor\n");
   
-  const BTC1USD = await ethers.getContractFactory("BTC1USDWithPermit");
+  const BTC1USD = await ethers.getContractFactory("BTC1USD");
   const { contract: btc1usd, address: btc1usdAddress } = await deployContract(
-    "BTC1USDWithPermit (Non-Upgradeable)",
+    "BTC1USD (Non-Upgradeable)",
     BTC1USD,
     config.safeAddress,         // initialOwner - Use Safe
     vaultAddress,               // vault

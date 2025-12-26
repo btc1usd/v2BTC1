@@ -13,7 +13,7 @@ import "./interfaces/IBTC1USD.sol";
 import "./interfaces/IPriceOracle.sol";
 import "./interfaces/IPermit2.sol";
 
-contract VaultUpgradeableWithPermit is
+contract Vault is
     Initializable,
     OwnableUpgradeable,
     ReentrancyGuardUpgradeable

@@ -314,12 +314,12 @@ async function main() {
 
   // Deploy BTC1USD FIRST with zero addresses (will set via one-time setters after Vault/WeeklyDistribution)
   console.log("  ℹ️  BTC1USD is non-upgradeable (important for CEX listings)");
-  console.log("  ℹ️  Using BTC1USDWithPermit for EIP-2612 permit support");
+  console.log("  ℹ️  Using BTC1USD with EIP-2612 permit support");
   console.log("  ℹ️  Deploying with zero addresses for vault and weeklyDistribution\n");
   
-  const BTC1USD = await ethers.getContractFactory("BTC1USDWithPermit");
+  const BTC1USD = await ethers.getContractFactory("BTC1USD");
   const { contract: btc1usd, address: btc1usdAddress } = await deployContract(
-    "BTC1USDWithPermit (Non-Upgradeable)",
+    "BTC1USD (Non-Upgradeable)",
     BTC1USD,
     deployer.address,      // initialOwner
     ethers.ZeroAddress,    // vault (will set via one-time setter after Vault deployed)
@@ -359,10 +359,10 @@ async function main() {
 
   await new Promise(resolve => setTimeout(resolve, 5000));
 
-  // Deploy VaultUpgradeableWithPermit Implementation
-  const VaultUpgradeable = await ethers.getContractFactory("VaultUpgradeableWithPermit");
+  // Deploy Vault Implementation
+  const VaultUpgradeable = await ethers.getContractFactory("Vault");
   const { address: vaultImplAddress } = await deployContract(
-    "VaultUpgradeableWithPermit Implementation",
+    "Vault Implementation",
     VaultUpgradeable
   );
 

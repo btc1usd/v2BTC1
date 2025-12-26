@@ -11,7 +11,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { AlertCircle, Plus, Trash2, CheckCircle, Settings, Shield, Copy, ExternalLink, ArrowRight } from "lucide-react";
+import BTC1USDSafeTimelock from "@/components/btc1usd-safe-timelock";
+import { AlertCircle, Plus, Trash2, CheckCircle, Settings, Shield, Copy, ExternalLink, ArrowRight, Lock } from "lucide-react";
 import { CONTRACT_ADDRESSES, ABIS } from "@/lib/contracts";
 import { encodeFunctionData } from "viem";
 
@@ -399,7 +400,7 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
     <div className="space-y-6">
       {/* Unified Tabs */}
       <Tabs defaultValue="manage" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto mb-8">
+        <TabsList className="grid w-full grid-cols-3 max-w-2xl mx-auto mb-8">
           <TabsTrigger 
             value="manage"
             className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-blue-600 data-[state=active]:text-white"
@@ -413,6 +414,13 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
           >
             <Settings className="h-4 w-4 mr-2" />
             Proxy Upgrades
+          </TabsTrigger>
+          <TabsTrigger 
+            value="btc1usd-timelock"
+            className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-orange-600 data-[state=active]:text-white"
+          >
+            <Lock className="h-4 w-4 mr-2" />
+            BTC1USD Timelock
           </TabsTrigger>
         </TabsList>
 
@@ -695,6 +703,24 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
                   </ol>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* BTC1USD Safe Timelock Tab */}
+        <TabsContent value="btc1usd-timelock" className="space-y-6">
+          <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-xl">
+            <CardHeader>
+              <div className="flex items-center space-x-2">
+                <Lock className="h-5 w-5 text-orange-400" />
+                <CardTitle className="text-white">BTC1USD Timelock Management (Safe Multisig)</CardTitle>
+              </div>
+              <CardDescription className="text-gray-400">
+                Manage Vault and WeeklyDistribution address changes with 2-day timelock using Safe multisig
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <BTC1USDSafeTimelock isAdmin={isAdmin} />
             </CardContent>
           </Card>
         </TabsContent>
