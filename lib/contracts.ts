@@ -106,6 +106,7 @@ export const ABIS = {
     "function getTotalCollateralValue() view returns (uint256)",
     "function isHealthy() view returns (bool)",
     "function getSupportedCollateral() view returns (address[])",
+    "function getCollateralList() view returns (address[])",
     "function addCollateral(address token)",
     "function removeCollateral(address token)",
     "function supportedCollateral(address token) view returns (bool)",

@@ -74,7 +74,7 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
       );
 
       // Get supported collateral addresses
-      const collateralAddresses = await vaultContract.getSupportedCollateral();
+      const collateralAddresses = await vaultContract.getCollateralList();
       
       // Get details for each collateral
       const collateralDetails = await Promise.all(

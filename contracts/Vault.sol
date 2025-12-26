@@ -315,4 +315,8 @@ contract Vault is
         if (supply == 0) return true;
         return _getTotalCollateralValueInternal() * DECIMALS / supply >= MIN_COLLATERAL_RATIO;
     }
+
+    function getCollateralList() external view returns (address[] memory) {
+        return collateralTokens;
+    }
 }
