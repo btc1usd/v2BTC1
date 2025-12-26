@@ -139,7 +139,7 @@ contract BTC1USD is ERC20, ERC20Permit, Ownable2Step, IBTC1USD {
     }
 
     /// @notice Execute vault address change after timelock (step 2 of 2)
-    function executeVaultChange() external onlyOwner {
+    function executeVaultChange() external onlyOwner onlyOwnerUnlocked {
         require(pendingVaultChange.newAddress != address(0), "no pending");
         require(block.timestamp >= pendingVaultChange.executeAfter, "timelock");
         address oldVault = vault;
@@ -151,7 +151,7 @@ contract BTC1USD is ERC20, ERC20Permit, Ownable2Step, IBTC1USD {
     }
 
     /// @notice Cancel pending vault address change
-    function cancelVaultChange() external onlyOwner {
+    function cancelVaultChange() external onlyOwner onlyOwnerUnlocked {
         require(
             pendingVaultChange.newAddress != address(0),
             "no pending change"
@@ -214,7 +214,7 @@ contract BTC1USD is ERC20, ERC20Permit, Ownable2Step, IBTC1USD {
     }
 
     /// @notice Cancel pending weekly distribution address change
-    function cancelWeeklyDistributionChange() external onlyOwner {
+    function cancelWeeklyDistributionChange() external onlyOwner onlyOwnerUnlocked {
         require(
             pendingWeeklyDistributionChange.newAddress != address(0),
             "no pending change"
@@ -233,6 +233,10 @@ contract BTC1USD is ERC20, ERC20Permit, Ownable2Step, IBTC1USD {
             weeklyDistribution != address(0),
             "BTC1USD: weekly dist not set"
         );
+
+        // Clear any pending changes to prevent bypass
+        delete pendingVaultChange;
+        delete pendingWeeklyDistributionChange;
 
         criticalParamsLocked = true;
         emit CriticalParamsLocked(owner());
