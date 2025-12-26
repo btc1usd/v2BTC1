@@ -30,9 +30,9 @@ contract VaultUpgradeableWithPermit is
     uint256 public constant MIN_COLLATERAL_RATIO_STABLE = 1.10e8;
     uint256 public constant STRESS_REDEMPTION_FACTOR    = 0.90e8;
 
-    uint256 public constant DEV_FEE_MINT       = 0.01e8;
-    uint256 public constant DEV_FEE_REDEEM     = 0.001e8;
-    uint256 public constant ENDOWMENT_FEE_MINT = 0.001e8;
+    uint256 public constant DEV_FEE_MINT       = 0.01e8;   // 1%
+    uint256 public constant DEV_FEE_REDEEM     = 0.001e8; // 0.1%
+    uint256 public constant ENDOWMENT_FEE_MINT = 0.001e8; // 0.1%
 
     address public constant PERMIT2 =
         0x000000000022D473030F116dDEE9F6B43aC78BA3;
@@ -125,6 +125,17 @@ contract VaultUpgradeableWithPermit is
         require(IERC20(token).balanceOf(address(this)) == 0, "actual balance not zero");
 
         supportedCollateral[token] = false;
+
+        // FIX: swap & pop to prevent array bloat
+        uint256 len = collateralTokens.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (collateralTokens[i] == token) {
+                collateralTokens[i] = collateralTokens[len - 1];
+                collateralTokens.pop();
+                break;
+            }
+        }
+
         emit CollateralRemoved(token);
     }
 
@@ -172,21 +183,7 @@ contract VaultUpgradeableWithPermit is
         require(permit.permitted.amount >= amount, "permit too small");
         require(permit.deadline >= block.timestamp, "permit expired");
 
-        IPermit2(PERMIT2).permitTransferFrom(
-            permit,
-            IPermit2.SignatureTransferDetails({
-                to: address(this),
-                requestedAmount: amount
-            }),
-            msg.sender,
-            signature
-        );
-
-        collateralBalances[collateral] += amount;
-        _mintInternal(msg.sender, collateral, amount);
-    }
-
-    function _mintInternal(address user, address collateral, uint256 amount) internal {
+        // FIX: compute CR BEFORE adding new collateral
         uint256 prevUSD = _getTotalCollateralValueInternal();
         uint256 prevSupply = btc1usd.totalSupply();
 
@@ -203,17 +200,31 @@ contract VaultUpgradeableWithPermit is
 
         uint8 dec = IERC20Metadata(collateral).decimals();
         uint256 usdValue = amount * price / (10 ** dec);
+        uint256 grossMint = usdValue * DECIMALS / mintPrice;
 
-        uint256 userMint = usdValue * DECIMALS / mintPrice;
+        // FIX: fees deducted from user mint (no unbacked BTC1)
+        uint256 devFee = grossMint * DEV_FEE_MINT / DECIMALS;
+        uint256 endFee = grossMint * ENDOWMENT_FEE_MINT / DECIMALS;
+        uint256 userMint = grossMint - devFee - endFee;
 
-        uint256 devFee = userMint * DEV_FEE_MINT / DECIMALS;
-        uint256 endFee = userMint * ENDOWMENT_FEE_MINT / DECIMALS;
+        // Pull collateral AFTER calculations
+        IPermit2(PERMIT2).permitTransferFrom(
+            permit,
+            IPermit2.SignatureTransferDetails({
+                to: address(this),
+                requestedAmount: amount
+            }),
+            msg.sender,
+            signature
+        );
 
-        btc1usd.mint(user, userMint);
+        collateralBalances[collateral] += amount;
+
+        btc1usd.mint(msg.sender, userMint);
         if (devFee > 0) btc1usd.mint(devWallet, devFee);
         if (endFee > 0) btc1usd.mint(endowmentWallet, endFee);
 
-        emit Mint(user, collateral, amount, userMint);
+        emit Mint(msg.sender, collateral, amount, userMint);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -228,6 +239,8 @@ contract VaultUpgradeableWithPermit is
         bytes32 r,
         bytes32 s
     ) external whenNotPaused validCollateral(collateral) nonReentrant {
+        require(btc1Amount > 0, "zero amount");
+
         IERC20Permit(address(btc1usd)).permit(
             msg.sender,
             address(this),
