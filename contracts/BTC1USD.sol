@@ -25,6 +25,10 @@ contract BTC1USDWithPermit is ERC20, ERC20Permit, Ownable2Step, IBTC1USD {
 
     modifier onlyVaultOrDistribution() {
         require(
+            vault != address(0) && weeklyDistribution != address(0),
+            "BTC1USD: not configured"
+        );
+        require(
             msg.sender == vault || msg.sender == weeklyDistribution,
             "BTC1USD: unauthorized"
         );
@@ -36,8 +40,8 @@ contract BTC1USDWithPermit is ERC20, ERC20Permit, Ownable2Step, IBTC1USD {
         _;
     }
 
-    event VaultChanged(address oldVault, address newVault);
-    event WeeklyDistributionChanged(address oldDist, address newDist);
+    event VaultChanged(address indexed oldVault, address indexed newVault);
+    event WeeklyDistributionChanged(address indexed oldDist, address indexed newDist);
     event CriticalParamsLocked(address owner);
     
     // Timelock events
@@ -108,6 +112,10 @@ contract BTC1USDWithPermit is ERC20, ERC20Permit, Ownable2Step, IBTC1USD {
     {
         require(newVault != address(0), "zero vault");
         require(newVault != vault, "same vault");
+        require(
+            pendingVaultChange.newAddress == address(0),
+            "BTC1USD: vault change pending"
+        );
         
         pendingVaultChange = PendingChange({
             newAddress: newVault,
@@ -156,6 +164,10 @@ contract BTC1USDWithPermit is ERC20, ERC20Permit, Ownable2Step, IBTC1USD {
     {
         require(newDist != address(0), "zero distribution");
         require(newDist != weeklyDistribution, "same distribution");
+        require(
+            pendingWeeklyDistributionChange.newAddress == address(0),
+            "BTC1USD: weekly dist change pending"
+        );
         
         pendingWeeklyDistributionChange = PendingChange({
             newAddress: newDist,
@@ -193,6 +205,10 @@ contract BTC1USDWithPermit is ERC20, ERC20Permit, Ownable2Step, IBTC1USD {
     }
 
     function lockCriticalParams() external onlyOwner {
+        require(!criticalParamsLocked, "BTC1USD: already locked");
+        require(vault != address(0), "BTC1USD: vault not set");
+        require(weeklyDistribution != address(0), "BTC1USD: weekly dist not set");
+
         criticalParamsLocked = true;
         emit CriticalParamsLocked(owner());
     }
@@ -208,5 +224,9 @@ contract BTC1USDWithPermit is ERC20, ERC20Permit, Ownable2Step, IBTC1USD {
     function burnFrom(address from, uint256 amount) external override {
         _spendAllowance(from, msg.sender, amount);
         _burn(from, amount);
+    }
+
+    function burn(uint256 amount) external {
+        _burn(msg.sender, amount);
     }
 }
