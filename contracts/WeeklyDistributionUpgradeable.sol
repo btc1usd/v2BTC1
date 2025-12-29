@@ -71,10 +71,8 @@ contract WeeklyDistributionUpgradeable is Initializable, OwnableUpgradeable, Ree
 
     uint256 public lastDistributionTime;
 
-   // Weekly distributions - 7 days (production)
-    uint256 public constant DISTRIBUTION_INTERVAL = 7 days;
-
-    uint256 public constant FRIDAY_14_UTC = 14 * 3600; // 14:00 UTC in seconds
+    // Daily distributions - 1 day interval
+    uint256 public constant DISTRIBUTION_INTERVAL = 1 days;
     uint256 public constant CLAIM_EXPIRY = 365 days;
     
     // Protocol wallets excluded from receiving holder rewards
@@ -148,16 +146,8 @@ contract WeeklyDistributionUpgradeable is Initializable, OwnableUpgradeable, Ree
     }
 
     function canDistribute() public view returns (bool) {
-        bool intervalPassed = block.timestamp >= lastDistributionTime.add(DISTRIBUTION_INTERVAL);
-        if (!intervalPassed) return false;
-
-        uint256 dayOfWeek = (block.timestamp / 86400 + 4) % 7; // 0 = Thursday, 1 = Friday, etc.
-        uint256 timeOfDay = block.timestamp % 86400;
-
-        if (dayOfWeek < 1) return false;
-        if (dayOfWeek == 1 && timeOfDay < FRIDAY_14_UTC) return false;
-
-        return true;
+        // Simple 1-day interval check - distribution allowed anytime after interval passes
+        return block.timestamp >= lastDistributionTime.add(DISTRIBUTION_INTERVAL);
     }
 
     function getRewardPerToken(uint256 collateralRatio) public pure returns (uint256) {

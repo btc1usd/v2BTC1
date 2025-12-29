@@ -52,6 +52,10 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
   const [showSafeModal, setShowSafeModal] = useState(false);
   const [upgradeCalldata, setUpgradeCalldata] = useState<string>("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  
+  // Safe Modal states for adding collateral
+  const [showAddCollateralSafeModal, setShowAddCollateralSafeModal] = useState(false);
+  const [addCollateralCalldata, setAddCollateralCalldata] = useState<string>("");
 
   // Load supported collaterals
   useEffect(() => {
@@ -148,6 +152,14 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
       const tokenContract = new ethers.Contract(newTokenAddress, ABIS.ERC20, provider);
       
       try {
+        // First check if the address has code
+        const code = await provider.getCode(newTokenAddress);
+        if (code === '0x') {
+          setTransactionStatus("Error: Address has no contract code. Please verify the address and network.");
+          setIsLoading(false);
+          return;
+        }
+        
         const [tokenSymbol, tokenName, decimals] = await Promise.all([
           tokenContract.symbol(),
           tokenContract.name(),
@@ -164,8 +176,30 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
         }
 
         console.log(`Token verified: ${tokenSymbol} (${tokenName})`);
-      } catch (error) {
-        setTransactionStatus("Error: Address is not a valid ERC20 token");
+      } catch (error: any) {
+        console.error("ERC20 verification error:", error);
+        let errorMessage = "Error: Address is not a valid ERC20 token";
+        
+        // Provide more specific error messages
+        if (error.message?.includes('network')) {
+          errorMessage += ". Please check your network connection.";
+        } else if (error.message?.includes('CALL_EXCEPTION')) {
+          errorMessage += ". The contract doesn't implement ERC20 interface (symbol, name, decimals).";
+        } else if (error.code === 'NETWORK_ERROR') {
+          errorMessage += ". Network error - please try again.";
+        } else if (error.message) {
+          errorMessage += `. Details: ${error.message.slice(0, 100)}`;
+        }
+        
+        // Get current network for debugging
+        try {
+          const network = await provider.getNetwork();
+          errorMessage += ` (Network: ${network.name || network.chainId})`;
+        } catch (e) {
+          console.error("Could not get network info:", e);
+        }
+        
+        setTransactionStatus(errorMessage);
         setIsLoading(false);
         return;
       }
@@ -186,7 +220,38 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
         return;
       }
 
-      // Add collateral
+      // Safe Integration: Check if user has UI access
+      const uiControllerAddress = process.env.NEXT_PUBLIC_UI_CONTROLLER || 
+        process.env.NEXT_PUBLIC_ADMIN_WALLET || 
+        "0xA1D4de75082562eA776b160e605acD587668111B";
+      const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS || uiControllerAddress;
+      
+      const hasUIAccess = address?.toLowerCase() === uiControllerAddress.toLowerCase();
+      const isSafeConnected = address?.toLowerCase() === safeAddress.toLowerCase();
+      
+      // If UI Controller is connected but not Safe, show modal with transaction data
+      if (hasUIAccess && !isSafeConnected && safeAddress !== uiControllerAddress) {
+        console.log('=== ADD COLLATERAL SAFE TRANSACTION ===');
+        console.log('Contract Address:', CONTRACT_ADDRESSES.VAULT);
+        console.log('Function: addCollateral(address)');
+        console.log('Token Address:', newTokenAddress);
+        console.log('Token Symbol:', newTokenSymbol);
+        console.log('Token Name:', newTokenName);
+        
+        // Encode the function call
+        const calldata = encodeFunctionData({
+          abi: ABIS.VAULT,
+          functionName: 'addCollateral',
+          args: [newTokenAddress as `0x${string}`]
+        });
+        
+        setAddCollateralCalldata(calldata);
+        setShowAddCollateralSafeModal(true);
+        setIsLoading(false);
+        return;
+      }
+
+      // Add collateral directly if Safe is connected
       const tx = await vaultContract.addCollateral(newTokenAddress);
       setTransactionStatus("Transaction submitted. Waiting for confirmation...");
       
@@ -199,10 +264,8 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
       setNewTokenAddress("");
       setNewTokenName("");
       
-      // Reload collaterals
-      setTimeout(() => {
-        loadSupportedCollaterals();
-      }, 2000);
+      // Reload collaterals immediately
+      await loadSupportedCollaterals();
 
     } catch (error: any) {
       console.error("Error adding collateral:", error);
@@ -279,7 +342,16 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
     }
 
     try {
+      setTransactionStatus("Reading token details...");
       const provider = new ethers.BrowserProvider(window.ethereum as any);
+      
+      // Check if address has code
+      const code = await provider.getCode(newTokenAddress);
+      if (code === '0x') {
+        setTransactionStatus("Error: Address has no contract code. Please verify the address and connected network.");
+        return;
+      }
+      
       const tokenContract = new ethers.Contract(newTokenAddress, ABIS.ERC20, provider);
       
       const [symbol, name] = await Promise.all([
@@ -289,9 +361,23 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
 
       setNewTokenSymbol(symbol);
       setNewTokenName(name);
-      setTransactionStatus("");
-    } catch (error) {
-      setTransactionStatus("Error: Could not read token details. Make sure it's a valid ERC20 token.");
+      setTransactionStatus(`✓ Token details loaded: ${symbol} (${name})`);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setTransactionStatus(""), 3000);
+    } catch (error: any) {
+      console.error("Auto-fill error:", error);
+      let errorMessage = "Error: Could not read token details";
+      
+      if (error.message?.includes('CALL_EXCEPTION')) {
+        errorMessage = "Error: Contract doesn't implement ERC20 interface. Not a valid ERC20 token.";
+      } else if (error.message?.includes('network')) {
+        errorMessage = "Error: Network issue. Please check your connection and try again.";
+      } else if (error.message) {
+        errorMessage += `. ${error.message.slice(0, 80)}`;
+      }
+      
+      setTransactionStatus(errorMessage);
     }
   };
 
@@ -868,6 +954,146 @@ export default function CollateralManagement({ isAdmin, protocolState }: Collate
                 window.open(safeUrl, '_blank');
               }}
               className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-lg shadow-purple-500/40 border-2 border-purple-400/60 font-semibold h-10 sm:h-auto"
+            >
+              <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              Open Safe UI
+              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Add Collateral Safe Modal */}
+      <Dialog open={showAddCollateralSafeModal} onOpenChange={setShowAddCollateralSafeModal}>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900 border-2 border-blue-500/70 shadow-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2 sm:gap-3 mb-2">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-blue-500/50">
+                <Plus className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg sm:text-2xl font-bold text-white">
+                  Add Collateral Token
+                </DialogTitle>
+                <DialogDescription className="text-xs sm:text-sm text-blue-200">
+                  Safe Multi-Signature Transaction
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+            {/* Token Information */}
+            <div className="bg-gradient-to-br from-blue-900/20 to-cyan-900/20 border-2 border-blue-500/50 rounded-lg p-3 sm:p-4">
+              <h3 className="text-xs sm:text-sm font-bold text-blue-300 mb-3">Token Details</h3>
+              <div className="space-y-2 text-xs sm:text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Symbol:</span>
+                  <code className="text-white bg-black/40 px-2 py-1 rounded font-mono">{newTokenSymbol}</code>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Name:</span>
+                  <code className="text-white bg-black/40 px-2 py-1 rounded font-mono">{newTokenName}</code>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-gray-400">Address:</span>
+                  <code className="text-xs text-green-200 bg-black/40 px-2 py-1 rounded font-mono break-all">
+                    {newTokenAddress}
+                  </code>
+                </div>
+              </div>
+            </div>
+            
+            {/* Contract Address */}
+            <div className="bg-gradient-to-br from-green-900/20 to-emerald-900/20 border-2 border-green-500/50 rounded-lg p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                <Label className="text-xs sm:text-sm text-green-300 font-bold uppercase">1️⃣ Vault Contract</Label>
+                <Button
+                  size="sm"
+                  className="h-8 px-3 sm:px-4 bg-green-600 hover:bg-green-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                  onClick={() => copyToClipboard(CONTRACT_ADDRESSES.VAULT, 'vault-contract')}
+                >
+                  {copiedField === 'vault-contract' ? (
+                    <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                  ) : (
+                    <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy</>
+                  )}
+                </Button>
+              </div>
+              <code className="text-xs sm:text-sm text-green-300 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto border border-green-500/40 break-all">
+                {CONTRACT_ADDRESSES.VAULT}
+              </code>
+            </div>
+
+            {/* Encoded Calldata */}
+            <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 border-2 border-cyan-500/50 rounded-lg p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                <Label className="text-xs sm:text-sm text-cyan-300 font-bold uppercase">2️⃣ Encoded Calldata</Label>
+                <Button
+                  size="sm"
+                  className="h-8 px-3 sm:px-4 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                  onClick={() => copyToClipboard(addCollateralCalldata, 'add-collateral-calldata')}
+                >
+                  {copiedField === 'add-collateral-calldata' ? (
+                    <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                  ) : (
+                    <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy Calldata</>
+                  )}
+                </Button>
+              </div>
+              <code className="text-xs sm:text-sm text-cyan-200 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto max-h-32 border border-cyan-500/40 break-all">
+                {addCollateralCalldata || '0x...'}
+              </code>
+            </div>
+
+            {/* Transaction Summary */}
+            <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-gray-600/50 rounded-lg p-3 sm:p-4">
+              <h3 className="text-xs sm:text-sm font-bold text-white mb-2 sm:mb-3">Transaction Summary</h3>
+              <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Function:</span>
+                  <code className="text-blue-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">addCollateral(address)</code>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Target Contract:</span>
+                  <code className="text-white bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">Vault</code>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Value:</span>
+                  <code className="text-yellow-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">0 ETH</code>
+                </div>
+              </div>
+            </div>
+            
+            {/* Instructions */}
+            <div className="bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 rounded-lg p-3 sm:p-4">
+              <p className="text-xs sm:text-sm font-medium text-purple-300 mb-2">How to Execute:</p>
+              <ol className="text-xs text-purple-300/80 space-y-1 list-decimal list-inside">
+                <li>Copy the Vault contract address above</li>
+                <li>Copy the encoded calldata</li>
+                <li>Open Safe UI and create a new transaction</li>
+                <li>Paste the contract address as the "To" address</li>
+                <li>Paste the calldata in the "Data" field</li>
+                <li>Set value to 0 ETH</li>
+                <li>Propose and execute the transaction with required signatures</li>
+              </ol>
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-3 border-t-2 border-blue-700 pt-3 sm:pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowAddCollateralSafeModal(false)}
+              className="flex-1 border-2 border-gray-600 hover:bg-gray-800 text-gray-200 font-semibold h-10 sm:h-auto"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const safeUrl = `https://app.safe.global/base:${process.env.NEXT_PUBLIC_SAFE_ADDRESS || CONTRACT_ADDRESSES.ADMIN}`;
+                window.open(safeUrl, '_blank');
+              }}
+              className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white shadow-lg shadow-blue-500/40 border-2 border-blue-400/60 font-semibold h-10 sm:h-auto"
             >
               <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               Open Safe UI

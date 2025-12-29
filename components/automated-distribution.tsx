@@ -247,7 +247,7 @@ export default function AutomatedDistribution() {
     }
 
     // Check if user is admin
-    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
+    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xA1D4de75082562eA776b160e605acD587668111B";
     if (address?.toLowerCase() !== adminAddress.toLowerCase()) {
       throw new Error('Access Denied: Only admin can execute distributions.');
     }

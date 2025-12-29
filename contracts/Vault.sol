@@ -200,12 +200,12 @@ contract Vault is
 
         uint8 dec = IERC20Metadata(collateral).decimals();
         uint256 usdValue = amount * price / (10 ** dec);
-        uint256 grossMint = usdValue * DECIMALS / mintPrice;
+        uint256 tokensToMint = usdValue * DECIMALS / mintPrice;
 
-        // FIX: fees deducted from user mint (no unbacked BTC1)
-        uint256 devFee = grossMint * DEV_FEE_MINT / DECIMALS;
-        uint256 endFee = grossMint * ENDOWMENT_FEE_MINT / DECIMALS;
-        uint256 userMint = grossMint - devFee - endFee;
+        // FIX: fees added ON TOP of user mint (properly backed by collateral)
+        uint256 devFee = tokensToMint * DEV_FEE_MINT / DECIMALS;
+        uint256 endFee = tokensToMint * ENDOWMENT_FEE_MINT / DECIMALS;
+       
 
         // Pull collateral AFTER calculations
         IPermit2(PERMIT2).permitTransferFrom(
@@ -220,11 +220,11 @@ contract Vault is
 
         collateralBalances[collateral] += amount;
 
-        btc1usd.mint(msg.sender, userMint);
+        btc1usd.mint(msg.sender, tokensToMint);
         if (devFee > 0) btc1usd.mint(devWallet, devFee);
         if (endFee > 0) btc1usd.mint(endowmentWallet, endFee);
 
-        emit Mint(msg.sender, collateral, amount, userMint);
+        emit Mint(msg.sender, collateral, amount, tokensToMint);
     }
 
     /*//////////////////////////////////////////////////////////////

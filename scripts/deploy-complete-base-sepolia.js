@@ -710,13 +710,16 @@ async function main() {
   // ==================== STEP 10: TRANSFER OWNERSHIP TO SAFE ====================
   console.log("\n👑 STEP 10: Transferring ownership to Safe multisig...\n");
   console.log(`  ℹ️  Transferring ownership from deployer (${deployer.address}) to Safe (${config.admin})`);
-  console.log(`  ℹ️  Note: Upgradeable contracts use Ownable.transferOwnership()\n`);
+  console.log(`  ℹ️  Note: BTC1USD uses Ownable2Step - Safe must call acceptOwnership()`);
+  console.log(`  ℹ️  Note: Other contracts use standard Ownable\n`);
 
-  // Transfer ownership for BTC1USD (uses Ownable.transferOwnership)
+  // Transfer ownership for BTC1USD (uses Ownable2Step - requires acceptOwnership)
+  console.log("  🔑 BTC1USD: Initiating two-step ownership transfer...");
   await sendTransaction(
-    "BTC1USD ownership transferred to Safe",
+    "BTC1USD ownership transfer initiated (Safe must acceptOwnership)",
     () => btc1usd.transferOwnership(config.admin)
   );
+  console.log("  ⚠️  IMPORTANT: Safe must call btc1usd.acceptOwnership() to complete transfer!");
 
   await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
 
@@ -831,10 +834,11 @@ async function main() {
     const feedAddress = await priceOracle.getPriceFeedAddress();
     console.log("  ✅ Chainlink Feed Address:", feedAddress);
 
-    const feedDecimals = await priceOracle.getPriceFeedDecimals();
-    console.log("  ✅ Feed Decimals:", feedDecimals);
+    // Get decimals from the oracle itself (always returns 8)
+    const oracleDecimals = await priceOracle.decimals();
+    console.log("  ✅ Oracle Decimals:", oracleDecimals);
 
-    const currentPrice = await priceOracle.getCurrentPrice();
+    const currentPrice = await priceOracle.getBTCPrice();
     console.log(`  ✅ Live BTC Price: $${ethers.formatUnits(currentPrice, 8)}`);
 
     const isStale = await priceOracle.isStale();
@@ -1069,6 +1073,9 @@ async function main() {
       oracle: oracleImplAddress,
       merkleDistributor: merkleImplAddress,
       endowmentManager: endowmentImplAddress,
+      protocolGovernance: protocolGovImplAddress,
+      dao: daoImplAddress,
+      weeklyDistribution: weeklyDistImplAddress,
     },
     nonUpgradeable: {
       btc1usd: btc1usdAddress, // Non-upgradeable for CEX compatibility

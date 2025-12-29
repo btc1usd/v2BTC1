@@ -59,11 +59,29 @@ const UNIV2_PAIR_ABI = [
 ];
 
 const AERODROME_POOL_ABI = [
-  'function tokenA() view returns (address)',
-  'function tokenB() view returns (address)',
-  'function getReserves() view returns (uint256,uint256)',
+  'function token0() view returns (address)',
+  'function token1() view returns (address)',
+  'function reserve0() view returns (uint256)',
+  'function reserve1() view returns (uint256)',
   'function balanceOf(address) view returns (uint256)',
   'function totalSupply() view returns (uint256)'
+];
+
+const CL_POOL_ABI = [
+  'function token0() view returns (address)',
+  'function token1() view returns (address)',
+  'function slot0() view returns (uint160,int24,uint16,uint16,uint16,uint8,bool)'
+];
+
+const POSITION_MANAGER = '0x827922686190790b37229fd06084350E74485b72';
+const POSITION_MANAGER_ABI = [
+  'function balanceOf(address) view returns (uint256)',
+  'function tokenOfOwnerByIndex(address,uint256) view returns (uint256)',
+  'function positions(uint256) view returns (uint96,address,address,address,uint24,int24,int24,uint128,uint256,uint256)',
+  'function ownerOf(uint256) view returns (address)',
+  'event IncreaseLiquidity(uint256 indexed tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)',
+  'event DecreaseLiquidity(uint256 indexed tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)',
+  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'
 ];
 
 const WEEKLY_DISTRIBUTION_ABI = [
@@ -230,7 +248,6 @@ async function safeBalanceOf(
   addr: string
 ): Promise<bigint> {
   try {
-    if (await isContract(provider, addr)) return 0n;
     const b = await token.balanceOf(addr);
     return BigInt(b.toString());
   } catch {
@@ -239,13 +256,95 @@ async function safeBalanceOf(
 }
 
 /* =====================================================
-   LP DETECTION
+   POOL TYPE DETECTION
+===================================================== */
+
+const POOL_TYPES = {
+  UNISWAP_V2: 'UniswapV2',
+  AERODROME: 'Aerodrome',
+  UNISWAP_V3: 'UniswapV3',
+  CURVE: 'Curve',
+  BALANCER: 'Balancer',
+  UNKNOWN: 'Unknown'
+} as const;
+
+type PoolType = typeof POOL_TYPES[keyof typeof POOL_TYPES];
+
+async function detectPoolTypeBySelectors(
+  provider: ethers.JsonRpcProvider,
+  addr: string
+): Promise<PoolType[]> {
+  const detectedTypes: PoolType[] = [];
+  
+  try {
+    // UniswapV2: getReserves() selector = 0x0902f1ac
+    try {
+      const uniV2 = new ethers.Contract(addr, UNIV2_PAIR_ABI, provider);
+      const reserves = await uniV2.getReserves();
+      if (reserves) detectedTypes.push(POOL_TYPES.UNISWAP_V2);
+    } catch {}
+    
+    // Aerodrome: reserve0() and reserve1() selectors
+    try {
+      const aero = new ethers.Contract(addr, AERODROME_POOL_ABI, provider);
+      const r0 = await aero.reserve0();
+      if (r0 !== undefined) detectedTypes.push(POOL_TYPES.AERODROME);
+    } catch {}
+    
+    // UniswapV3/Slipstream: slot0() selector = 0x3850c7bd
+    try {
+      const uniV3 = new ethers.Contract(addr, CL_POOL_ABI, provider);
+      const slot0 = await uniV3.slot0();
+      if (slot0) detectedTypes.push(POOL_TYPES.UNISWAP_V3);
+    } catch {}
+    
+    // Curve: coins(uint256) selector = 0xeb8d72b7
+    try {
+      const curve = new ethers.Contract(addr, ['function coins(uint256) view returns (address)'], provider);
+      await curve.coins(0);
+      detectedTypes.push(POOL_TYPES.CURVE);
+    } catch {}
+    
+    // Balancer: getPoolId() selector = 0xf94d4668
+    try {
+      const bal = new ethers.Contract(addr, ['function getPoolId() view returns (bytes32)'], provider);
+      await bal.getPoolId();
+      detectedTypes.push(POOL_TYPES.BALANCER);
+    } catch {}
+  } catch {}
+  
+  return detectedTypes;
+}
+
+async function detectPoolType(
+  provider: ethers.JsonRpcProvider,
+  addr: string
+): Promise<PoolType> {
+  try {
+    const types = await detectPoolTypeBySelectors(provider, addr);
+    return types.length > 0 ? types[0] : POOL_TYPES.UNKNOWN;
+  } catch {
+    return POOL_TYPES.UNKNOWN;
+  }
+}
+
+async function isLPPool(
+  provider: ethers.JsonRpcProvider,
+  addr: string
+): Promise<boolean> {
+  if (!(await isContract(provider, addr))) return false;
+  const poolType = await detectPoolType(provider, addr);
+  return poolType !== POOL_TYPES.UNKNOWN;
+}
+
+/* =====================================================
+   LP DETECTION (OLD - KEPT FOR REFERENCE)
 ===================================================== */
 
 async function detectLPType(
   provider: ethers.JsonRpcProvider,
   addr: string
-): Promise<'UNIV2' | 'AERODROME' | null> {
+): Promise<'UNIV2' | 'AERODROME' | 'UNIV3' | null> {
 
   try {
     const p = new ethers.Contract(addr, UNIV2_PAIR_ABI, provider);
@@ -265,18 +364,32 @@ async function detectLPType(
 
   try {
     const p = new ethers.Contract(addr, AERODROME_POOL_ABI, provider);
-    const [a, b, r, ts] = await Promise.all([
-      p.tokenA(),
-      p.tokenB(),
-      p.getReserves(),
+    const [t0, t1, r, ts] = await Promise.all([
+      p.token0(),
+      p.token1(),
+      p.getReserves ? p.getReserves() : Promise.all([p.reserve0(), p.reserve1()]),
       p.totalSupply()
     ]);
 
     if (
       BigInt(ts) > 0n &&
-      (a.toLowerCase() === BTC1 || b.toLowerCase() === BTC1) &&
-      (BigInt(r[0]) > 0n || BigInt(r[1]) > 0n)
+      (t0.toLowerCase() === BTC1 || t1.toLowerCase() === BTC1) &&
+      (BigInt(Array.isArray(r) ? r[0] : r) > 0n)
     ) return 'AERODROME';
+  } catch {}
+
+  try {
+    const uniV3 = new ethers.Contract(addr, CL_POOL_ABI, provider);
+    const [t0, t1, slot0] = await Promise.all([
+      uniV3.token0(),
+      uniV3.token1(),
+      uniV3.slot0()
+    ]);
+
+    if (
+      slot0 &&
+      (t0.toLowerCase() === BTC1 || t1.toLowerCase() === BTC1)
+    ) return 'UNIV3';
   } catch {}
 
   return null;
@@ -289,7 +402,7 @@ async function detectLPType(
 async function lpProviders(
   provider: ethers.JsonRpcProvider,
   lpAddr: string,
-  type: 'UNIV2' | 'AERODROME'
+  type: 'UNIV2' | 'AERODROME' | 'UNIV3'
 ): Promise<Map<string, bigint>> {
 
   const holders = await alchemyTransfers(lpAddr);
@@ -308,7 +421,6 @@ async function lpProviders(
 
     for (const h of holders) {
       if (EXCLUDED_ADDRESSES.includes(h)) continue;
-      if (await isContract(provider, h)) continue;
 
       try {
         const lp = BigInt(await p.balanceOf(h));
@@ -322,18 +434,21 @@ async function lpProviders(
 
   if (type === 'AERODROME') {
     const p = new ethers.Contract(lpAddr, AERODROME_POOL_ABI, provider);
-    const [ts, a, r] = await Promise.all([
+    const [ts, t0] = await Promise.all([
       p.totalSupply(),
-      p.tokenA(),
-      p.getReserves()
+      p.token0()
+    ]);
+    
+    const [r0, r1] = await Promise.all([
+      p.reserve0(),
+      p.reserve1()
     ]);
 
     const btc1Reserve =
-      a.toLowerCase() === BTC1 ? BigInt(r[0]) : BigInt(r[1]);
+      t0.toLowerCase() === BTC1 ? BigInt(r0) : BigInt(r1);
 
     for (const h of holders) {
       if (EXCLUDED_ADDRESSES.includes(h)) continue;
-      if (await isContract(provider, h)) continue;
 
       try {
         const lp = BigInt(await p.balanceOf(h));
@@ -343,6 +458,12 @@ async function lpProviders(
         if (share > 0n) out.set(h, share);
       } catch {}
     }
+  }
+  
+  // UniswapV3 uses NFT positions - skip for now in API route
+  // Full implementation would require event scanning like the script
+  if (type === 'UNIV3') {
+    console.log('⚠️ UniswapV3 pool detected - skipping (NFT positions not yet supported in API)');
   }
 
   return out;
@@ -433,9 +554,9 @@ export async function POST() {
 
       console.log(`📊 Found ${touched.length} potential holders (excluding protocol wallets)`);
 
-      /* ---- STEP 2: CLASSIFY ---- */
+      /* ---- STEP 2: CLASSIFY HOLDERS (EOAs vs LP Pools) ---- */
       const eoas: string[] = [];
-      const contracts: string[] = [];
+      const detectedPools: Array<{ address: string; type: PoolType }> = [];
 
       // Add delay between batches to avoid rate limiting
       const batchSize = 10;
@@ -443,7 +564,20 @@ export async function POST() {
         const batch = touched.slice(i, i + batchSize);
         await Promise.all(
           batch.map(a => limit(async () => {
-            (await isContract(provider, a) ? contracts : eoas).push(a);
+            const isContractAddr = await isContract(provider, a);
+            if (isContractAddr) {
+              // Check if it's an LP pool
+              const poolType = await detectPoolType(provider, a);
+              if (poolType !== POOL_TYPES.UNKNOWN) {
+                detectedPools.push({ address: a, type: poolType });
+                console.log(`  🏊 LP Pool detected: ${a} (${poolType})`);
+              } else {
+                // Non-pool contracts are treated as EOAs (smart wallets, etc.)
+                eoas.push(a);
+              }
+            } else {
+              eoas.push(a);
+            }
           }))
         );
         // Small delay between batches
@@ -452,10 +586,10 @@ export async function POST() {
         }
       }
 
-      console.log(`👥 ${eoas.length} EOAs, ${contracts.length} contracts detected`);
+      console.log(`👥 ${eoas.length} EOAs (including smart wallets), ${detectedPools.length} LP pools detected`);
 
-      /* ---- STEP 3: EOAs ---- */
-      // Process EOAs in batches with delays to avoid rate limits
+      /* ---- STEP 3: PROCESS DIRECT BTC1 BALANCES ---- */
+      // Process all EOAs (including smart wallets/contracts that aren't LP pools)
       const eoaBatchSize = 20;
       for (let i = 0; i < eoas.length; i += eoaBatchSize) {
         const batch = eoas.slice(i, i + eoaBatchSize);
@@ -476,14 +610,23 @@ export async function POST() {
 
       console.log(`💰 ${balances.size} holders with non-zero balances`);
 
-      /* ---- STEP 4: LPs ---- */
-      for (const sc of contracts) {
+      /* ---- STEP 4: PROCESS LP POOLS ---- */
+      for (const { address: sc, type: poolType } of detectedPools) {
+        console.log(`🔍 Processing ${poolType} pool: ${sc}`);
+        
+        // Remove pool's direct balance (we'll expand it to LP holders)
+        if (balances.has(sc)) {
+          console.log(`  ♻️ Removing direct balance, will expand to LP holders`);
+          balances.delete(sc);
+        }
+        
         const lpType = await detectLPType(provider, sc);
         if (!lpType) continue;
 
         const lpMap = await lpProviders(provider, sc, lpType);
         for (const [addr, share] of lpMap) {
           balances.set(addr, (balances.get(addr) || 0n) + share);
+          console.log(`  └─ LP holder ${addr.slice(0,10)}... = ${ethers.formatUnits(share, 8)} BTC1 (total: ${ethers.formatUnits(balances.get(addr)!, 8)})`);
         }
       }
     }

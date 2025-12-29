@@ -37,8 +37,7 @@ contract ChainlinkBTCOracleUpgradeable is
     mapping(address => uint8) public collateralDecimals;
 
     // ---- Safety parameters ----
-    uint256 public constant STALE_THRESHOLD = 1800; // 30 minutes
-    uint256 public constant MIN_ROUND_DELAY = 10;   // 10 Seconds
+    uint256 public constant STALE_THRESHOLD = 1200; // 20 minutes
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
@@ -108,7 +107,6 @@ contract ChainlinkBTCOracleUpgradeable is
         require(updatedAt > 0, "oracle: no timestamp");
         require(answeredInRound >= roundID, "oracle: stale round");
         require(block.timestamp - updatedAt <= STALE_THRESHOLD, "oracle: stale price");
-        require(block.timestamp >= updatedAt + MIN_ROUND_DELAY, "oracle: round too fresh");
 
         uint256 price = uint256(answer);
 

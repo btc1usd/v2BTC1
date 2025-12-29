@@ -256,4 +256,9 @@ contract BTC1USD is ERC20, ERC20Permit, Ownable2Step, IBTC1USD {
         _spendAllowance(from, msg.sender, amount);
         _burn(from, amount);
     }
+// check this if it feasible 
+
+function burn(uint256 amount) external 
+{ _burn(msg.sender, amount); }
+
 }

@@ -636,7 +636,7 @@ Network: ${provider.chainId}`);
       // 3. Time interval passed
       // 4. User is admin
       
-      const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
+      const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xA1D4de75082562eA776b160e605acD587668111B";
       const prerequisiteInfo = `📋 Distribution Prerequisites:
 
 ✅ Time Interval: ${canDistribute ? 'Passed' : 'Not yet'}
@@ -652,7 +652,7 @@ Note: Additional checks (token supply, collateral ratio) are performed during ex
 
   // Helper to check if user is admin
   const isAdmin = () => {
-    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
+    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xA1D4de75082562eA776b160e605acD587668111B";
     return address && address.toLowerCase() === adminAddress.toLowerCase();
   };
 
@@ -723,7 +723,7 @@ Please add more collateral to the vault before executing distribution.`);
     // Safe Integration: Check if user has UI access
     const uiControllerAddress = process.env.NEXT_PUBLIC_UI_CONTROLLER || 
       process.env.NEXT_PUBLIC_ADMIN_WALLET || 
-      "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
+      "0xA1D4de75082562eA776b160e605acD587668111B";
     const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS || uiControllerAddress;
     
     const hasUIAccess = address?.toLowerCase() === uiControllerAddress.toLowerCase();
@@ -800,7 +800,7 @@ Check console for more details.`);
     // Safe Integration: Check if user has UI access
     const uiControllerAddress = process.env.NEXT_PUBLIC_UI_CONTROLLER || 
       process.env.NEXT_PUBLIC_ADMIN_WALLET || 
-      "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
+      "0xA1D4de75082562eA776b160e605acD587668111B";
     const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS || uiControllerAddress;
     
     const hasUIAccess = address?.toLowerCase() === uiControllerAddress.toLowerCase();

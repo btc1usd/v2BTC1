@@ -223,7 +223,7 @@ export function SettingsPanel({ isAdmin, protocolState, onProtocolStateChange }:
       return
     }
 
-    const ADMIN_ADDRESS = "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835"
+    const ADMIN_ADDRESS = "0xA1D4de75082562eA776b160e605acD587668111B"
     if (address.toLowerCase() !== ADMIN_ADDRESS.toLowerCase()) {
       setEmergencyCouncilStatus("Error: Only admin can perform this action")
       return

@@ -9,11 +9,11 @@
 // UI Access Control - Controller who can view admin interfaces
 export const UI_CONTROLLER_ADDRESS = process.env.NEXT_PUBLIC_UI_CONTROLLER || 
   process.env.NEXT_PUBLIC_ADMIN_WALLET || 
-  "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
+  "0xA1D4de75082562eA776b160e605acD587668111B";
 
 // Transaction Execution Control - Safe address for on-chain actions
 export const SAFE_TRANSACTION_ADDRESS = process.env.NEXT_PUBLIC_SAFE_ADDRESS || 
-  "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
+  "0xA1D4de75082562eA776b160e605acD587668111B";
 
 /**
  * Check if address has UI access to admin panels

@@ -45,9 +45,9 @@ async function main() {
 
   // Configuration for Base Mainnet
   const config = {
-    admin: "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835",
-    safeAddress: "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835",
-    emergencyCouncil: "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835", // Use Safe address for emergency council
+    admin: "0xA1D4de75082562eA776b160e605acD587668111B",
+    safeAddress: "0xA1D4de75082562eA776b160e605acD587668111B",
+    emergencyCouncil: "0xA1D4de75082562eA776b160e605acD587668111B", // Use Safe address for emergency council
     // Real Chainlink BTC/USD feed address on Base Mainnet
     // Standard feed: https://data.chain.link/feeds/base/base/btc-usd
     // VERIFIED: https://basescan.org/address/0x64c911996D3c6aC71f9b455B1E8E7266BcbD848F

@@ -159,20 +159,39 @@ export function getPrioritizedRpcUrls(): string[] {
     .filter(Boolean);
   urls.push(...envUrls);
 
+  // Determine which network we're on
+  const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+  const isBaseSepolia = chainId === 84532;
+  const isBaseMainnet = chainId === 8453;
+
   // Add Alchemy if configured
   const alchemyKey = process.env.ALCHEMY_API_KEY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
   if (alchemyKey) {
-    urls.push(`https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`);
+    if (isBaseSepolia) {
+      urls.push(`https://base-sepolia.g.alchemy.com/v2/${alchemyKey}`);
+    } else if (isBaseMainnet) {
+      urls.push(`https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`);
+    }
   }
 
-  // Add fallback public RPC endpoints (verified working ones first)
-  urls.push(
-    "https://mainnet.base.org",  // Official Base Mainnet endpoint
-    "https://base.publicnode.com",  // Public node
-    "https://base.blockpi.network/v1/rpc/public",  // BlockPI
-    "https://base-pokt.nodies.app",  // Nodies (Pokt Network)
-    "https://base-rpc.publicnode.com" // Alternative public node
-  );
+  // Add fallback public RPC endpoints based on network
+  if (isBaseSepolia) {
+    urls.push(
+      "https://sepolia.base.org",  // Official Base Sepolia endpoint
+      "https://base-sepolia.publicnode.com",  // Public node
+      "https://base-sepolia.blockpi.network/v1/rpc/public",  // BlockPI
+      "https://base-sepolia-rpc.publicnode.com" // Alternative public node
+    );
+  } else {
+    // Base Mainnet endpoints
+    urls.push(
+      "https://mainnet.base.org",  // Official Base Mainnet endpoint
+      "https://base.publicnode.com",  // Public node
+      "https://base.blockpi.network/v1/rpc/public",  // BlockPI
+      "https://base-pokt.nodies.app",  // Nodies (Pokt Network)
+      "https://base-rpc.publicnode.com" // Alternative public node
+    );
+  }
 
   // Remove duplicates
   const uniqueUrls = Array.from(new Set(urls));

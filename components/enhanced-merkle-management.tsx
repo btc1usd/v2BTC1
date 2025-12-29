@@ -305,7 +305,7 @@ Network: ${provider.chainId}`);
       // 3. Time interval passed
       // 4. User is admin
       
-      const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
+      const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xA1D4de75082562eA776b160e605acD587668111B";
       const prerequisiteInfo = `📋 Distribution Prerequisites:
 
 ✅ Time Interval: ${canDistribute ? 'Passed' : 'Not yet'}
@@ -321,7 +321,7 @@ Note: Additional checks (token supply, collateral ratio) are performed during ex
 
   // Helper to check if user is admin
   const isAdmin = () => {
-    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
+    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xA1D4de75082562eA776b160e605acD587668111B";
     return address && address.toLowerCase() === adminAddress.toLowerCase();
   };
 
@@ -378,7 +378,7 @@ Please wait and try again or check the contract state.`);
     }
     
     // Check if user is admin (optional - remove if not needed)
-    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835";
+    const adminAddress = process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xA1D4de75082562eA776b160e605acD587668111B";
     if (address?.toLowerCase() !== adminAddress.toLowerCase()) {
       alert(`Access Denied: Only admin can execute distributions.\n\nAdmin address: ${adminAddress}\nYour address: ${address}`);
       return;
@@ -789,8 +789,8 @@ Please check the server logs for more details.`);
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">Admin Access:</span>
-                  <Badge variant={address?.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835").toLowerCase() ? "default" : "secondary"}>
-                    {address?.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835").toLowerCase() ? 'Authorized' : 'Not Admin'}
+                  <Badge variant={address?.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xA1D4de75082562eA776b160e605acD587668111B").toLowerCase() ? "default" : "secondary"}>
+                    {address?.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xA1D4de75082562eA776b160e605acD587668111B").toLowerCase() ? 'Authorized' : 'Not Admin'}
                   </Badge>
                 </div>
               </div>
@@ -820,7 +820,7 @@ Please check the server logs for more details.`);
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Button
                   onClick={handleExecuteDistribution}
-                  disabled={!finalCanDistribute || isExecuting || isConfirming || address?.toLowerCase() !== (process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835").toLowerCase()}
+                  disabled={!finalCanDistribute || isExecuting || isConfirming || address?.toLowerCase() !== (process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xA1D4de75082562eA776b160e605acD587668111B").toLowerCase()}
                   className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600"
                 >
                   {isExecuting || isConfirming ? (
@@ -840,7 +840,7 @@ Please check the server logs for more details.`);
                 {/* Automated Process Button */}
                 <Button 
                   onClick={handleAutomatedProcess}
-                  disabled={!finalCanDistribute || isExecuting || isConfirming || address?.toLowerCase() !== (process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835").toLowerCase() || loading}
+                  disabled={!finalCanDistribute || isExecuting || isConfirming || address?.toLowerCase() !== (process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xA1D4de75082562eA776b160e605acD587668111B").toLowerCase() || loading}
                   className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:bg-gray-600"
                 >
                   {loading ? (
@@ -860,7 +860,7 @@ Please check the server logs for more details.`);
               {/* Fully Automated Process Button */}
               <Button 
                 onClick={handleFullyAutomatedProcess}
-                disabled={!finalCanDistribute || isExecuting || isConfirming || address?.toLowerCase() !== (process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835").toLowerCase() || loading}
+                disabled={!finalCanDistribute || isExecuting || isConfirming || address?.toLowerCase() !== (process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xA1D4de75082562eA776b160e605acD587668111B").toLowerCase() || loading}
                 className="w-full bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 disabled:bg-gray-600"
               >
                 {loading ? (
@@ -942,7 +942,7 @@ Please check the server logs for more details.`);
                   {!canDistributeNow && (
                     <><br /><strong>Note:</strong> Distribution is not available yet. Please wait for the time interval to pass.</>
                   )}
-                  {address?.toLowerCase() !== (process.env.NEXT_PUBLIC_ADMIN_WALLET || "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835").toLowerCase() && (
+                  {address?.toLowerCase() !== (process.env.NEXT_PUBLIC_ADMIN_WALLET || "0xA1D4de75082562eA776b160e605acD587668111B").toLowerCase() && (
                     <><br /><strong>Access:</strong> Only admin can execute distributions.</>
                   )}
                 </AlertDescription>

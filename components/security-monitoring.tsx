@@ -22,7 +22,7 @@ export function SecurityMonitoring({ isAdmin, collateralRatio }: SecurityMonitor
   const { data: hash, writeContract, isPending } = useWriteContract()
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash })
   
-  const ADMIN_ADDRESS = "0x6210FfE7340dC47d5DA4b888e850c036CC6ee835"
+  const ADMIN_ADDRESS = "0xA1D4de75082562eA776b160e605acD587668111B"
   
   const handleSetEmergencyCouncilToAdmin = async () => {
     if (!address) {

@@ -51,7 +51,7 @@ export default function SafeTransactionModal({
       setLoading(true);
       
       // Load from deployment file
-      const response = await fetch('/deployment-base-sepolia.json');
+      const response = await fetch('/deployment-base-mainnet.json');
       const deployment = await response.json();
       const adminAddress = deployment.config?.admin;
       
@@ -63,7 +63,7 @@ export default function SafeTransactionModal({
       
       // Load Safe details from Safe Transaction Service API
       const safeResponse = await fetch(
-        `https://safe-transaction-base-sepolia.safe.global/api/v1/safes/${adminAddress}/`
+        `https://safe-transaction-base.safe.global/api/v1/safes/${adminAddress}/`
       );
       const data = await safeResponse.json();
       

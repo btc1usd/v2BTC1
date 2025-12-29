@@ -12,7 +12,6 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertCircle, Lock, Clock, CheckCircle, XCircle, Copy, ExternalLink, Shield, ArrowRight } from "lucide-react";
 import { CONTRACT_ADDRESSES, ABIS } from "@/lib/contracts";
-import { encodeFunctionData } from "viem";
 
 interface PendingChange {
   newAddress: string;
@@ -25,6 +24,9 @@ interface SafeTimelockProps {
 
 export default function BTC1USDSafeTimelock({ isAdmin }: SafeTimelockProps) {
   const { address, isConnected } = useAccount();
+  
+  // Create ethers Interface for encoding calldata
+  const btc1usdInterface = new ethers.Interface(ABIS.BTC1USD);
   
   // State for current addresses
   const [currentVault, setCurrentVault] = useState<string>("");
@@ -113,63 +115,31 @@ export default function BTC1USDSafeTimelock({ isAdmin }: SafeTimelockProps) {
   };
 
   const generateSafeCalldata = (functionName: string, params: any[]) => {
-    let calldata: string;
-    
     switch (functionName) {
       case "initiateVaultChange":
-        calldata = encodeFunctionData({
-          abi: ABIS.BTC1USD,
-          functionName: "initiateVaultChange",
-          args: [params[0]]
-        });
-        break;
+        return btc1usdInterface.encodeFunctionData("initiateVaultChange", [params[0]]);
+      
       case "executeVaultChange":
-        calldata = encodeFunctionData({
-          abi: ABIS.BTC1USD,
-          functionName: "executeVaultChange",
-          args: []
-        });
-        break;
+        return btc1usdInterface.encodeFunctionData("executeVaultChange", []);
+      
       case "cancelVaultChange":
-        calldata = encodeFunctionData({
-          abi: ABIS.BTC1USD,
-          functionName: "cancelVaultChange",
-          args: []
-        });
-        break;
+        return btc1usdInterface.encodeFunctionData("cancelVaultChange", []);
+      
       case "initiateWeeklyDistributionChange":
-        calldata = encodeFunctionData({
-          abi: ABIS.BTC1USD,
-          functionName: "initiateWeeklyDistributionChange",
-          args: [params[0]]
-        });
-        break;
+        return btc1usdInterface.encodeFunctionData("initiateWeeklyDistributionChange", [params[0]]);
+      
       case "executeWeeklyDistributionChange":
-        calldata = encodeFunctionData({
-          abi: ABIS.BTC1USD,
-          functionName: "executeWeeklyDistributionChange",
-          args: []
-        });
-        break;
+        return btc1usdInterface.encodeFunctionData("executeWeeklyDistributionChange", []);
+      
       case "cancelWeeklyDistributionChange":
-        calldata = encodeFunctionData({
-          abi: ABIS.BTC1USD,
-          functionName: "cancelWeeklyDistributionChange",
-          args: []
-        });
-        break;
+        return btc1usdInterface.encodeFunctionData("cancelWeeklyDistributionChange", []);
+      
       case "lockCriticalParams":
-        calldata = encodeFunctionData({
-          abi: ABIS.BTC1USD,
-          functionName: "lockCriticalParams",
-          args: []
-        });
-        break;
+        return btc1usdInterface.encodeFunctionData("lockCriticalParams", []);
+      
       default:
         throw new Error(`Unknown function: ${functionName}`);
     }
-    
-    return calldata;
   };
 
   const handleInitiateVaultChange = () => {
@@ -179,7 +149,7 @@ export default function BTC1USDSafeTimelock({ isAdmin }: SafeTimelockProps) {
     }
 
     if (criticalParamsLocked) {
-      setTransactionStatus("Critical parameters are locked");
+      setTransactionStatus("⚠️ ERROR: Critical parameters are LOCKED. You cannot initiate changes when locked. The initiateVaultChange function has the 'onlyOwnerUnlocked' modifier which blocks this action.");
       return;
     }
 
@@ -187,18 +157,50 @@ export default function BTC1USDSafeTimelock({ isAdmin }: SafeTimelockProps) {
       setTransactionStatus("A vault change is already pending. Cancel it first.");
       return;
     }
+    
+    if (newVaultAddress.toLowerCase() === currentVault.toLowerCase()) {
+      setTransactionStatus("Error: New vault address is the same as the current vault address.");
+      return;
+    }
 
     try {
       const calldata = generateSafeCalldata("initiateVaultChange", [newVaultAddress]);
       
+      // Verify the calldata was generated correctly
+      console.log('=== INITIATE VAULT CHANGE CALLDATA ===');
+      console.log('Function: initiateVaultChange(address)');
+      console.log('Parameter:', newVaultAddress);
+      console.log('Calldata:', calldata);
+      console.log('Calldata length:', calldata.length);
+      console.log('Function selector:', calldata.slice(0, 10));
+      console.log('======================================');
+      
+      // Check if Safe is configured
+      const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS;
+      
+      if (!safeAddress) {
+        // No Safe configured - show error with instructions
+        setTransactionStatus(
+          "⚠️ ERROR: NEXT_PUBLIC_SAFE_ADDRESS not configured in .env file. " +
+          "Please add the Safe multisig address to your environment variables. " +
+          "The calldata has been logged to console for manual execution."
+        );
+        console.warn('\n⚠️  SAFE ADDRESS NOT CONFIGURED');
+        console.warn('Add this to your .env file:');
+        console.warn('NEXT_PUBLIC_SAFE_ADDRESS=<your-safe-address>');
+        console.warn('\nTo execute manually, use the calldata above with contract:', CONTRACT_ADDRESSES.BTC1USD_CONTRACT);
+        return;
+      }
+      
       setSafeModalData({
         title: "Initiate Vault Address Change",
-        description: `This will start a 2-day timelock to change the Vault address to ${newVaultAddress}. After 2 days, you can execute the change.`,
+        description: `This will start a 2-day timelock to change the Vault address from ${currentVault} to ${newVaultAddress}. After 2 days, you can execute the change.`,
         calldata,
         functionName: "initiateVaultChange"
       });
       setShowSafeModal(true);
     } catch (error: any) {
+      console.error('Error generating calldata:', error);
       setTransactionStatus(`Error: ${error.message}`);
     }
   };
@@ -261,7 +263,7 @@ export default function BTC1USDSafeTimelock({ isAdmin }: SafeTimelockProps) {
     }
 
     if (criticalParamsLocked) {
-      setTransactionStatus("Critical parameters are locked");
+      setTransactionStatus("⚠️ ERROR: Critical parameters are LOCKED. You cannot initiate changes when locked. The initiateWeeklyDistributionChange function has the 'onlyOwnerUnlocked' modifier which blocks this action.");
       return;
     }
 
@@ -269,18 +271,30 @@ export default function BTC1USDSafeTimelock({ isAdmin }: SafeTimelockProps) {
       setTransactionStatus("A weekly distribution change is already pending. Cancel it first.");
       return;
     }
+    
+    if (newWeeklyDistAddress.toLowerCase() === currentWeeklyDistribution.toLowerCase()) {
+      setTransactionStatus("Error: New weekly distribution address is the same as the current address.");
+      return;
+    }
 
     try {
       const calldata = generateSafeCalldata("initiateWeeklyDistributionChange", [newWeeklyDistAddress]);
       
+      console.log('=== INITIATE WEEKLY DIST CHANGE CALLDATA ===');
+      console.log('Function: initiateWeeklyDistributionChange(address)');
+      console.log('Parameter:', newWeeklyDistAddress);
+      console.log('Calldata:', calldata);
+      console.log('============================================');
+      
       setSafeModalData({
         title: "Initiate Weekly Distribution Address Change",
-        description: `This will start a 2-day timelock to change the WeeklyDistribution address to ${newWeeklyDistAddress}. After 2 days, you can execute the change.`,
+        description: `This will start a 2-day timelock to change the WeeklyDistribution address from ${currentWeeklyDistribution} to ${newWeeklyDistAddress}. After 2 days, you can execute the change.`,
         calldata,
         functionName: "initiateWeeklyDistributionChange"
       });
       setShowSafeModal(true);
     } catch (error: any) {
+      console.error('Error generating calldata:', error);
       setTransactionStatus(`Error: ${error.message}`);
     }
   };
@@ -614,78 +628,140 @@ export default function BTC1USDSafeTimelock({ isAdmin }: SafeTimelockProps) {
 
       {/* Safe Transaction Modal */}
       <Dialog open={showSafeModal} onOpenChange={setShowSafeModal}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900 border-2 border-blue-500/70 shadow-2xl">
           <DialogHeader>
-            <DialogTitle>{safeModalData?.title}</DialogTitle>
-            <DialogDescription>{safeModalData?.description}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Contract Address (BTC1USD)</Label>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 p-2 bg-muted rounded text-sm font-mono break-all">
-                  {CONTRACT_ADDRESSES.BTC1USD_CONTRACT}
-                </code>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copyToClipboard(CONTRACT_ADDRESSES.BTC1USD_CONTRACT, "contractAddress")}
-                >
-                  {copiedField === "contractAddress" ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                </Button>
+            <div className="flex items-center gap-2 sm:gap-3 mb-2">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/50">
+                <Lock className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg sm:text-2xl font-bold text-white">
+                  {safeModalData?.title}
+                </DialogTitle>
+                <DialogDescription className="text-xs sm:text-sm text-blue-200">
+                  Safe Multi-Signature Transaction
+                </DialogDescription>
               </div>
             </div>
+          </DialogHeader>
 
-            <div className="space-y-2">
-              <Label>Function Name</Label>
-              <code className="block p-2 bg-muted rounded text-sm font-mono">
-                {safeModalData?.functionName}
+          <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+            {/* Contract Address */}
+            <div className="bg-gradient-to-br from-green-900/20 to-emerald-900/20 border-2 border-green-500/50 rounded-lg p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                <Label className="text-xs sm:text-sm text-green-300 font-bold uppercase">1️⃣ Contract Address</Label>
+                <Button
+                  size="sm"
+                  className="h-8 px-3 sm:px-4 bg-green-600 hover:bg-green-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                  onClick={() => copyToClipboard(CONTRACT_ADDRESSES.BTC1USD_CONTRACT, 'contract')}
+                >
+                  {copiedField === 'contract' ? (
+                    <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                  ) : (
+                    <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy</>
+                  )}
+                </Button>
+              </div>
+              <code className="text-xs sm:text-sm text-green-300 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto border border-green-500/40 break-all">
+                {CONTRACT_ADDRESSES.BTC1USD_CONTRACT}
               </code>
             </div>
 
-            <div className="space-y-2">
-              <Label>Calldata (for Safe Transaction Builder)</Label>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 p-2 bg-muted rounded text-sm font-mono break-all max-h-32 overflow-y-auto">
-                  {safeModalData?.calldata}
-                </code>
+            {/* Encoded Calldata */}
+            <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 border-2 border-cyan-500/50 rounded-lg p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                <Label className="text-xs sm:text-sm text-cyan-300 font-bold uppercase">2️⃣ Encoded Calldata</Label>
                 <Button
-                  variant="outline"
                   size="sm"
-                  onClick={() => safeModalData?.calldata && copyToClipboard(safeModalData.calldata, "calldata")}
+                  className="h-8 px-3 sm:px-4 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-xs sm:text-sm w-full sm:w-auto"
+                  onClick={() => safeModalData?.calldata && copyToClipboard(safeModalData.calldata, 'calldata')}
                 >
-                  {copiedField === "calldata" ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {copiedField === 'calldata' ? (
+                    <><CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copied!</>
+                  ) : (
+                    <><Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Copy Calldata</>
+                  )}
                 </Button>
               </div>
+              <code className="text-xs sm:text-sm text-cyan-200 bg-black/60 px-3 sm:px-4 py-2 sm:py-3 rounded font-mono block overflow-x-auto max-h-32 border border-cyan-500/40 break-all">
+                {safeModalData?.calldata}
+              </code>
             </div>
 
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Instructions:</strong>
-                <ol className="list-decimal ml-4 mt-2 space-y-1 text-sm">
-                  <li>Copy the contract address and calldata above</li>
-                  <li>Go to your Safe wallet UI</li>
-                  <li>Navigate to "New Transaction" → "Transaction Builder"</li>
-                  <li>Paste the contract address and calldata</li>
-                  <li>Review and submit for multisig approval</li>
-                </ol>
-              </AlertDescription>
-            </Alert>
+            {/* Parameters */}
+            <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-gray-600/50 rounded-lg p-3 sm:p-4">
+              <h3 className="text-xs sm:text-sm font-bold text-white mb-2 sm:mb-3">Transaction Parameters</h3>
+              <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Function:</span>
+                  <code className="text-blue-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">{safeModalData?.functionName}</code>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Description:</span>
+                  <span className="text-xs text-gray-300 bg-black/40 px-2 py-1 rounded max-w-full sm:max-w-[400px] text-right">{safeModalData?.description}</span>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0">
+                  <span className="text-gray-400">Value:</span>
+                  <code className="text-yellow-300 bg-black/40 px-2 sm:px-3 py-1 rounded font-mono text-xs sm:text-sm">0 ETH</code>
+                </div>
+                {(safeModalData?.functionName === "initiateVaultChange" || safeModalData?.functionName === "initiateWeeklyDistributionChange") && (
+                  <div className="mt-3 pt-3 border-t border-gray-700">
+                    <div className="flex flex-col gap-2">
+                      <span className="text-gray-400 font-semibold">Decoded Parameters:</span>
+                      <div className="bg-black/60 p-2 rounded border border-purple-500/30">
+                        <code className="text-purple-300 text-xs font-mono break-all">
+                          {safeModalData?.functionName === "initiateVaultChange" ? 
+                            `newVault: ${newVaultAddress}` : 
+                            `newDist: ${newWeeklyDistAddress}`
+                          }
+                        </code>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Verification Notice */}
+            <div className="bg-gradient-to-br from-yellow-900/20 to-orange-900/20 border border-yellow-500/50 rounded-lg p-3">
+              <div className="flex gap-2">
+                <AlertCircle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-yellow-200">
+                  <p className="font-semibold mb-1">Verification Checklist:</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-yellow-300/90">
+                    <li>Contract address matches BTC1USD: {CONTRACT_ADDRESSES.BTC1USD_CONTRACT}</li>
+                    <li>Function selector (first 10 chars of calldata): {safeModalData?.calldata.slice(0, 10)}</li>
+                    <li>Value is 0 ETH (no native token transfer)</li>
+                    <li>Transaction must be executed from Safe multisig owner address</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSafeModal(false)}>
-              Close
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-3 border-t-2 border-blue-700 pt-3 sm:pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowSafeModal(false)}
+              className="flex-1 border-2 border-gray-600 hover:bg-gray-800 text-gray-200 font-semibold h-10 sm:h-auto"
+            >
+              Cancel
             </Button>
-            <Button asChild>
-              <a
-                href="https://app.safe.global"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Open Safe UI
-                <ExternalLink className="h-4 w-4 ml-2" />
-              </a>
+            <Button
+              onClick={() => {
+                const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS;
+                if (!safeAddress) {
+                  alert('⚠️ NEXT_PUBLIC_SAFE_ADDRESS not configured. Please add it to your .env file.');
+                  return;
+                }
+                const safeUrl = `https://app.safe.global/base-sep:${safeAddress}`;
+                window.open(safeUrl, '_blank');
+              }}
+              className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg shadow-blue-500/40 border-2 border-blue-400/60 font-semibold h-10 sm:h-auto"
+            >
+              <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              Open Safe UI
+              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,75 +1,75 @@
 // Contract addresses and ABIs for BTC1USD Protocol
 export const CONTRACT_ADDRESSES = {
-  // Updated from deployment-base-sepolia.json (2025-12-25T05:26:16.742Z)
+  // Updated from deployment-base-mainnet.json (2025-12-06T18:24:12.589Z)
   BTC1USD:
     process.env.NEXT_PUBLIC_BTC1USD_CONTRACT ||
-    "0xEB1E6Bf4f72c47eEd17492bE45fb5C32FA7d8a24",
+    "0x6dC9C43278AeEa063c01d97505f215ECB6da4a21",
   BTC1USD_CONTRACT:
     process.env.NEXT_PUBLIC_BTC1USD_CONTRACT ||
-    "0xEB1E6Bf4f72c47eEd17492bE45fb5C32FA7d8a24",
+    "0x6dC9C43278AeEa063c01d97505f215ECB6da4a21",
   VAULT:
     process.env.NEXT_PUBLIC_VAULT_CONTRACT ||
-    "0x9202ff4981932d7e84D180238ad2DB7b3b6664d3",
+    "0x529964221630CebB4167BdcE670cCAB65769E89d",
   CHAINLINK_BTC_ORACLE:
     process.env.NEXT_PUBLIC_PRICE_ORACLE_CONTRACT ||
-    "0x2054Cfd3c51842F149F6F9AF6236964f3E19bC8a",
+    "0xFAa3E07505405b3A69Cd30f31Aa484ca2580c03b",
   PRICE_ORACLE_CONTRACT:
     process.env.NEXT_PUBLIC_PRICE_ORACLE_CONTRACT ||
-    "0x2054Cfd3c51842F149F6F9AF6236964f3E19bC8a",
+    "0xFAa3E07505405b3A69Cd30f31Aa484ca2580c03b",
   CHAINLINK_FEED:
     process.env.NEXT_PUBLIC_CHAINLINK_FEED ||
-    "0x0FB99723Aee6f420beAD13e6bBB79b7E6F034298",
+    "0x64c911996D3c6aC71f9b455B1E8E7266BcbD848F",
   WEEKLY_DISTRIBUTION:
     process.env.NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT ||
-    "0x39d187Aa5ebFf691610EBd7F94669A8284F7E0f6",
+    "0x51D622A533C56256c5E318f5aB9844334523dFe0",
   MERKLE_DISTRIBUTOR:
     process.env.NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT ||
-    "0xcf547057B29aFea1B78fD8947700d73da0b58C3A",
+    "0x9Ba818c20198936D0CF3d9683c3095541ceC366A",
   ENDOWMENT_MANAGER:
     process.env.NEXT_PUBLIC_ENDOWMENT_MANAGER_CONTRACT ||
-    "0x8AA6F71dba9BD9dD54e7E3d4C6DbD10bb7Fd7d45",
+    "0x757348F6bf09546Acc94eCA41834E0bF739500E1",
   PROTOCOL_GOVERNANCE:
     process.env.NEXT_PUBLIC_PROTOCOL_GOVERNANCE_CONTRACT ||
-    "0xdE01e8c1C6f858aabfcA76B56d439CE362Dd5AE5",
+    "0x0037BB334484dFfba7eeEC986972fD2BB12e25f6",
   GOVERNANCE_DAO:
     process.env.NEXT_PUBLIC_DAO_CONTRACT ||
-    "0x7cf0750182891bb4439283a9a26fD5861aB1e54c",
+    "0xC9C2e35055Ed2eB6B216bB9b42EEA68A7D0a915F",
   PROXY_ADMIN:
     process.env.NEXT_PUBLIC_PROXY_ADMIN_CONTRACT ||
-    "0x953A81127155944149E6E8452E5fB57A09a8cf3C",
+    "0x2c1AfDDAE90EE3Bf03f3AB6ba494bCD5a7bD4bcA",
 
   // Wallet Smart Contract addresses (with on-chain distribution tracking)
   DEV_WALLET:
     process.env.NEXT_PUBLIC_DEV_WALLET_CONTRACT ||
-    "0x23C82A1E7EF744a592925d018944c4B42f2e4809",
+    "0x7044d853050cd089B4A796fA8eADa581c205D106",
   ENDOWMENT_WALLET:
     process.env.NEXT_PUBLIC_ENDOWMENT_WALLET_CONTRACT ||
-    "0x624B7A4aAc65924636CeAb3ab4250d185d83E898",
+    "0x3C8B5837A184ef87543fDd7401ed575F5CEb170e",
   MERKLE_FEE_COLLECTOR:
     process.env.NEXT_PUBLIC_MERKLE_FEE_COLLECTOR_CONTRACT ||
-    "0xA5c149fB2c93F434cFcF1b2Dd35b6aa05479E18e",
+    "0x108eFCe368DB385a7FDa8F3A8266d6CD16a3B282",
   MERKLE_DISTRIBUTOR_WALLET:
     process.env.NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT ||
-    "0xcf547057B29aFea1B78fD8947700d73da0b58C3A",
+    "0x9Ba818c20198936D0CF3d9683c3095541ceC366A",
 
-  // Collateral Token addresses (Mock tokens for Base Sepolia)
+  // Real Collateral Token addresses (Base Mainnet)
   WBTC_TOKEN:
     process.env.NEXT_PUBLIC_WBTC_TOKEN ||
-    "0x8A2d17696D5A6dc3dbaFB374d5C633E1a2BA88C6",
+    "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
   CBBTC_TOKEN:
     process.env.NEXT_PUBLIC_CBBTC_TOKEN ||
-    "0xbd282E5BE062B97c50b3f7d7c113308EFB673cC8",
+    "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
   TBTC_TOKEN:
     process.env.NEXT_PUBLIC_TBTC_TOKEN ||
-    "0x22463d37f88D79a2eEDC7C236CA0bb5DA5E1B108",
+    "0x236aa50979D5f3De3Bd1Eeb40E81137F22ab794b",
 
   // Admin wallet address
   ADMIN:
     process.env.NEXT_PUBLIC_ADMIN_WALLET ||
-    "0xd315dADB86EeE6391C99FB2afae6181BC146216D",
+    "0xA1D4de75082562eA776b160e605acD587668111B",
   EMERGENCY_COUNCIL:
     process.env.NEXT_PUBLIC_EMERGENCY_COUNCIL ||
-    "0x0c8852280df8eF9fCb2a24e9d76f1ee4779773E9",
+    "0x2c1AfDDAE90EE3Bf03f3AB6ba494bCD5a7bD4bcA",
 };
 
 // Simplified ABIs for frontend interaction
@@ -90,8 +90,32 @@ export const ABIS = {
     // Burn functions
     "function burn(uint256 amount)",
     "function burnFrom(address from, uint256 amount)",
+    // Vault and WeeklyDistribution getters
+    "function vault() view returns (address)",
+    "function weeklyDistribution() view returns (address)",
+    "function criticalParamsLocked() view returns (bool)",
+    // Timelock functions for Vault changes
+    "function initiateVaultChange(address newVault)",
+    "function executeVaultChange()",
+    "function cancelVaultChange()",
+    "function pendingVaultChange() view returns (tuple(address newAddress, uint256 executeAfter))",
+    // Timelock functions for WeeklyDistribution changes
+    "function initiateWeeklyDistributionChange(address newDist)",
+    "function executeWeeklyDistributionChange()",
+    "function cancelWeeklyDistributionChange()",
+    "function pendingWeeklyDistributionChange() view returns (tuple(address newAddress, uint256 executeAfter))",
+    // Lock critical parameters
+    "function lockCriticalParams()",
+    // Events
     "event Transfer(address indexed from, address indexed to, uint256 value)",
     "event Approval(address indexed owner, address indexed spender, uint256 value)",
+    "event VaultChanged(address indexed oldVault, address indexed newVault)",
+    "event WeeklyDistributionChanged(address indexed oldDist, address indexed newDist)",
+    "event VaultChangeInitiated(address indexed oldVault, address indexed newVault, uint256 executeAfter)",
+    "event WeeklyDistributionChangeInitiated(address indexed oldDist, address indexed newDist, uint256 executeAfter)",
+    "event VaultChangeCancelled(address indexed cancelledVault)",
+    "event WeeklyDistributionChangeCancelled(address indexed cancelledDist)",
+    "event CriticalParamsLocked(address indexed owner)",
   ],
 
   VAULT: [
@@ -958,10 +982,10 @@ export const CATEGORY_NAMES = [
 
 // Network configuration
 export const NETWORK_CONFIG = {
-  chainId: Number.parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "84532"),
-  chainName: process.env.NEXT_PUBLIC_CHAIN_NAME || "Base Sepolia",
-  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "https://sepolia.base.org",
-  blockExplorer: "https://sepolia.basescan.org",
+  chainId: Number.parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453"),
+  chainName: process.env.NEXT_PUBLIC_CHAIN_NAME || "Base Mainnet",
+  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org",
+  blockExplorer: "https://basescan.org",
   nativeCurrency: {
     name: "Ether",
     symbol: "ETH",
@@ -969,7 +993,7 @@ export const NETWORK_CONFIG = {
   },
 };
 
-// Collateral token configuration - updated from deployment-base-sepolia.json (2025-12-20)
+// Collateral token configuration - updated from deployment-base-mainnet.json (2025-12-06)
 export const COLLATERAL_TOKENS = [
   {
     symbol: "WBTC",

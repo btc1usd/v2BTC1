@@ -53,11 +53,59 @@ export async function GET(request: NextRequest) {
     // Use the correct contract address from environment or fallback to CONTRACT_ADDRESSES
     const daoAddress = process.env.NEXT_PUBLIC_DAO_CONTRACT || CONTRACT_ADDRESSES.GOVERNANCE_DAO;
 
+    // Check if the contract exists at this address
+    let code;
+    try {
+      code = await provider.getCode(daoAddress);
+    } catch (error: any) {
+      console.error('Error checking contract code:', error);
+      return NextResponse.json(
+        { 
+          error: 'Failed to verify contract existence', 
+          details: error.message,
+          contractAddress: daoAddress,
+          suggestions: [
+            "Check if you're on the correct network",
+            "Verify the DAO contract is deployed",
+            "Check NEXT_PUBLIC_DAO_CONTRACT in .env"
+          ]
+        },
+        { status: 500 }
+      );
+    }
+
+    if (code === '0x') {
+      console.error(`No contract found at DAO address: ${daoAddress}`);
+      return NextResponse.json(
+        { 
+          error: 'Governance DAO contract not found', 
+          details: `No contract code at address ${daoAddress}`,
+          contractAddress: daoAddress,
+          network: chainId,
+          suggestions: [
+            "Check if you're connected to the correct network (Base Sepolia Testnet: 84532, Base Mainnet: 8453)",
+            "Verify NEXT_PUBLIC_DAO_CONTRACT in your .env file",
+            "Ensure the DAO contract has been deployed",
+            "Check deployment-base-mainnet.json for the correct address"
+          ]
+        },
+        { status: 404 }
+      );
+    }
+
     const governanceDAO = new ethers.Contract(
       daoAddress,
       GOVERNANCE_DAO_ABI,
       provider
     );
+
+    // Debug: Log contract info
+    console.log('=== DAO Contract Debugging ===');
+    console.log('Address:', daoAddress);
+    console.log('Network:', chainId);
+    console.log('Code exists:', code !== '0x');
+    console.log('Code length:', code?.length);
+    console.log('===============================');
 
     // Get single proposal
     if (proposalId) {
@@ -138,18 +186,45 @@ export async function GET(request: NextRequest) {
     // Get all proposals or filtered by status
     let proposalCount;
     try {
+      // First verify the contract has the proposalCount function by checking if it returns valid data
       proposalCount = await governanceDAO.proposalCount();
+      
+      // Validate that we got a valid response
+      if (proposalCount === undefined || proposalCount === null) {
+        throw new Error('proposalCount returned undefined/null - contract may not be properly deployed');
+      }
+      
+      console.log(`Successfully fetched proposal count: ${proposalCount}`);
     } catch (error: any) {
       console.error('Error fetching proposal count:', error);
+      
+      // Provide detailed error information
+      let errorDetails = error.message;
+      let suggestions = [
+        "Check contract deployment",
+        "Verify RPC configuration",
+        "Try again in a few minutes"
+      ];
+      
+      if (error.code === 'BAD_DATA' || error.message?.includes('could not decode')) {
+        errorDetails = `Contract call failed - the contract at ${daoAddress} exists but doesn't implement proposalCount() or returned invalid data`;
+        suggestions = [
+          `Verify the DAO contract address in .env: ${daoAddress}`,
+          "Check if the contract is the correct DAO implementation",
+          `Verify you're on the correct network (current: ${chainId})`,
+          "Check deployment-base-mainnet.json for the correct DAO address",
+          "The contract may need to be redeployed or upgraded"
+        ];
+      }
+      
       return NextResponse.json(
         { 
           error: 'Failed to fetch proposal count', 
-          details: error.message,
-          suggestions: [
-            "Check contract deployment",
-            "Verify RPC configuration",
-            "Try again in a few minutes"
-          ]
+          details: errorDetails,
+          contractAddress: daoAddress,
+          network: chainId,
+          errorCode: error.code,
+          suggestions
         },
         { status: 500 }
       );

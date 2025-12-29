@@ -2216,7 +2216,7 @@ function Dashboard() {
       const domain = {
         name: "BTC1USD",
         version: "1",
-        chainId: chainId || 84532,
+        chainId: chainId || 8453,
         verifyingContract: tokenAddress as `0x${string}`,
       };
 
@@ -3336,7 +3336,7 @@ function Dashboard() {
                                 </div>
                                 {activity.txHash && (
                                   <a
-                                    href={`https://sepolia.basescan.org/tx/${activity.txHash}`}
+                                    href={`https://basescan.org/tx/${activity.txHash}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="inline-flex items-center gap-1 mt-2 text-xs sm:text-sm text-orange-500 hover:text-orange-400 font-medium transition-colors"
