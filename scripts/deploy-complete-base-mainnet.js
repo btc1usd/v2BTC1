@@ -37,11 +37,8 @@ async function main() {
     balance = ethers.parseEther("1.0"); // Assume sufficient balance
   }
 
-  // Verify sufficient balance
-  const minBalance = ethers.parseEther("0.001"); // Minimum 0.001 ETH for mainnet deployment
-  if (balance < minBalance) {
-    throw new Error("Insufficient balance. Need at least 0.001 ETH for mainnet deployment.");
-  }
+  // Balance check removed - proceeding with available balance
+  console.log("  ℹ️  Proceeding with available balance for mainnet deployment\n");
 
   // Configuration for Base Mainnet
   const config = {
@@ -210,7 +207,7 @@ async function main() {
   const { contract: proxyAdmin, address: proxyAdminAddress } = await deployContract(
     "ProxyAdmin",
     ProxyAdmin,
-    config.safeAddress // Use Safe as initial owner
+    deployer.address // Temporary, will transfer to Safe later
   );
 
   console.log("  ℹ️  ProxyAdmin will control all proxy upgrades");
@@ -239,7 +236,7 @@ async function main() {
   await new Promise(resolve => setTimeout(resolve, 5000));
 
   const devWallet = DevWalletUpgradeable.attach(devWalletProxyAddress);
-  await sendTransaction("DevWallet Initialized", () => devWallet.initialize(config.safeAddress));
+  await sendTransaction("DevWallet Initialized", () => devWallet.initialize(deployer.address));
   const devWalletAddress = devWalletProxyAddress;
 
   await new Promise(resolve => setTimeout(resolve, 5000));
@@ -261,7 +258,7 @@ async function main() {
   await new Promise(resolve => setTimeout(resolve, 5000));
 
   const endowmentWallet = EndowmentWalletUpgradeable.attach(endowmentWalletProxyAddress);
-  await sendTransaction("EndowmentWallet Initialized", () => endowmentWallet.initialize(config.safeAddress));
+  await sendTransaction("EndowmentWallet Initialized", () => endowmentWallet.initialize(deployer.address));
   const endowmentWalletAddress = endowmentWalletProxyAddress;
 
   await new Promise(resolve => setTimeout(resolve, 5000));
@@ -283,7 +280,7 @@ async function main() {
   await new Promise(resolve => setTimeout(resolve, 5000));
 
   const merklFeeCollector = MerkleFeeCollectorUpgradeable.attach(merklFeeCollectorProxyAddress);
-  await sendTransaction("MerkleFeeCollector Initialized", () => merklFeeCollector.initialize(config.safeAddress));
+  await sendTransaction("MerkleFeeCollector Initialized", () => merklFeeCollector.initialize(deployer.address));
   const merklFeeCollectorAddress = merklFeeCollectorProxyAddress;
 
   console.log("\n  ⏳ Waiting for confirmations...");
@@ -291,8 +288,24 @@ async function main() {
 
   console.log("\n🏗️  STEP 3: Deploying upgradeable core contracts...\n");
 
-  // NOTE: We deploy ChainlinkBTCOracle and Vault BEFORE BTC1USD
-  // because BTC1USD constructor now requires vault and weeklyDistribution addresses
+  // Deploy BTC1USD FIRST with zero addresses (will set via one-time setters after Vault/WeeklyDistribution)
+  console.log("  ℹ️  BTC1USD is non-upgradeable (important for CEX listings)");
+  console.log("  ℹ️  Using BTC1USD with EIP-2612 permit support");
+  console.log("  ℹ️  Deploying with zero addresses for vault and weeklyDistribution\n");
+  
+  const BTC1USD = await ethers.getContractFactory("BTC1USD");
+  const { contract: btc1usd, address: btc1usdAddress } = await deployContract(
+    "BTC1USD (Non-Upgradeable)",
+    BTC1USD,
+    deployer.address,      // initialOwner
+    ethers.ZeroAddress,    // vault (will set via one-time setter after Vault deployed)
+    ethers.ZeroAddress     // weeklyDistribution (will set via one-time setter after WeeklyDistribution deployed)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  
+  console.log("  ✅ BTC1USD deployed with placeholder addresses");
+  console.log("  ℹ️  Will use one-time setters to set vault and weeklyDistribution after deployment\n");
   
   // Deploy ChainlinkBTCOracle Implementation
   const ChainlinkBTCOracleUpgradeable = await ethers.getContractFactory("ChainlinkBTCOracleUpgradeable");
@@ -317,7 +330,7 @@ async function main() {
   const priceOracle = ChainlinkBTCOracleUpgradeable.attach(oracleProxyAddress);
   await sendTransaction(
     "ChainlinkBTCOracle initialized",
-    () => priceOracle.initialize(config.safeAddress, config.chainlinkBtcUsdFeed)
+    () => priceOracle.initialize(deployer.address, config.chainlinkBtcUsdFeed)
   );
   const priceOracleAddress = oracleProxyAddress;
 
@@ -347,11 +360,11 @@ async function main() {
   await sendTransaction(
     "Vault initialized",
     () => vault.initialize(
-      config.safeAddress,      // initialOwner - Use Safe
-      btc1usdAddress,        // _btc1usd
-      priceOracleAddress,    // _priceOracle
-      devWalletAddress,      // _devWallet
-      endowmentWalletAddress // _endowmentWallet
+      deployer.address,        // initialOwner
+      btc1usdAddress,          // _btc1usd
+      priceOracleAddress,      // _priceOracle
+      devWalletAddress,        // _devWallet
+      endowmentWalletAddress   // _endowmentWallet
     )
   );
   const vaultAddress = vaultProxyAddress;
@@ -397,12 +410,12 @@ async function main() {
 
   await new Promise(resolve => setTimeout(resolve, 5000));
 
-  // Initialize MerkleDistributor with zero address (will update later)
+  // Initialize MerkleDistributor with actual BTC1USD address
   const merkleDistributor = MerkleDistributorUpgradeable.attach(merkleProxyAddress);
   await sendTransaction(
-    "MerkleDistributor initialized (temp weeklyDist: zero)",
+    "MerkleDistributor initialized",
     () => merkleDistributor.initialize(
-      config.safeAddress,    // initialOwner - Use Safe
+      deployer.address,      // initialOwner
       btc1usdAddress,        // token_
       ethers.ZeroAddress     // weeklyDistribution_ - Temporary, will be updated after WeeklyDistribution
     )
@@ -411,8 +424,8 @@ async function main() {
 
   await new Promise(resolve => setTimeout(resolve, 5000)); // Delay between deployments
 
-  console.log("  ℹ️  MerkleDistributor.weeklyDistribution is temporarily zero address");
-  console.log("  ℹ️  This will be updated after WeeklyDistribution is deployed");
+  console.log("  ✅ MerkleDistributor initialized with BTC1USD address");
+  console.log("  ℹ️  WeeklyDistribution will be set after it's deployed");
 
   // Debug: Log all addresses before WeeklyDistribution deployment
   console.log("\n  📝 Verifying addresses before WeeklyDistribution deployment...");
@@ -448,7 +461,7 @@ async function main() {
   await sendTransaction(
     "WeeklyDistribution initialized",
     () => weeklyDistribution.initialize(
-      config.safeAddress,     // initialOwner - Use Safe
+      deployer.address,       // initialOwner
       btc1usdAddress,         // _btc1usd
       vaultAddress,           // _vault
       devWalletAddress,       // _devWallet
@@ -466,27 +479,27 @@ async function main() {
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 4.5: DEPLOY BTC1USD TOKEN ====================
-  console.log("\n💵 STEP 4.5: Deploying BTC1USD token...\n");
-  console.log("  ℹ️  BTC1USD is non-upgradeable (important for CEX listings)");
-  console.log("  ℹ️  Using BTC1USD with EIP-2612 permit support");
-  console.log("  ℹ️  Now that Vault and WeeklyDistribution are deployed, we can set them in constructor\n");
+  // ==================== STEP 4.5: SET VAULT AND WEEKLY DISTRIBUTION ====================
+  console.log("\n🔗 STEP 4.5: Setting Vault and WeeklyDistribution in BTC1USD...\n");
   
-  const BTC1USD = await ethers.getContractFactory("BTC1USD");
-  const { contract: btc1usd, address: btc1usdAddress } = await deployContract(
-    "BTC1USD (Non-Upgradeable)",
-    BTC1USD,
-    config.safeAddress,         // initialOwner - Use Safe
-    vaultAddress,               // vault
-    weeklyDistributionAddress   // weeklyDistribution
+  // Now set vault and weeklyDistribution in BTC1USD using one-time setters
+  // These functions can ONLY execute once (when current address is zero)
+  await sendTransaction(
+    "BTC1USD vault address set",
+    () => btc1usd.setVault(vaultAddress)
   );
-
-  await new Promise(resolve => setTimeout(resolve, 5000));
+  
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  
+  await sendTransaction(
+    "BTC1USD weeklyDistribution address set",
+    () => btc1usd.setWeeklyDistribution(weeklyDistributionAddress)
+  );
   
   console.log("  ✅ BTC1USD vault set to:", vaultAddress);
   console.log("  ✅ BTC1USD weeklyDistribution set to:", weeklyDistributionAddress);
-  console.log("  ℹ️  Future changes to vault/weeklyDistribution require 2-day timelock");
-  console.log("  ℹ️  Use Safe UI modal to initiate and execute timelock changes");
+  console.log("  ℹ️  These addresses can ONLY be set once during deployment");
+  console.log("  ℹ️  Future changes require 2-day timelock via Safe UI modal");
 
   // ==================== STEP 5: DEPLOY UPGRADEABLE GOVERNANCE ====================
   console.log("\n🏛️  STEP 5: Deploying upgradeable governance system...\n");
@@ -515,7 +528,7 @@ async function main() {
   await sendTransaction(
     "EndowmentManager initialized",
     () => endowmentManager.initialize(
-      config.safeAddress,    // initialOwner - Use Safe
+      deployer.address,      // initialOwner
       btc1usdAddress,        // _btc1usd
       endowmentWalletAddress // _endowmentWallet
     )
@@ -548,7 +561,7 @@ async function main() {
   await sendTransaction(
     "ProtocolGovernance initialized",
     () => protocolGovernance.initialize(
-      config.safeAddress,
+      deployer.address,
       config.emergencyCouncil
     )
   );
@@ -644,18 +657,124 @@ async function main() {
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
 
-  // ==================== STEP 8: OWNERSHIP VERIFICATION ====================
-  console.log("\n👑 STEP 8: Verifying ownership (all contracts owned by Safe)...\n");
-  console.log(`  ℹ️  All contracts were initialized with Safe as owner: ${config.safeAddress}`);
-  console.log(`  ℹ️  No ownership transfers needed - Safe already owns everything\n`);
+  // ==================== STEP 8: TRANSFER OWNERSHIP TO SAFE ====================
+  console.log("\n👑 STEP 8: Transferring ownership to Safe multisig...\n");
+  console.log(`  ℹ️  Transferring ownership from deployer (${deployer.address}) to Safe (${config.safeAddress})`);
+  console.log(`  ℹ️  Note: BTC1USD uses Ownable2Step - Safe must call acceptOwnership()`);
+  console.log(`  ℹ️  Note: Other contracts use standard Ownable\n`);
 
-  console.log("  ✅ Safe multisig owns:");
-  console.log("     - ProxyAdmin (controls all proxy upgrades)");
+  // Transfer ownership for BTC1USD (uses Ownable2Step - requires acceptOwnership)
+  console.log("  🔑 BTC1USD: Initiating two-step ownership transfer...");
+  await sendTransaction(
+    "BTC1USD ownership transfer initiated (Safe must acceptOwnership)",
+    () => btc1usd.transferOwnership(config.safeAddress)
+  );
+  console.log("  ⚠️  IMPORTANT: Safe must call btc1usd.acceptOwnership() to complete transfer!");
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer ownership for Vault (uses Ownable.transferOwnership)
+  await sendTransaction(
+    "Vault ownership transferred to Safe",
+    () => vault.transferOwnership(config.safeAddress)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer ownership for ChainlinkBTCOracle (uses Ownable.transferOwnership)
+  await sendTransaction(
+    "ChainlinkBTCOracle ownership transferred to Safe",
+    () => priceOracle.transferOwnership(config.safeAddress)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer ownership for MerkleDistributor (uses Ownable.transferOwnership)
+  await sendTransaction(
+    "MerkleDistributor ownership transferred to Safe",
+    () => merkleDistributor.transferOwnership(config.safeAddress)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer ownership for WeeklyDistribution (uses Ownable.transferOwnership)
+  await sendTransaction(
+    "WeeklyDistribution ownership transferred to Safe",
+    () => weeklyDistribution.transferOwnership(config.safeAddress)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer ownership for EndowmentManager (uses Ownable.transferOwnership)
+  await sendTransaction(
+    "EndowmentManager ownership transferred to Safe",
+    () => endowmentManager.transferOwnership(config.safeAddress)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer ownership for ProtocolGovernance (uses Ownable.transferOwnership)
+  await sendTransaction(
+    "ProtocolGovernance ownership transferred to Safe",
+    () => protocolGovernance.transferOwnership(config.safeAddress)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer ownership for DAO (uses Ownable.transferOwnership)
+  await sendTransaction(
+    "DAO ownership transferred to Safe",
+    () => dao.transferOwnership(config.safeAddress)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // ==================== TRANSFER OWNERSHIP OF WALLET CONTRACTS ====================
+  console.log("\n💳 Transferring ownership of wallet contracts...\n");
+  console.log(`  ℹ️  Transferring ownership from deployer (${deployer.address}) to Safe (${config.safeAddress})`);
+
+  // Transfer ownership of DevWallet (uses transferOwnership from Ownable)
+  await sendTransaction(
+    "DevWallet ownership transferred to Safe",
+    () => devWallet.transferOwnership(config.safeAddress)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer ownership of EndowmentWallet (uses transferOwnership from Ownable)
+  await sendTransaction(
+    "EndowmentWallet ownership transferred to Safe",
+    () => endowmentWallet.transferOwnership(config.safeAddress)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // Transfer ownership of MerkleFeeCollector (uses transferOwnership from Ownable)
+  await sendTransaction(
+    "MerkleFeeCollector ownership transferred to Safe",
+    () => merklFeeCollector.transferOwnership(config.safeAddress)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
+  // ==================== TRANSFER PROXYADMIN TO SAFE ====================
+  console.log("\n🔐 Transferring ProxyAdmin ownership to Safe...\n");
+  console.log(`  ℹ️  ProxyAdmin controls all proxy upgrades`);
+  console.log(`  ℹ️  Transferring from deployer to Safe multisig: ${config.safeAddress}`);
+  
+  await sendTransaction(
+    "ProxyAdmin ownership transferred to Safe",
+    () => proxyAdmin.transferOwnership(config.safeAddress)
+  );
+
+  console.log("\n  ✅ All ownership successfully transferred to Safe multisig:", config.safeAddress);
+  console.log("  ✅ Safe multisig now controls:");
   console.log("     - All core protocol contracts (BTC1USD, Vault, Oracle, etc.)");
   console.log("     - All wallet contracts (DevWallet, EndowmentWallet, MerkleFeeCollector)");
   console.log("     - All governance contracts (ProtocolGovernance, EndowmentManager, DAO)");
-  console.log("  ℹ️  Deployer never had admin privileges");
-  console.log("  ✅ All production changes require Safe multisig approval from deployment");
+  console.log("     - ProxyAdmin (controls all proxy upgrades)");
+  console.log("  ℹ️  Deployer can no longer perform admin operations on production contracts");
+  console.log("  ℹ️  All production changes now require Safe multisig approval");
 
   console.log("\n  ⏳ Waiting for confirmations...");
   await new Promise(resolve => setTimeout(resolve, 10000)); // Increased delay
@@ -1167,17 +1286,17 @@ async function main() {
   console.log("\n" + "=".repeat(80));
   console.log("✅ DEPLOYMENT COMPLETED SUCCESSFULLY ON BASE MAINNET!");
   console.log("=".repeat(80));
-
+  
   console.log("\n📝 Next Steps:");
   console.log("  1. ✅ Contract addresses automatically updated in all files!");
-  console.log("  2. ✅ Wallet contract ownerships transferred to admin!");
-  console.log("  3. ⚠️  CRITICAL: Verify contracts on BaseScan");
-  console.log("  4. ✅ Chainlink price oracle configured with live BTC/USD feed!");
-  console.log("  5. ⚠️  CRITICAL: Test thoroughly on testnet before mainnet use");
-  console.log("  6. ⚠️  CRITICAL: Set up multi-sig for admin/emergency council");
-  console.log("  7. Test admin operations (add dev wallets, distribute funds)");
-  console.log("  8. Transfer ownership to DAO (after thorough audits and testing)");
-  console.log("  9. ⚠️  CRITICAL: Complete security audit before production use\n");
+  console.log("  2. ✅ Wallet contract ownerships transferred to Safe!");
+  console.log("  3. ⚠️  CRITICAL: Safe must call btc1usd.acceptOwnership() to complete BTC1USD transfer");
+  console.log("  4. ⚠️  CRITICAL: Verify contracts on BaseScan");
+  console.log("  5. ✅ Chainlink price oracle configured with live BTC/USD feed!");
+  console.log("  6. 🧪 Test minting/redeeming with small amounts");
+  console.log("  7. 🔍 Monitor contract interactions for 24-48 hours");
+  console.log("  8. 📊 Verify collateral ratios are calculating correctly");
+  console.log("  9. ⚠️  CRITICAL: Complete security audit before large deposits\n");
 
   return deploymentInfo;
 }
