@@ -782,6 +782,18 @@ async function main() {
       console.log(`     Got: ${merklFeeCollectorOwner}`);
     }
 
+    // Verify governance contract ownership
+    console.log("\n  📝 Verifying governance contract ownerships...");
+    
+    const daoOwner = await dao.owner();
+    if (daoOwner.toLowerCase() === config.safeAddress.toLowerCase()) {
+      console.log(`  ✅ DAO owner correctly set to ${daoOwner}`);
+    } else {
+      console.log(`  ❌ DAO owner mismatch!`);
+      console.log(`     Expected: ${config.safeAddress}`);
+      console.log(`     Got: ${daoOwner}`);
+    }
+
     // Verify collateral tokens
     console.log("\n  📝 Verifying collateral tokens...");
     const collateralList = await vault.getCollateralList();

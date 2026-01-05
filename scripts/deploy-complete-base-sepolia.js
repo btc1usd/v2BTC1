@@ -771,6 +771,14 @@ async function main() {
 
   await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
 
+  // Transfer ownership for DAO (uses Ownable.transferOwnership)
+  await sendTransaction(
+    "DAO ownership transferred to Safe",
+    () => dao.transferOwnership(config.admin)
+  );
+
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Delay between transactions
+
   // ==================== TRANSFER OWNERSHIP OF WALLET CONTRACTS ====================
   console.log("\n💳 Transferring ownership of wallet contracts...\n");
   console.log(`  ℹ️  Transferring ownership from deployer (${deployer.address}) to Safe (${config.admin})`);
@@ -818,7 +826,7 @@ async function main() {
   console.log("  ✅ Safe multisig now controls:");
   console.log("     - All core protocol contracts (BTC1USD, Vault, Oracle, etc.)");
   console.log("     - All wallet contracts (DevWallet, EndowmentWallet, MerkleFeeCollector)");
-  console.log("     - All governance contracts (ProtocolGovernance, EndowmentManager)");
+  console.log("     - All governance contracts (ProtocolGovernance, EndowmentManager, DAO)");
   console.log("     - ProxyAdmin (controls all proxy upgrades)");
   console.log("  ℹ️  Mock tokens remain under deployer control (test tokens only)");
   console.log("  ℹ️  Deployer can no longer perform admin operations on production contracts");
@@ -945,6 +953,18 @@ async function main() {
       console.log(`  ❌ MerkleFeeCollector owner mismatch!`);
       console.log(`     Expected: ${config.admin}`);
       console.log(`     Got: ${merklFeeCollectorOwner}`);
+    }
+
+    // Verify governance contract ownership transfers
+    console.log("\n  📝 Verifying governance contract ownerships...");
+    
+    const daoOwner = await dao.owner();
+    if (daoOwner.toLowerCase() === config.admin.toLowerCase()) {
+      console.log(`  ✅ DAO owner correctly set to ${daoOwner}`);
+    } else {
+      console.log(`  ❌ DAO owner mismatch!`);
+      console.log(`     Expected: ${config.admin}`);
+      console.log(`     Got: ${daoOwner}`);
     }
 
     // Verify mock token admin transfers
