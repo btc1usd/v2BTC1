@@ -674,7 +674,7 @@ export function AnalyticsDashboard({
             <Card className="bg-gray-800/50 border-gray-700">
               <CardContent className="pt-6">
                 <div className="text-xs text-gray-400 mb-2 truncate">Fee Allocation</div>
-                <div className="text-lg sm:text-xl lg:text-2xl font-bold text-rose-400">0.1%</div>
+                <div className="text-lg sm:text-xl lg:text-2xl font-bold text-rose-400">1%</div>
                 <div className="text-xs text-gray-500 mt-1">Of each mint to charity</div>
               </CardContent>
             </Card>

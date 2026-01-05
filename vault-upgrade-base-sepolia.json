@@ -1,0 +1,29 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "timestamp": "2026-01-05T08:59:54.926Z",
+  "deployer": "0x0c8852280df8eF9fCb2a24e9d76f1ee4779773E9",
+  "upgrade": {
+    "contract": "Vault",
+    "proxyAddress": "0xEBDCefF95cd9982E26F267EA1E5823a2B36dDfDe",
+    "oldImplementation": "0xB497AEe928a0D918bd6FF2De45A0A89651b181E8",
+    "newImplementation": "0x68f7E879620B3B1065e1B62e1914CD047b0DA431",
+    "proxyAdmin": "0x73a89C1973A4BA7E4D92F9430e0123427498955d",
+    "safeMultisig": "0xd315dADB86EeE6391C99FB2afae6181BC146216D",
+    "changes": [
+      "ENDOWMENT_FEE_MINT: 0.001e8 (0.1%) → 0.01e8 (1.0%)"
+    ],
+    "upgradeCalldata": "0x99a88ec4000000000000000000000000ebdceff95cd9982e26f267ea1e5823a2b36ddfde00000000000000000000000068f7e879620b3b1065e1b62e1914cd047b0da431",
+    "upgradeTransaction": {
+      "to": "0x73a89C1973A4BA7E4D92F9430e0123427498955d",
+      "value": "0",
+      "data": "0x99a88ec4000000000000000000000000ebdceff95cd9982e26f267ea1e5823a2b36ddfde00000000000000000000000068f7e879620b3b1065e1b62e1914cd047b0da431",
+      "description": "Upgrade Vault to v2 (1% Endowment Fee)"
+    }
+  },
+  "explorerUrls": {
+    "newImplementation": "https://sepolia.basescan.org/address/0x68f7E879620B3B1065e1B62e1914CD047b0DA431",
+    "vaultProxy": "https://sepolia.basescan.org/address/0xEBDCefF95cd9982E26F267EA1E5823a2B36dDfDe",
+    "proxyAdmin": "https://sepolia.basescan.org/address/0x73a89C1973A4BA7E4D92F9430e0123427498955d"
+  }
+}

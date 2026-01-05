@@ -6,13 +6,17 @@
   "upgradeable": true,
   "proxyAdmin": "0x73a89C1973A4BA7E4D92F9430e0123427498955d",
   "implementations": {
-    "vault": "0xB497AEe928a0D918bd6FF2De45A0A89651b181E8",
+    "vault": "0x68f7E879620B3B1065e1B62e1914CD047b0DA431",
     "oracle": "0xd142b9b21E9Fa41647d3D3330FaeC211Cf5ae013",
     "merkleDistributor": "0x41975231B8391229EB8408B77b13D9E375aBafC8",
     "endowmentManager": "0xb260F76817c0236019D79Ff793ebccd2764095AD",
     "protocolGovernance": "0xd402654DF6684b6322D626021c82BA91b072FC49",
     "dao": "0x975b7acA15bb196b61B457BB5174Df2F65aBBE9F",
-    "weeklyDistribution": "0xeDfc83DDE8a3D3e7Af01A6d8C0865f80b9c78081"
+    "weeklyDistribution": "0xeDfc83DDE8a3D3e7Af01A6d8C0865f80b9c78081",
+    "vaultV2_timestamp": "2026-01-05T08:59:54.926Z",
+    "vaultV2_changes": [
+      "ENDOWMENT_FEE_MINT: 0.001e8 (0.1%) → 0.01e8 (1.0%)"
+    ]
   },
   "nonUpgradeable": {
     "btc1usd": "0x45a235C767deCfEEC56678e6000e5Ad9a345382d"

@@ -32,7 +32,7 @@ contract Vault is
 
     uint256 public constant DEV_FEE_MINT       = 0.01e8;   // 1%
     uint256 public constant DEV_FEE_REDEEM     = 0.001e8; // 0.1%
-    uint256 public constant ENDOWMENT_FEE_MINT = 0.001e8; // 0.1%
+    uint256 public constant ENDOWMENT_FEE_MINT = 0.01e8;  // 1%
 
     address public constant PERMIT2 =
         0x000000000022D473030F116dDEE9F6B43aC78BA3;

@@ -347,7 +347,7 @@ function Dashboard() {
 
     const tokensToMint = usdValue / mintPrice;
     const devFee = tokensToMint * 0.01; // 1%
-    const endowmentFee = tokensToMint * 0.001; // 0.1%
+    const endowmentFee = tokensToMint * 0.01; // 1%
     const totalMinted = tokensToMint + devFee + endowmentFee;
 
     // Calculate new collateral ratio considering the new deposit
@@ -2602,9 +2602,9 @@ function Dashboard() {
     // Calculate tokens before fees
     const tokensToMint = usdValue / mintPrice;
 
-    // Calculate fees (1% dev + 0.1% endowment = 1.1% total)
+    // Calculate fees (1% dev + 1% endowment = 2% total)
     const devFee = tokensToMint * 0.01;
-    const endowmentFee = tokensToMint * 0.001;
+    const endowmentFee = tokensToMint * 0.01;
     const totalToMint = tokensToMint + devFee + endowmentFee;
 
     // Calculate new state
@@ -2622,8 +2622,8 @@ function Dashboard() {
     if (wouldFail) {
       // Work backwards: newRatio = newCollateralValue / newTotalSupply >= minRatio
       // We want: (currentCollateralValue + maxUsdValue) / (currentSupply + maxTotalToMint) = minRatio
-      // Solving for maxUsdValue with fee factor 1.011 (1 + 0.01 + 0.001)
-      const feeFactor = 1.011;
+      // Solving for maxUsdValue with fee factor 1.02 (1 + 0.01 + 0.01)
+      const feeFactor = 1.02;
       const denominator = feeFactor / mintPrice - 1 / minRatio;
 
       if (denominator > 0) {
@@ -3795,7 +3795,7 @@ function Dashboard() {
                                     <span>{calc.devFee.toFixed(6)}</span>
                                   </div>
                                   <div className="flex justify-between text-xs text-gray-500 mt-1">
-                                    <span>Endowment (0.1%):</span>
+                                    <span>Endowment (1%):</span>
                                     <span>{calc.endowmentFee.toFixed(6)}</span>
                                   </div>
                                 </div>

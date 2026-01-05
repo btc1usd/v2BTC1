@@ -11,15 +11,16 @@ import {
 } from "../typechain-types";
 import { MerkleTree } from "merkletreejs";
 import { keccak256, solidityPackedKeccak256 } from "ethers";
+import { WeeklyDistributionUpgradeableInterface } from "@/typechain-types/contracts/WeeklyDistributionUpgradeable";
 
 const { ethers } = hre;
 
 describe("Protocol Stress Testing", function () {
   let btc1usd: BTC1USDWithPermit;
-  let vault: Vault;
-  let weeklyDistribution: WeeklyDistribution;
-  let merkleDistributor: MerkleDistributor;
-  let oracle: PriceOracle;
+  let vault: VaultUpgradeableWithPermit;
+  let weeklyDistribution: WeeklyDistributionUpgradeable;
+  let merkleDistributor: MerkleDistributorUpgradeable;
+  let oracle: ChainlinkBTCOracleUpgradeable;
   let mockWBTC: MockWBTC;
 
   let admin: SignerWithAddress;

@@ -1030,7 +1030,7 @@ export const PROTOCOL_CONSTANTS = {
   STRESS_REDEMPTION_FACTOR: 0.9,
   DEV_FEE_MINT: 0.01,
   DEV_FEE_REDEEM: 0.001,
-  ENDOWMENT_FEE_MINT: 0.001,
+  ENDOWMENT_FEE_MINT: 0.01,
 
   // ============================================
   // CONFIGURATION: MAINNET
