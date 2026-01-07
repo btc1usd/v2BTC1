@@ -35,6 +35,7 @@ import BTC1USDTimelockManager from "@/components/btc1usd-timelock-manager";
 import FixedMerkleClaim from "@/components/fixed-merkle-claim";
 import EnhancedMerkleClaim from "@/components/enhanced-merkle-claim";
 import CollateralManagement from "@/components/collateral-management";
+import KrystalSwapCard from "@/components/krystal-swap-card";
 
 import { useTheme } from "next-themes";
 import { useWeb3 } from "@/lib/web3-provider";
@@ -72,6 +73,7 @@ import {
   Moon,
   Sun,
   Lock as LockIcon,
+  ArrowLeftRight,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
@@ -225,6 +227,7 @@ function Dashboard() {
   const [claimableDistributionCount, setClaimableDistributionCount] = useState(0); // Count of actually claimable distributions
   const [userDistributions, setUserDistributions] = useState<any[]>([]);
   const [usePermit, setUsePermit] = useState(false); // Toggle for gasless permit transactions
+  const [swapModalOpen, setSwapModalOpen] = useState(false); // Swap modal state
 
   // Safe Transaction Modal State
   const [safeModalOpen, setSafeModalOpen] = useState(false);
@@ -3024,8 +3027,8 @@ function Dashboard() {
                 </p>
               </div>
 
-              {/* Overview Cards - 2 rows of 4 cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {/* Overview Cards - First row with Buy, Sell, Swap, Rewards, Balance */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 {/* Buy BTC1 Card */}
                 <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -3082,6 +3085,33 @@ function Dashboard() {
                       className="w-full sm:w-auto sm:px-8 h-12 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-bold shadow-lg shadow-red-500/20"
                     >
                       SELL
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Swap Card - Krystal Integration */}
+                <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-300">
+                      Swap for BTC1
+                    </CardTitle>
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center">
+                      <ArrowLeftRight className="h-4 w-4 text-white" />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="text-2xl font-bold text-white">
+                      Best Rates
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">
+                      DEX Aggregator
+                    </p>
+                    <Button
+                      onClick={() => setSwapModalOpen(true)}
+                      disabled={!isConnected || chainId !== 8453}
+                      className="w-full sm:w-auto sm:px-8 h-12 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold shadow-lg shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      SWAP
                     </Button>
                   </CardContent>
                 </Card>
@@ -3229,7 +3259,7 @@ function Dashboard() {
                 </Card>
               </div>
 
-              {/* Recent Activity and BTC1USD Holders in Same Row */}
+              {/* Second Row - Statistics Cards */}
               <div className="grid grid-cols-1 gap-6">
                 {/* Recent Activity Card */}
                 <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg">
@@ -4378,6 +4408,18 @@ function Dashboard() {
 
         </main>
       </div>
+
+      {/* Krystal Swap Modal */}
+      {swapModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-2xl">
+            <KrystalSwapCard 
+              className="bg-gray-900 border-gray-700" 
+              onClose={() => setSwapModalOpen(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Safe Transaction Modal */}
       {safeModalConfig && (

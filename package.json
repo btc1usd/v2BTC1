@@ -13,7 +13,9 @@
   "dependencies": {
     "@base-org/account": "2.3.1",
     "@chainlink/contracts": "1.5.0",
+    "@coinbase/onchainkit": "1.1.2",
     "@hookform/resolvers": "3.10.0",
+    "@krystaldefi/zap": "0.0.6",
     "@nomicfoundation/hardhat-chai-matchers": "2.1.0",
     "@nomicfoundation/hardhat-ethers": "3.1.0",
     "@nomicfoundation/hardhat-ignition-ethers": "3.0.3",
