@@ -3027,8 +3027,8 @@ function Dashboard() {
                 </p>
               </div>
 
-              {/* Overview Cards - First row with Buy, Sell, Swap, Rewards, Balance */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+              {/* Overview Cards - First row with Buy, Sell, Rewards, Balance (now 4 cards to match second row) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {/* Buy BTC1 Card */}
                 <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -3089,7 +3089,9 @@ function Dashboard() {
                   </CardContent>
                 </Card>
 
-                {/* Swap Card - Krystal Integration */}
+                {/* Swap Card - Krystal Integration - HIDDEN FOR NOW */}
+                {/* TODO: Re-enable when custom Aerodrome pool is supported */}
+                {false && (
                 <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-gray-300">
@@ -3115,6 +3117,7 @@ function Dashboard() {
                     </Button>
                   </CardContent>
                 </Card>
+                )}
 
                 {/* Rewards Card */}
                 <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">

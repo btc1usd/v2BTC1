@@ -93,7 +93,7 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
           chainId: 8453,
           platforms: ['uniswapv3'],
           poolAddresses: {
-            uniswapv3: "0xd0b53D9277642d899DF5C87A3966A349A798F224",
+            uniswapv3: "0x4a23cdb430025f25092d30f721687638288a4e0a",
           }
         });
       } finally {
