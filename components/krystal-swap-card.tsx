@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeftRight, Loader2, X, CheckCircle2, XCircle, Droplets, ArrowRightLeft } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useWeb3 } from "@/lib/web3-provider";
+import { KrystalSwapComponent } from "./krystal-swap-component";
 
 // Dynamically import KrystalZap with SSR disabled
 const KrystalZap = dynamic(() => import('@krystaldefi/zap'), {
@@ -198,43 +199,9 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
             </TabsList>
 
             <TabsContent value="swap" className="space-y-4">
-              <div className="rounded-lg border border-gray-700 bg-gray-900 overflow-hidden">
-                {/* Transaction Status Notification */}
-                {txStatus.type && (
-                  <div className={`m-4 p-4 rounded-lg border flex items-start gap-3 ${
-                    txStatus.type === 'success' 
-                      ? 'bg-green-500/10 border-green-500/50 text-green-400' 
-                      : 'bg-red-500/10 border-red-500/50 text-red-400'
-                  }`}>
-                    {txStatus.type === 'success' ? (
-                      <CheckCircle2 className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                    ) : (
-                      <XCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                    )}
-                    <div className="flex-1">
-                      <p className="font-medium">
-                        {txStatus.type === 'success' ? 'Success!' : 'Error'}
-                      </p>
-                      <p className="text-sm mt-1 break-all">{txStatus.message}</p>
-                    </div>
-                    <button
-                      onClick={() => setTxStatus({ type: null, message: '' })}
-                      className="text-current hover:opacity-70 transition-opacity"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
-                
-                {/* Krystal Swap Widget */}
-                <iframe
-                  src={`https://widget.krystal.app/swap?theme=${theme === "dark" ? "dark" : "light"}&chainId=8453&inputCurrency=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&outputCurrency=0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5&feeAddress=${address || ''}`}
-                  width="100%"
-                  height="600"
-                  style={{ border: 'none', minHeight: '600px' }}
-                  allow="clipboard-read; clipboard-write"
-                  title="Krystal Swap"
-                />
+              <div className="rounded-lg border border-gray-700 bg-gray-900 overflow-hidden p-4">
+                {/* Krystal Swap Component - React */}
+                <KrystalSwapComponent />
               </div>
             </TabsContent>
 
