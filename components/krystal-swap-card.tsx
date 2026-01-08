@@ -198,10 +198,10 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
             </TabsList>
 
             <TabsContent value="swap" className="space-y-4">
-              <div className="rounded-lg border border-gray-700 bg-gray-900 overflow-hidden p-4">
+              <div className="rounded-lg border border-gray-700 bg-gray-900 overflow-hidden">
                 {/* Transaction Status Notification */}
                 {txStatus.type && (
-                  <div className={`mb-4 p-4 rounded-lg border flex items-start gap-3 ${
+                  <div className={`m-4 p-4 rounded-lg border flex items-start gap-3 ${
                     txStatus.type === 'success' 
                       ? 'bg-green-500/10 border-green-500/50 text-green-400' 
                       : 'bg-red-500/10 border-red-500/50 text-red-400'
@@ -226,17 +226,15 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
                   </div>
                 )}
                 
-                {/* TODO: Replace with actual swap component */}
-                <div className="text-center py-8 text-gray-400">
-                  <ArrowRightLeft className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p className="text-base font-medium">Direct Token Swap</p>
-                  <p className="text-sm mt-2">
-                    Swap any token for BTC1 at the best rates
-                  </p>
-                  <p className="text-xs mt-4 text-orange-400">
-                    Coming soon: Integration with Uniswap/1inch for direct swaps
-                  </p>
-                </div>
+                {/* Krystal Swap Widget */}
+                <iframe
+                  src={`https://widget.krystal.app/swap?theme=${theme === "dark" ? "dark" : "light"}&chainId=8453&inputCurrency=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&outputCurrency=0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5&feeAddress=${address || ''}`}
+                  width="100%"
+                  height="600"
+                  style={{ border: 'none', minHeight: '600px' }}
+                  allow="clipboard-read; clipboard-write"
+                  title="Krystal Swap"
+                />
               </div>
             </TabsContent>
 
