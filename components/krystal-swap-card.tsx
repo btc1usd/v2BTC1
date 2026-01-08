@@ -49,7 +49,7 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
   const [config, setConfig] = useState<SwapConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPlatform, setSelectedPlatform] = useState<string>("uniswapv3");
+  const [selectedPlatform, setSelectedPlatform] = useState<string>("uniswapv4");
   const [txLoading, setTxLoading] = useState(false);
   const [txStatus, setTxStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' });
   const { data: walletClient } = useWalletClient();
@@ -72,14 +72,14 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
           console.warn('Base network not found in config');
         }
 
-        // Using working test pool (WETH/USDC on Uniswap V3) - Replace with BTC1 pool once created
+        // Using Uniswap V4 pool - BTC1 liquidity pool
         const baseConfig: SwapConfig = {
           chainId: 8453,
-          platforms: baseChainData?.platforms || ['uniswapv3', 'aerodromecl', 'balancer'],
+          platforms: baseChainData?.platforms || ['uniswapv4', 'uniswapv3', 'aerodromecl'],
           poolAddresses: {
-            uniswapv3: "0xfbcf443d3e9ce293f7dd2300e8c6e0ad537fe1c9e59e221cde2d823aff129811", // WETH/USDC test pool
-            aerodromecl: "0x4a23cdb430025f25092d30f721687638288a4e0a", // BTC1 pool (not indexed yet)
-            balancer: "0x0000000000000000000000000000000000000000",
+            uniswapv4: "0xfbcf443d3e9ce293f7dd2300e8c6e0ad537fe1c9e59e221cde2d823aff129811", // BTC1 pool on Uniswap V4
+            uniswapv3: "0xd0b53D9277642d899DF5C87A3966A349A798F224", // WETH/USDC fallback
+            aerodromecl: "0x4a23cdb430025f25092d30f721687638288a4e0a", // BTC1 on Aerodrome
           }
         };
         
@@ -91,9 +91,9 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
         
         setConfig({
           chainId: 8453,
-          platforms: ['uniswapv3'],
+          platforms: ['uniswapv4'],
           poolAddresses: {
-            uniswapv3: "0xfbcf443d3e9ce293f7dd2300e8c6e0ad537fe1c9e59e221cde2d823aff129811",
+            uniswapv4: "0xfbcf443d3e9ce293f7dd2300e8c6e0ad537fe1c9e59e221cde2d823aff129811",
           }
         });
       } finally {
