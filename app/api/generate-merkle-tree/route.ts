@@ -506,8 +506,11 @@ const getLPHoldersFromAlchemy = async (lpTokenAddress: string, retries = 3): Pro
           })
         });
 
+        // Check response status before reading body
         if (!response.ok) {
-          const errorText = await response.text();
+          // Clone response before reading to avoid consuming it
+          const responseClone = response.clone();
+          const errorText = await responseClone.text();
           throw new Error(`Alchemy API error: ${response.status} - ${errorText}`);
         }
 
@@ -809,7 +812,8 @@ const getAllHolders = async (
     const uniqueAddresses = new Set<string>();
     
     for (const event of events) {
-      if (event.args) {
+      // Check if this is an EventLog (has args) vs plain Log
+      if ('args' in event && event.args) {
         const to = event.args.to;
         if (to && to !== ZERO_ADDRESS && to !== ONE_ADDRESS) {
           uniqueAddresses.add(to.toLowerCase());
