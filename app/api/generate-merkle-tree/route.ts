@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import { keccak256 } from 'viem';
 import { MerkleTree } from 'merkletreejs';
-import { createClient } from '@supabase/supabase-js';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { createProviderWithFallback } from '@/lib/rpc-provider';
 
 interface MerkleClaim {
@@ -19,12 +19,10 @@ interface DistributionData {
   claims: { [address: string]: MerkleClaim };
   metadata: {
     generated: string;
-    blockNumber: number;
     activeHolders: number;
     totalHolders?: number;
     excludedAddresses?: string[];
     excludedCount?: number;
-    detectedLPPools?: Array<{ address: string; type: string }>;
     note?: string;
   };
 }
@@ -66,19 +64,6 @@ const WEEKLY_DISTRIBUTION_ABI = [
       { "internalType": "uint256", "name": "rewardPerToken", "type": "uint256" },
       { "internalType": "uint256", "name": "totalSupply", "type": "uint256" },
       { "internalType": "uint256", "name": "timestamp", "type": "uint256" }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "name": "distributions",
-    "outputs": [
-      { "internalType": "uint256", "name": "id", "type": "uint256" },
-      { "internalType": "uint256", "name": "rewardPerToken", "type": "uint256" },
-      { "internalType": "uint256", "name": "totalSupply", "type": "uint256" },
-      { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
-      { "internalType": "uint256", "name": "blockNumber", "type": "uint256" }
     ],
     "stateMutability": "view",
     "type": "function"
@@ -187,90 +172,30 @@ const AERODROME_POOL_ABI = [
   }
 ];
 
-// EXCLUDED POOLS - Empty list, all pools are treated as direct holders
-const EXCLUDED_POOLS: string[] = [];
+// Approved LP pools to check for BTC1USD - only these will be processed as LP pools
+// All other smart contracts will be skipped (major performance improvement)
+const APPROVED_LP_POOLS = [
+  '0x269251b69fcd1ceb0500a86408cab39666b2077a', // BTC1/WETH UniswapV2
+  '0x18fd0aaaf8c6e28427b26ac75cc4375e21eb74a0b0ce1b66b8672a11a4c47b3d', // Aerodrome pool
+  '0xf669d50334177dc11296b61174955a0216adad38', // Aerodrome pool
+  '0x9d3a11303486e7d773f0ddfd2f47c4b374533580', // Aerodrome pool
+  '0xba420997ee5b98a8037e4395b2f4e9f9715a22a9256be1e880b2ff545ef7a327', // Aerodrome pool
+  '0x3968eff088dfde7b7d00e192fa9ef412aac583ebcb07971d516bd7951c1a74b0', // Aerodrome pool
+  '0xe80d2ef16abbaf4dd7ba60973fded0bb57295bc03b08446f4d3212a58c9cb085', // Aerodrome pool
+  '0xa27368cdd9c4e4f2b2f447c9a614682f14b378dab8715a293503b50d43236901', // Aerodrome pool
+  '0x74c754b0a0c1774601c4b92a975c068d4c000432aeffd980be7cbcc3c012ce65', // Aerodrome pool
+].map(addr => addr.toLowerCase());
 
-// Constants
-const BTC1_DECIMALS = 8;
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-const ONE_ADDRESS = '0x0000000000000000000000000000000000000001';
-
-// Get Supabase table name based on network
-const getSupabaseTableName = (chainId: number): string => {
-  // Mainnet (Base = 8453)
-  if (chainId === 8453) {
-    return 'merkle_distributions_prod';
-  }
-  // Testnet (Base Sepolia = 84532 or any other testnet)
-  return 'merkle_distributions_dev';
-};
-
-// Helper to check if an address is a contract at a specific block
-const isContractAtBlock = async (provider: ethers.JsonRpcProvider, address: string, blockTag?: number): Promise<boolean> => {
-  try {
-    const code = await provider.getCode(address, blockTag);
-    return code !== '0x' && code.length > 2;
-  } catch (error) {
-    console.warn(`⚠️ Failed to check if ${address} is contract`);
-    return false;
-  }
-};
-
-// Helper to check if an address is an LP pool
-const isLPPool = async (provider: ethers.JsonRpcProvider, address: string, blockTag?: number): Promise<boolean> => {
-  if (!await isContractAtBlock(provider, address, blockTag)) return false;
-  
-  try {
-    // Try UniswapV2/Aerodrome pattern
-    const pool = new ethers.Contract(address, UNIV2_PAIR_ABI, provider);
-    await pool.token0({ blockTag });
-    return true;
-  } catch {
-    // Not a recognized LP pool
-    return false;
-  }
-};
-
-// Detect pool type
-const detectPoolType = async (provider: ethers.JsonRpcProvider, address: string, blockTag?: number): Promise<string> => {
-  try {
-    // Try UniswapV2
-    const v2Pool = new ethers.Contract(address, UNIV2_PAIR_ABI, provider);
-    try {
-      await v2Pool.getReserves({ blockTag });
-      return 'UniswapV2';
-    } catch {}
-    
-    // Try Aerodrome
-    const aeroPool = new ethers.Contract(address, AERODROME_POOL_ABI, provider);
-    try {
-      await aeroPool.reserve0({ blockTag });
-      return 'Aerodrome';
-    } catch {}
-  } catch {}
-  
-  return 'Unknown';
-};
-
-// Load deployment configuration - Direct environment variables (Netlify branch-specific)
+// Load deployment configuration - Environment variables ONLY for production
 const getContractAddresses = () => {
   try {
-    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
-    const isMainnet = chainId === 8453; // Base Mainnet
-    
-    console.log(`🌐 Environment: ${isMainnet ? 'PRODUCTION (Mainnet)' : 'DEVELOPMENT (Testnet)'} - Chain ID: ${chainId}`);
-    
-    // Load directly from environment variables (no suffix)
-    // Netlify will provide different values based on the branch
+    // Use environment variables (REQUIRED for production)
     const btc1usd = process.env.NEXT_PUBLIC_BTC1USD_CONTRACT;
     const weeklyDistribution = process.env.NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT;
     const merkleDistributor = process.env.NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT;
 
     if (btc1usd && weeklyDistribution && merkleDistributor) {
-      console.log(`✅ Using contract addresses for ${isMainnet ? 'PROD' : 'DEV'} environment:`);
-      console.log(`   BTC1USD: ${btc1usd}`);
-      console.log(`   WeeklyDistribution: ${weeklyDistribution}`);
-      console.log(`   MerkleDistributor: ${merkleDistributor}`);
+      console.log('✅ Using contract addresses from environment variables');
       return { btc1usd, weeklyDistribution, merkleDistributor };
     }
 
@@ -308,77 +233,20 @@ const getProvider = async () => {
   }
 };
 
-// Helper to get holders from BaseScan API
-const getHoldersFromBaseScan = async (tokenAddress: string, chainId: number, retries = 3): Promise<string[]> => {
-  const baseScanApiKey = process.env.BASESCAN_API_KEY;
-  if (!baseScanApiKey) {
-    console.log('⚠️ BaseScan API key not found');
-    return [];
-  }
-
-  // Determine the correct API endpoint based on network
-  const apiBaseUrl = chainId === 8453 
-    ? 'https://api.basescan.org/api' 
-    : 'https://api-sepolia.basescan.org/api';
-
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      console.log(`🔍 Fetching holders from BaseScan (attempt ${attempt}/${retries})...`);
-      
-      // Use BaseScan's token holder list API
-      const url = `${apiBaseUrl}?module=token&action=tokenholderlist&contractaddress=${tokenAddress}&apikey=${baseScanApiKey}`;
-      
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-
-      if (data.status === '1' && data.result) {
-        const holders = data.result.map((holder: any) => holder.TokenHolderAddress);
-        console.log(`✅ BaseScan found ${holders.length} token holders`);
-        return holders;
-      } else if (data.message === 'No transactions found') {
-        console.log('ℹ️ BaseScan: No token holders found yet');
-        return [];
-      } else {
-        throw new Error(`BaseScan API error: ${data.message || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.warn(`⚠️ BaseScan attempt ${attempt}/${retries} failed:`, error instanceof Error ? error.message : error);
-      
-      if (attempt === retries) {
-        console.error(`❌ All ${retries} attempts failed for BaseScan API`);
-        return [];
-      }
-      
-      // Exponential backoff
-      const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-      console.log(`   Retrying in ${waitTime}ms...`);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-    }
-  }
-
-  return [];
-};
-
 // Helper to get holders using Alchemy API with retry logic (if available)
-const getHoldersFromAlchemy = async (tokenAddress: string, chainId: number, retries = 3): Promise<string[]> => {
+const getHoldersFromAlchemy = async (tokenAddress: string, retries = 3): Promise<string[]> => {
   const alchemyApiKey = process.env.ALCHEMY_API_KEY;
   if (!alchemyApiKey) {
-    console.log('⚠️ Alchemy API key not found, skipping Alchemy method');
+    console.log('Alchemy API key not found, skipping Alchemy method');
     return [];
   }
 
-  // Determine the correct Alchemy endpoint based on network
-  const alchemyNetwork = chainId === 8453 ? 'base-mainnet' : 'base-sepolia';
-  const alchemyUrl = `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyApiKey}`;
-
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      console.log(`🔍 Fetching holders from Alchemy API (attempt ${attempt}/${retries})...`);
+      console.log(`Fetching holders from Alchemy API (attempt ${attempt}/${retries})...`);
+
+      // Use Alchemy's Transfers API to get all unique addresses
+      const alchemyUrl = `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
 
       // Get asset transfers for the token
       const response = await fetch(alchemyUrl, {
@@ -421,9 +289,6 @@ const getHoldersFromAlchemy = async (tokenAddress: string, chainId: number, retr
         const holders = Array.from(uniqueAddresses);
         console.log(`✅ Alchemy found ${holders.length} unique addresses from transfers`);
         return holders;
-      } else {
-        console.log('ℹ️ Alchemy returned no transfers');
-        return [];
       }
     } catch (error) {
       console.warn(`⚠️ Alchemy attempt ${attempt}/${retries} failed:`, error instanceof Error ? error.message : error);
@@ -506,24 +371,13 @@ const getLPHoldersFromAlchemy = async (lpTokenAddress: string, retries = 3): Pro
           })
         });
 
-        // Read body only once - either as JSON or text
-        let data: any;
-        try {
-          data = await response.json();
-        } catch (jsonError) {
-          // If JSON parsing fails, response was likely an error
-          throw new Error(`Alchemy API error: ${response.status} - Failed to parse response`);
+        if (!response.ok) {
+          throw new Error(`Alchemy API error: ${response.status}`);
         }
 
-        // Check if response was successful based on data
-        if (!response.ok || (data.error)) {
-          const errorMsg = data.error?.message || data.message || `HTTP ${response.status}`;
-          throw new Error(`Alchemy API error: ${errorMsg}`);
-        }
-
+        const data: any = await response.json();
         if (!data.result) {
-          console.log('  ℹ️ Alchemy returned no result for LP holders');
-          break;
+          throw new Error('Invalid Alchemy response');
         }
 
         // Process transfers to calculate balances
@@ -718,27 +572,15 @@ const processLPPool = async (
 const getAllHolders = async (
   btc1usdContract: ethers.Contract, 
   provider: ethers.JsonRpcProvider,
-  excludedSet: Set<string>,
-  chainId: number
+  excludedSet: Set<string>
 ): Promise<{ address: string; balance: bigint }[]> => {
-  console.log('📋 Fetching all BTC1USD holders...');
+  console.log('Fetching all BTC1USD holders...');
   
   // Get token address
   const tokenAddress = await btc1usdContract.getAddress();
-  console.log(`   Token address: ${tokenAddress}`);
-  console.log(`   Network: ${chainId === 8453 ? 'Base Mainnet' : 'Base Sepolia'}`);
 
-  // Try BaseScan first (most reliable for holder lists)
-  let allHolderAddresses = await getHoldersFromBaseScan(tokenAddress, chainId);
-  
-  // If BaseScan didn't work, try Alchemy
-  if (allHolderAddresses.length === 0) {
-    console.log('ℹ️ BaseScan returned no holders, trying Alchemy...');
-    allHolderAddresses = await getHoldersFromAlchemy(tokenAddress, chainId);
-  }
-  
-  // Rename variable for clarity
-  const alchemyHolders = allHolderAddresses;
+  // Try to get holders from Alchemy first
+  const alchemyHolders = await getHoldersFromAlchemy(tokenAddress);
 
   if (alchemyHolders.length > 0) {
     console.log(`✅ Alchemy found ${alchemyHolders.length} unique addresses`);
@@ -754,12 +596,14 @@ const getAllHolders = async (
         const isContractAddress = await isContract(provider, address);
         
         if (isContractAddress) {
-          // Check if it's an excluded pool (treated as direct holder)
+          // Only check if it's in the approved LP pools list
           const addressLower = address.toLowerCase();
-          if (EXCLUDED_POOLS.includes(addressLower)) {
-            console.log(`⚠️ Excluded pool found (will be treated as direct holder): ${address}`);
+          if (APPROVED_LP_POOLS.includes(addressLower)) {
+            console.log(`🏊 Approved LP pool found: ${address}`);
+            approvedLPPools.push(address);
+          } else {
+            console.log(`⊘ Skipping non-approved smart contract: ${address}`);
           }
-          console.log(`⊘ Skipping smart contract: ${address}`);
           continue;
         }
         
@@ -804,95 +648,14 @@ const getAllHolders = async (
     }
   }
 
-  // Fallback: If APIs didn't work, scan Transfer events on-chain
-  console.log('🔍 Fallback: Scanning Transfer events on-chain...');
-  console.log(`   Token address: ${tokenAddress}`);
-  console.log(`   Network: ${chainId === 8453 ? 'Base Mainnet' : 'Base Sepolia (84532)'} - Chain ID: ${chainId}`);
+  // Fallback: If Alchemy didn't work or no holders found, check some known addresses
+  console.log('Trying fallback method to get holders...');
   
-  try {
-    // Get Transfer events from the token contract
-    const transferFilter = btc1usdContract.filters.Transfer();
-    console.log('   Querying Transfer events from block 0 to latest...');
-    const events = await btc1usdContract.queryFilter(transferFilter, 0, 'latest');
-    
-    console.log(`   Found ${events.length} Transfer events`);
-    
-    if (events.length === 0) {
-      console.log('   ⚠️ No Transfer events found - token may not have any transactions yet');
-    }
-    
-    // Track all unique addresses that have received tokens
-    const uniqueAddresses = new Set<string>();
-    
-    for (const event of events) {
-      // Check if this is an EventLog (has args) vs plain Log
-      if ('args' in event && event.args) {
-        const to = event.args.to;
-        if (to && to !== ZERO_ADDRESS && to !== ONE_ADDRESS) {
-          uniqueAddresses.add(to.toLowerCase());
-        }
-      }
-    }
-    
-    console.log(`   Found ${uniqueAddresses.size} unique recipient addresses from Transfer events`);
-    
-    if (uniqueAddresses.size === 0) {
-      console.log('   ⚠️ No recipients found in Transfer events');
-    }
-    
-    // Check balances for all recipients
-    const balanceMap = new Map<string, bigint>();
-    let checkedCount = 0;
-    
-    for (const address of uniqueAddresses) {
-      try {
-        // Check if it's a smart contract
-        const isContractAddress = await isContract(provider, address);
-        
-        if (isContractAddress) {
-          console.log(`   ⊘ Skipping smart contract: ${address}`);
-          continue;
-        }
-        
-        // It's an EOA, get direct balance
-        const balance = await btc1usdContract.balanceOf(address);
-        if (balance > BigInt(0)) {
-          balanceMap.set(address.toLowerCase(), BigInt(balance));
-          console.log(`   ✓ ${address}: ${ethers.formatUnits(balance, 8)} BTC1USD`);
-          checkedCount++;
-        }
-      } catch (error) {
-        console.warn(`   Failed to process ${address}:`, error instanceof Error ? error.message : error);
-      }
-    }
-    
-    console.log(`   Checked ${checkedCount} EOA addresses, found ${balanceMap.size} with positive balances`);
-    
-    // Convert balance map to holders array
-    const holders: { address: string; balance: bigint }[] = [];
-    for (const [address, balance] of balanceMap.entries()) {
-      if (balance > BigInt(0)) {
-        holders.push({ address, balance });
-      }
-    }
-    
-    if (holders.length > 0) {
-      console.log(`\n✅ Total unique EOA holders from on-chain scan: ${holders.length}`);
-      return holders;
-    }
-  } catch (error) {
-    console.error('❌ On-chain Transfer event scan failed:', error instanceof Error ? error.message : error);
-  }
-  
-  // Last resort fallback: Check known deployment addresses
-  console.log('\nTrying last resort: checking known deployment addresses...');
-  
+  // Use addresses from the deployment file
   const knownAddresses = [
-    '0x0c8852280df8eF9fCb2a24e9d76f1ee4779773E9', // deployer
-    '0xf7D9655656F8ad38d915dDbdE0bceC7530598b56', // devWallet from Sepolia deployment
-    '0xD720b15020d78Ba9484EC13270B1D24b03135927', // endowmentWallet from Sepolia deployment
-    '0x6cf855d7c79f05b549674916bfa23b5742db143e', // devWallet (legacy)
-    '0x223a0b6cae408c91973852c5bcd55567c7b2e1c0'  // endowmentWallet (legacy)
+    '0x0c8852280df8ef9fcb2a24e9d76f1ee4779773e9', // deployer
+    '0x6cf855d7c79f05b549674916bfa23b5742db143e', // devWallet
+    '0x223a0b6cae408c91973852c5bcd55567c7b2e1c0'  // endowmentWallet
   ];
   
   const holders: { address: string; balance: bigint }[] = [];
@@ -946,10 +709,6 @@ export async function POST(request: NextRequest) {
   try {
     console.log('🚀 Starting merkle tree generation process...');
     
-    // Determine chain ID early for use throughout the function
-    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
-    console.log(`🌐 Network: ${chainId === 8453 ? 'Base Mainnet (8453)' : 'Base Sepolia (84532)'} - Chain ID: ${chainId}`);
-    
     const addresses = getContractAddresses();
     if (!addresses) {
       return NextResponse.json(
@@ -992,50 +751,17 @@ export async function POST(request: NextRequest) {
     );
 
     // Get current distribution info
-    let distributionId, rewardPerToken, totalSupply, distributionTimestamp;
+    let distributionId, rewardPerToken, totalSupply;
     try {
-      [distributionId, rewardPerToken, totalSupply, distributionTimestamp] = await weeklyDistribution.getCurrentDistributionInfo();
-      console.log(`📊 Current distribution info: ID=${distributionId}, rewardPerToken=${rewardPerToken}, totalSupply=${totalSupply}, timestamp=${distributionTimestamp}`);
+      [distributionId, rewardPerToken, totalSupply] = await weeklyDistribution.getCurrentDistributionInfo();
+      console.log(`📊 Weekly distribution info: ID=${distributionId}, rewardPerToken=${rewardPerToken}, totalSupply=${totalSupply}`);
     } catch (error) {
       console.log('ℹ️ No distribution info available, using defaults');
       // Use default values if no distribution exists yet
       distributionId = BigInt(1);
       rewardPerToken = BigInt(1000000); // 0.1 BTC1USD per token (in 8 decimals)
       totalSupply = BigInt(0);
-      distributionTimestamp = BigInt(0);
     }
-
-    // Fetch the block number when the distribution was executed from the contract
-    let targetBlock: number;
-    try {
-      // Get the distribution details which includes the block number
-      const distribution = await weeklyDistribution.distributions(distributionId);
-      targetBlock = Number(distribution.blockNumber);
-      console.log(`📍 Distribution ${distributionId} was executed at block: ${targetBlock}`);
-      console.log(`   Distribution details:`, {
-        id: distribution.id?.toString(),
-        rewardPerToken: distribution.rewardPerToken?.toString(),
-        totalSupply: distribution.totalSupply?.toString(),
-        timestamp: distribution.timestamp?.toString(),
-        blockNumber: targetBlock
-      });
-      
-      if (targetBlock === 0) {
-        // If blockNumber is 0 or not set, use current block
-        targetBlock = await provider.getBlockNumber();
-        console.log(`⚠️ Distribution block number is 0, using current block: ${targetBlock}`);
-      }
-    } catch (error) {
-      // If we can't get the distribution block, use current block
-      targetBlock = await provider.getBlockNumber();
-      console.log(`⚠️ Could not fetch distribution block number, using current block: ${targetBlock}`);
-      console.log(`   Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-    
-    // Get current block or use specified target block
-    const currentBlock = targetBlock;
-    console.log(`📆 Using block number: ${currentBlock}`);
-    const blockTag = currentBlock;
 
     // Also check current merkle distributor state
     const merkleDistributor = new ethers.Contract(
@@ -1092,9 +818,9 @@ export async function POST(request: NextRequest) {
     // Create a Set for faster lookups (case-insensitive)
     const excludedSet = new Set(excludedAddresses.map(addr => addr.toLowerCase()));
 
-    // Get all token holders via BaseScan/Alchemy (EOAs only, smart contracts filtered out)
+    // Get all token holders via Alchemy (EOAs only, smart contracts filtered out)
     // LP pools will be processed to calculate BTC1 shares for their EOA holders
-    const allHolders = await getAllHolders(btc1usd, provider, excludedSet, chainId);
+    const allHolders = await getAllHolders(btc1usd, provider, excludedSet);
 
     if (allHolders.length === 0) {
       // Provide more helpful error message
@@ -1198,31 +924,21 @@ export async function POST(request: NextRequest) {
       }, {} as { [address: string]: MerkleClaim }),
       metadata: {
         generated: new Date().toISOString(),
-        blockNumber: currentBlock,
         activeHolders: claims.length,
         totalHolders: allHolders.length,
         excludedAddresses: excludedAddresses,
         excludedCount: excludedAddresses.length,
-        detectedLPPools: [], // Will be populated if we implement LP pool detection
-        note: 'Protocol wallets are excluded. Pools in EXCLUDED_POOLS list are treated as direct holders (not expanded to LP providers). Only EOAs and verified holders receive rewards.'
+        note: 'Protocol wallets are excluded. EOAs and smart contract wallets (bytecode <100 bytes) receive rewards - includes both direct BTC1USD holders and LP providers whose BTC1USD share in pools has been calculated and aggregated to their addresses.'
       } as any
     };
 
-    // Save to Supabase as PRIMARY storage
-    const supabaseTableName = getSupabaseTableName(chainId);
-    console.log(`💾 Using Supabase table: ${supabaseTableName} (chainId: ${chainId})`);
-    
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    
+    // Save to Supabase as PRIMARY storage for both local and Netlify
+    console.log('💾 Supabase configured?', isSupabaseConfigured());
+    console.log('💾 Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
     let supabaseSuccess = false;
-    if (supabaseUrl && supabaseKey) {
+    if (isSupabaseConfigured() && supabase) {
       try {
         console.log('📤 Saving distribution to Supabase (PRIMARY STORAGE)...');
-        
-        // Create Supabase client
-        const supabase = createClient(supabaseUrl, supabaseKey);
-        
         // Prepare data according to Supabase schema
         const supabaseData: Record<string, any> = {
           id: Number(distributionId),
@@ -1232,9 +948,10 @@ export async function POST(request: NextRequest) {
           metadata: distributionData.metadata
         };
         
-        // Save to appropriate table based on network
-        const result = await supabase
-          .from(supabaseTableName)
+        // Use a more generic approach to avoid typing issues
+        const sb: any = supabase;
+        const result = await sb
+          .from('merkle_distributions')
           .upsert(supabaseData, {
             onConflict: 'id'
           });
