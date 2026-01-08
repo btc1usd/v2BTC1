@@ -795,14 +795,83 @@ const getAllHolders = async (
     }
   }
 
-  // Fallback: If Alchemy didn't work or no holders found, check some known addresses
-  console.log('Trying fallback method to get holders...');
+  // Fallback: If APIs didn't work, scan Transfer events on-chain
+  console.log('🔍 Fallback: Scanning Transfer events on-chain...');
   
-  // Use addresses from the deployment file
+  try {
+    // Get Transfer events from the token contract
+    const transferFilter = btc1usdContract.filters.Transfer();
+    const events = await btc1usdContract.queryFilter(transferFilter, 0, 'latest');
+    
+    console.log(`   Found ${events.length} Transfer events`);
+    
+    // Track all unique addresses that have received tokens
+    const uniqueAddresses = new Set<string>();
+    
+    for (const event of events) {
+      if (event.args) {
+        const to = event.args.to;
+        if (to && to !== ZERO_ADDRESS && to !== ONE_ADDRESS) {
+          uniqueAddresses.add(to.toLowerCase());
+        }
+      }
+    }
+    
+    console.log(`   Found ${uniqueAddresses.size} unique recipient addresses from Transfer events`);
+    
+    // Check balances for all recipients
+    const balanceMap = new Map<string, bigint>();
+    let checkedCount = 0;
+    
+    for (const address of uniqueAddresses) {
+      try {
+        // Check if it's a smart contract
+        const isContractAddress = await isContract(provider, address);
+        
+        if (isContractAddress) {
+          console.log(`   ⊘ Skipping smart contract: ${address}`);
+          continue;
+        }
+        
+        // It's an EOA, get direct balance
+        const balance = await btc1usdContract.balanceOf(address);
+        if (balance > BigInt(0)) {
+          balanceMap.set(address.toLowerCase(), BigInt(balance));
+          console.log(`   ✓ ${address}: ${ethers.formatUnits(balance, 8)} BTC1USD`);
+          checkedCount++;
+        }
+      } catch (error) {
+        console.warn(`   Failed to process ${address}:`, error instanceof Error ? error.message : error);
+      }
+    }
+    
+    console.log(`   Checked ${checkedCount} EOA addresses, found ${balanceMap.size} with positive balances`);
+    
+    // Convert balance map to holders array
+    const holders: { address: string; balance: bigint }[] = [];
+    for (const [address, balance] of balanceMap.entries()) {
+      if (balance > BigInt(0)) {
+        holders.push({ address, balance });
+      }
+    }
+    
+    if (holders.length > 0) {
+      console.log(`\n✅ Total unique EOA holders from on-chain scan: ${holders.length}`);
+      return holders;
+    }
+  } catch (error) {
+    console.error('❌ On-chain Transfer event scan failed:', error instanceof Error ? error.message : error);
+  }
+  
+  // Last resort fallback: Check known deployment addresses
+  console.log('\nTrying last resort: checking known deployment addresses...');
+  
   const knownAddresses = [
-    '0x0c8852280df8ef9fcb2a24e9d76f1ee4779773e9', // deployer
-    '0x6cf855d7c79f05b549674916bfa23b5742db143e', // devWallet
-    '0x223a0b6cae408c91973852c5bcd55567c7b2e1c0'  // endowmentWallet
+    '0x0c8852280df8eF9fCb2a24e9d76f1ee4779773E9', // deployer
+    '0xf7D9655656F8ad38d915dDbdE0bceC7530598b56', // devWallet from Sepolia deployment
+    '0xD720b15020d78Ba9484EC13270B1D24b03135927', // endowmentWallet from Sepolia deployment
+    '0x6cf855d7c79f05b549674916bfa23b5742db143e', // devWallet (legacy)
+    '0x223a0b6cae408c91973852c5bcd55567c7b2e1c0'  // endowmentWallet (legacy)
   ];
   
   const holders: { address: string; balance: bigint }[] = [];
