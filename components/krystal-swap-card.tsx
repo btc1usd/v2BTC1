@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeftRight, Loader2, X, CheckCircle2, XCircle, Droplets, ArrowRightLeft } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useWeb3 } from "@/lib/web3-provider";
+import { KrystalSwapWidget } from "./krystal-swap-widget";
 
 // Dynamically import KrystalZap with SSR disabled
 const KrystalZap = dynamic(() => import('@krystaldefi/zap'), {
@@ -198,16 +199,9 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
             </TabsList>
 
             <TabsContent value="swap" className="space-y-4">
-              <div className="rounded-lg border border-gray-700 bg-gray-900 overflow-hidden">
-                {/* Krystal DeFi Swap - Any Token to BTC1 */}
-                <iframe
-                  src="https://defi.krystal.app/swap?chainId=8453&outputCurrency=0x9b8fc91c33ecafe4992a2a8dba27172328f423a5&srcAddress=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913&destAddress=0x9b8fc91c33ecafe4992a2a8dba27172328f423a5"
-                  width="100%"
-                  height="700"
-                  style={{ border: 'none', minHeight: '700px' }}
-                  allow="clipboard-read; clipboard-write"
-                  title="Krystal Swap to BTC1"
-                />
+              <div className="rounded-lg border border-gray-700 bg-gray-900 p-4">
+                {/* Krystal Swap Widget - Any Token to BTC1 */}
+                <KrystalSwapWidget />
               </div>
             </TabsContent>
 

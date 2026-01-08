@@ -12,21 +12,25 @@ require("dotenv").config({ path: ".env.local" });
 
 /* ================= CONFIG ================= */
 
-const TARGET_BLOCK = 40069079;
+const TARGET_BLOCK = 	40117383;
 const BTC1_DECIMALS = 8;
 
-const BTC1USD = "0x6dC9C43278AeEa063c01d97505f215ECB6da4a21".toLowerCase();
-const WEEKLY = "0x51D622A533C56256c5E318f5aB9844334523dFe0";
+// Load contract addresses from environment (mainnet/prod config)
+const BTC1USD = (process.env.NEXT_PUBLIC_BTC1USD_CONTRACT || "0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5").toLowerCase();
+const WEEKLY = process.env.NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT || "0x1FEf2533641cA69B9E30fA734944BB219b2152B6";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 const ONE  = "0x0000000000000000000000000000000000000001";
 
-/* ---------- APPROVED LP POOL TYPES ---------- */
+// /* ---------- APPROVED LP POOL TYPES ---------- */
 // Instead of hardcoded addresses, we'll auto-detect LP pools
 // You can still manually add specific pools here if needed
 const MANUALLY_APPROVED_POOLS = [
   // Add specific pool addresses here if auto-detection misses them
 ].map(a => a.toLowerCase());
+
+// EXCLUDED POOLS - Empty list, all pools are treated as direct holders
+const EXCLUDED_POOLS = [];
 
 /* ---------- POOL TYPE DETECTION ---------- */
 const POOL_TYPES = {
@@ -56,8 +60,8 @@ const POOL_SIGNATURES = {
 // No longer needed - we'll discover owners dynamically
 
 /* ---------- UNISWAP V3 HELPERS ---------- */
-// Position Manager contract for V3/Slipstream
-const POSITION_MANAGER = "0x827922686190790b37229fd06084350E74485b72";
+// Position Manager contract for V3/Slipstream (Base mainnet)
+const POSITION_MANAGER = "0x827922686190790b37229fd06084350E74485b72"; // NonfungiblePositionManager on Base
 
 // NOTE: UniswapV3 position tracking via events requires upgraded Alchemy plan
 // Free tier only allows 10-block ranges for eth_getLogs
@@ -654,7 +658,7 @@ async function main() {
   const detectedPools = [];
   
   for (const addr of allHolders) {
-    if (addr === ZERO || addr === ONE || excluded.has(addr)) continue;
+    if (addr === ZERO || addr === ONE || excluded.has(addr) || EXCLUDED_POOLS.includes(addr)) continue;
     
     // Check if it's a contract first
     if (await isContract(addr)) {
@@ -663,6 +667,8 @@ async function main() {
         const poolType = await detectPoolType(addr);
         detectedPools.push({ address: addr, type: poolType });
         console.log(`   🏊 LP Pool detected: ${addr} (${poolType})`);
+        // IMPORTANT: Also add pools to EOAs list so they get balances in Step 3
+        eoas.push(addr);
       } else {
         // Non-pool contracts are treated as EOAs (smart wallets, etc.)
         eoas.push(addr);
@@ -673,7 +679,7 @@ async function main() {
   }
   
   console.log(`   ✅ EOAs (including smart wallets): ${eoas.length}`);
-  console.log(`   ✅ LP Pools to expand: ${detectedPools.length}\n`);
+  console.log(`   ✅ LP Pools (treated as direct holders): ${detectedPools.length}\n`);
 
   /* ---------- STEP 3: PROCESS DIRECT BTC1 BALANCES ---------- */
   console.log('📊 STEP 3: Processing direct BTC1 balances...');
@@ -696,14 +702,14 @@ async function main() {
   for (const { address: pool, type: poolType } of detectedPools) {
     console.log(`\n🔍 Processing ${poolType} pool: ${pool}`);
     
-    // Remove pool's direct balance (we'll expand it to LP holders)
-    if (balances.has(pool)) {
-      console.log(`   ♻️ Removing direct balance, will expand to LP holders`);
-      balances.delete(pool);
-    }
+    // DON'T remove pool's direct balance - keep pools as direct holders
+    // This is the correct approach per project requirements
+    console.log(`   ℹ️  Pool treated as direct holder (not expanding LP providers)`);
     
-    await processERC20LP(pool, balances, excluded);
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // If pool already has balance from Step 3, keep it
+    if (balances.has(pool)) {
+      console.log(`   ✅ Pool balance: ${ethers.formatUnits(balances.get(pool), BTC1_DECIMALS)} BTC1`);
+    }
   }
 
   /* ---------- MERKLE TREE GENERATION ---------- */

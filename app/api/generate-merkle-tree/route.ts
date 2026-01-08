@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import { keccak256 } from 'viem';
 import { MerkleTree } from 'merkletreejs';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { createProviderWithFallback } from '@/lib/rpc-provider';
 
 interface MerkleClaim {
@@ -19,10 +19,12 @@ interface DistributionData {
   claims: { [address: string]: MerkleClaim };
   metadata: {
     generated: string;
+    blockNumber: number;
     activeHolders: number;
     totalHolders?: number;
     excludedAddresses?: string[];
     excludedCount?: number;
+    detectedLPPools?: Array<{ address: string; type: string }>;
     note?: string;
   };
 }
@@ -64,6 +66,19 @@ const WEEKLY_DISTRIBUTION_ABI = [
       { "internalType": "uint256", "name": "rewardPerToken", "type": "uint256" },
       { "internalType": "uint256", "name": "totalSupply", "type": "uint256" },
       { "internalType": "uint256", "name": "timestamp", "type": "uint256" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "name": "distributions",
+    "outputs": [
+      { "internalType": "uint256", "name": "id", "type": "uint256" },
+      { "internalType": "uint256", "name": "rewardPerToken", "type": "uint256" },
+      { "internalType": "uint256", "name": "totalSupply", "type": "uint256" },
+      { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
+      { "internalType": "uint256", "name": "blockNumber", "type": "uint256" }
     ],
     "stateMutability": "view",
     "type": "function"
@@ -172,19 +187,70 @@ const AERODROME_POOL_ABI = [
   }
 ];
 
-// Approved LP pools to check for BTC1USD - only these will be processed as LP pools
-// All other smart contracts will be skipped (major performance improvement)
-const APPROVED_LP_POOLS = [
-  '0x269251b69fcd1ceb0500a86408cab39666b2077a', // BTC1/WETH UniswapV2
-  '0x18fd0aaaf8c6e28427b26ac75cc4375e21eb74a0b0ce1b66b8672a11a4c47b3d', // Aerodrome pool
-  '0xf669d50334177dc11296b61174955a0216adad38', // Aerodrome pool
-  '0x9d3a11303486e7d773f0ddfd2f47c4b374533580', // Aerodrome pool
-  '0xba420997ee5b98a8037e4395b2f4e9f9715a22a9256be1e880b2ff545ef7a327', // Aerodrome pool
-  '0x3968eff088dfde7b7d00e192fa9ef412aac583ebcb07971d516bd7951c1a74b0', // Aerodrome pool
-  '0xe80d2ef16abbaf4dd7ba60973fded0bb57295bc03b08446f4d3212a58c9cb085', // Aerodrome pool
-  '0xa27368cdd9c4e4f2b2f447c9a614682f14b378dab8715a293503b50d43236901', // Aerodrome pool
-  '0x74c754b0a0c1774601c4b92a975c068d4c000432aeffd980be7cbcc3c012ce65', // Aerodrome pool
-].map(addr => addr.toLowerCase());
+// EXCLUDED POOLS - Empty list, all pools are treated as direct holders
+const EXCLUDED_POOLS: string[] = [];
+
+// Constants
+const BTC1_DECIMALS = 8;
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const ONE_ADDRESS = '0x0000000000000000000000000000000000000001';
+
+// Get Supabase table name based on network
+const getSupabaseTableName = (chainId: number): string => {
+  // Mainnet (Base = 8453)
+  if (chainId === 8453) {
+    return 'merkle_distributions_prod';
+  }
+  // Testnet (Base Sepolia = 84532 or any other testnet)
+  return 'merkle_distributions_dev';
+};
+
+// Helper to check if an address is a contract at a specific block
+const isContractAtBlock = async (provider: ethers.JsonRpcProvider, address: string, blockTag?: number): Promise<boolean> => {
+  try {
+    const code = await provider.getCode(address, blockTag);
+    return code !== '0x' && code.length > 2;
+  } catch (error) {
+    console.warn(`⚠️ Failed to check if ${address} is contract`);
+    return false;
+  }
+};
+
+// Helper to check if an address is an LP pool
+const isLPPool = async (provider: ethers.JsonRpcProvider, address: string, blockTag?: number): Promise<boolean> => {
+  if (!await isContractAtBlock(provider, address, blockTag)) return false;
+  
+  try {
+    // Try UniswapV2/Aerodrome pattern
+    const pool = new ethers.Contract(address, UNIV2_PAIR_ABI, provider);
+    await pool.token0({ blockTag });
+    return true;
+  } catch {
+    // Not a recognized LP pool
+    return false;
+  }
+};
+
+// Detect pool type
+const detectPoolType = async (provider: ethers.JsonRpcProvider, address: string, blockTag?: number): Promise<string> => {
+  try {
+    // Try UniswapV2
+    const v2Pool = new ethers.Contract(address, UNIV2_PAIR_ABI, provider);
+    try {
+      await v2Pool.getReserves({ blockTag });
+      return 'UniswapV2';
+    } catch {}
+    
+    // Try Aerodrome
+    const aeroPool = new ethers.Contract(address, AERODROME_POOL_ABI, provider);
+    try {
+      await aeroPool.reserve0({ blockTag });
+      return 'Aerodrome';
+    } catch {}
+  } catch {}
+  
+  return 'Unknown';
+};
 
 // Load deployment configuration - Environment variables ONLY for production
 const getContractAddresses = () => {
@@ -596,14 +662,12 @@ const getAllHolders = async (
         const isContractAddress = await isContract(provider, address);
         
         if (isContractAddress) {
-          // Only check if it's in the approved LP pools list
+          // Check if it's an excluded pool (treated as direct holder)
           const addressLower = address.toLowerCase();
-          if (APPROVED_LP_POOLS.includes(addressLower)) {
-            console.log(`🏊 Approved LP pool found: ${address}`);
-            approvedLPPools.push(address);
-          } else {
-            console.log(`⊘ Skipping non-approved smart contract: ${address}`);
+          if (EXCLUDED_POOLS.includes(addressLower)) {
+            console.log(`⚠️ Excluded pool found (will be treated as direct holder): ${address}`);
           }
+          console.log(`⊘ Skipping smart contract: ${address}`);
           continue;
         }
         
@@ -751,17 +815,43 @@ export async function POST(request: NextRequest) {
     );
 
     // Get current distribution info
-    let distributionId, rewardPerToken, totalSupply;
+    let distributionId, rewardPerToken, totalSupply, distributionTimestamp;
     try {
-      [distributionId, rewardPerToken, totalSupply] = await weeklyDistribution.getCurrentDistributionInfo();
-      console.log(`📊 Weekly distribution info: ID=${distributionId}, rewardPerToken=${rewardPerToken}, totalSupply=${totalSupply}`);
+      [distributionId, rewardPerToken, totalSupply, distributionTimestamp] = await weeklyDistribution.getCurrentDistributionInfo();
+      console.log(`📊 Current distribution info: ID=${distributionId}, rewardPerToken=${rewardPerToken}, totalSupply=${totalSupply}, timestamp=${distributionTimestamp}`);
     } catch (error) {
       console.log('ℹ️ No distribution info available, using defaults');
       // Use default values if no distribution exists yet
       distributionId = BigInt(1);
       rewardPerToken = BigInt(1000000); // 0.1 BTC1USD per token (in 8 decimals)
       totalSupply = BigInt(0);
+      distributionTimestamp = BigInt(0);
     }
+
+    // Fetch the block number when the distribution was executed from the contract
+    let targetBlock: number;
+    try {
+      // Get the distribution details which includes the block number
+      const distribution = await weeklyDistribution.distributions(distributionId);
+      targetBlock = Number(distribution.blockNumber);
+      console.log(`📍 Distribution ${distributionId} was executed at block: ${targetBlock}`);
+      
+      if (targetBlock === 0) {
+        // If blockNumber is 0 or not set, use current block
+        targetBlock = await provider.getBlockNumber();
+        console.log(`⚠️ Distribution block number is 0, using current block: ${targetBlock}`);
+      }
+    } catch (error) {
+      // If we can't get the distribution block, use current block
+      targetBlock = await provider.getBlockNumber();
+      console.log(`⚠️ Could not fetch distribution block number, using current block: ${targetBlock}`);
+      console.log(`   Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    
+    // Get current block or use specified target block
+    const currentBlock = targetBlock;
+    console.log(`📆 Using block number: ${currentBlock}`);
+    const blockTag = currentBlock;
 
     // Also check current merkle distributor state
     const merkleDistributor = new ethers.Contract(
@@ -924,21 +1014,32 @@ export async function POST(request: NextRequest) {
       }, {} as { [address: string]: MerkleClaim }),
       metadata: {
         generated: new Date().toISOString(),
+        blockNumber: currentBlock,
         activeHolders: claims.length,
         totalHolders: allHolders.length,
         excludedAddresses: excludedAddresses,
         excludedCount: excludedAddresses.length,
-        note: 'Protocol wallets are excluded. EOAs and smart contract wallets (bytecode <100 bytes) receive rewards - includes both direct BTC1USD holders and LP providers whose BTC1USD share in pools has been calculated and aggregated to their addresses.'
+        detectedLPPools: [], // Will be populated if we implement LP pool detection
+        note: 'Protocol wallets are excluded. Pools in EXCLUDED_POOLS list are treated as direct holders (not expanded to LP providers). Only EOAs and verified holders receive rewards.'
       } as any
     };
 
-    // Save to Supabase as PRIMARY storage for both local and Netlify
-    console.log('💾 Supabase configured?', isSupabaseConfigured());
-    console.log('💾 Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+    // Save to Supabase as PRIMARY storage
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+    const supabaseTableName = getSupabaseTableName(chainId);
+    console.log(`💾 Using Supabase table: ${supabaseTableName} (chainId: ${chainId})`);
+    
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
     let supabaseSuccess = false;
-    if (isSupabaseConfigured() && supabase) {
+    if (supabaseUrl && supabaseKey) {
       try {
         console.log('📤 Saving distribution to Supabase (PRIMARY STORAGE)...');
+        
+        // Create Supabase client
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        
         // Prepare data according to Supabase schema
         const supabaseData: Record<string, any> = {
           id: Number(distributionId),
@@ -948,10 +1049,9 @@ export async function POST(request: NextRequest) {
           metadata: distributionData.metadata
         };
         
-        // Use a more generic approach to avoid typing issues
-        const sb: any = supabase;
-        const result = await sb
-          .from('merkle_distributions')
+        // Save to appropriate table based on network
+        const result = await supabase
+          .from(supabaseTableName)
           .upsert(supabaseData, {
             onConflict: 'id'
           });
