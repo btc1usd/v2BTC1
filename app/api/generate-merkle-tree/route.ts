@@ -506,15 +506,21 @@ const getLPHoldersFromAlchemy = async (lpTokenAddress: string, retries = 3): Pro
           })
         });
 
-        // Check response status before reading body
-        if (!response.ok) {
-          // Clone response before reading to avoid consuming it
-          const responseClone = response.clone();
-          const errorText = await responseClone.text();
-          throw new Error(`Alchemy API error: ${response.status} - ${errorText}`);
+        // Read body only once - either as JSON or text
+        let data: any;
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          // If JSON parsing fails, response was likely an error
+          throw new Error(`Alchemy API error: ${response.status} - Failed to parse response`);
         }
 
-        const data: any = await response.json();
+        // Check if response was successful based on data
+        if (!response.ok || (data.error)) {
+          const errorMsg = data.error?.message || data.message || `HTTP ${response.status}`;
+          throw new Error(`Alchemy API error: ${errorMsg}`);
+        }
+
         if (!data.result) {
           console.log('  ℹ️ Alchemy returned no result for LP holders');
           break;
