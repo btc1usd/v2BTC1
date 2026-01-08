@@ -77,7 +77,7 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
           chainId: 8453,
           platforms: baseChainData?.platforms || ['uniswapv3', 'aerodromecl', 'balancer'],
           poolAddresses: {
-            uniswapv3: "0xd0b53D9277642d899DF5C87A3966A349A798F224", // WETH/USDC test pool
+            uniswapv3: "0xfbcf443d3e9ce293f7dd2300e8c6e0ad537fe1c9e59e221cde2d823aff129811", // WETH/USDC test pool
             aerodromecl: "0x4a23cdb430025f25092d30f721687638288a4e0a", // BTC1 pool (not indexed yet)
             balancer: "0x0000000000000000000000000000000000000000",
           }
@@ -93,7 +93,7 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
           chainId: 8453,
           platforms: ['uniswapv3'],
           poolAddresses: {
-            uniswapv3: "0x4a23cdb430025f25092d30f721687638288a4e0a",
+            uniswapv3: "0xfbcf443d3e9ce293f7dd2300e8c6e0ad537fe1c9e59e221cde2d823aff129811",
           }
         });
       } finally {
