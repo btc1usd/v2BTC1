@@ -329,6 +329,11 @@ const getHoldersFromBaseScan = async (tokenAddress: string, chainId: number, ret
       const url = `${apiBaseUrl}?module=token&action=tokenholderlist&contractaddress=${tokenAddress}&apikey=${baseScanApiKey}`;
       
       const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
 
       if (data.status === '1' && data.result) {
@@ -416,6 +421,9 @@ const getHoldersFromAlchemy = async (tokenAddress: string, chainId: number, retr
         const holders = Array.from(uniqueAddresses);
         console.log(`✅ Alchemy found ${holders.length} unique addresses from transfers`);
         return holders;
+      } else {
+        console.log('ℹ️ Alchemy returned no transfers');
+        return [];
       }
     } catch (error) {
       console.warn(`⚠️ Alchemy attempt ${attempt}/${retries} failed:`, error instanceof Error ? error.message : error);
@@ -499,12 +507,14 @@ const getLPHoldersFromAlchemy = async (lpTokenAddress: string, retries = 3): Pro
         });
 
         if (!response.ok) {
-          throw new Error(`Alchemy API error: ${response.status}`);
+          const errorText = await response.text();
+          throw new Error(`Alchemy API error: ${response.status} - ${errorText}`);
         }
 
         const data: any = await response.json();
         if (!data.result) {
-          throw new Error('Invalid Alchemy response');
+          console.log('  ℹ️ Alchemy returned no result for LP holders');
+          break;
         }
 
         // Process transfers to calculate balances
