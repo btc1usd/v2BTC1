@@ -806,13 +806,20 @@ const getAllHolders = async (
 
   // Fallback: If APIs didn't work, scan Transfer events on-chain
   console.log('🔍 Fallback: Scanning Transfer events on-chain...');
+  console.log(`   Token address: ${tokenAddress}`);
+  console.log(`   Network: ${chainId === 8453 ? 'Base Mainnet' : 'Base Sepolia (84532)'} - Chain ID: ${chainId}`);
   
   try {
     // Get Transfer events from the token contract
     const transferFilter = btc1usdContract.filters.Transfer();
+    console.log('   Querying Transfer events from block 0 to latest...');
     const events = await btc1usdContract.queryFilter(transferFilter, 0, 'latest');
     
     console.log(`   Found ${events.length} Transfer events`);
+    
+    if (events.length === 0) {
+      console.log('   ⚠️ No Transfer events found - token may not have any transactions yet');
+    }
     
     // Track all unique addresses that have received tokens
     const uniqueAddresses = new Set<string>();
@@ -828,6 +835,10 @@ const getAllHolders = async (
     }
     
     console.log(`   Found ${uniqueAddresses.size} unique recipient addresses from Transfer events`);
+    
+    if (uniqueAddresses.size === 0) {
+      console.log('   ⚠️ No recipients found in Transfer events');
+    }
     
     // Check balances for all recipients
     const balanceMap = new Map<string, bigint>();
@@ -1001,6 +1012,13 @@ export async function POST(request: NextRequest) {
       const distribution = await weeklyDistribution.distributions(distributionId);
       targetBlock = Number(distribution.blockNumber);
       console.log(`📍 Distribution ${distributionId} was executed at block: ${targetBlock}`);
+      console.log(`   Distribution details:`, {
+        id: distribution.id?.toString(),
+        rewardPerToken: distribution.rewardPerToken?.toString(),
+        totalSupply: distribution.totalSupply?.toString(),
+        timestamp: distribution.timestamp?.toString(),
+        blockNumber: targetBlock
+      });
       
       if (targetBlock === 0) {
         // If blockNumber is 0 or not set, use current block
