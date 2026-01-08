@@ -172,19 +172,105 @@ const AERODROME_POOL_ABI = [
   }
 ];
 
-// Approved LP pools to check for BTC1USD - only these will be processed as LP pools
-// All other smart contracts will be skipped (major performance improvement)
-const APPROVED_LP_POOLS = [
-  '0x269251b69fcd1ceb0500a86408cab39666b2077a', // BTC1/WETH UniswapV2
-  '0x18fd0aaaf8c6e28427b26ac75cc4375e21eb74a0b0ce1b66b8672a11a4c47b3d', // Aerodrome pool
-  '0xf669d50334177dc11296b61174955a0216adad38', // Aerodrome pool
-  '0x9d3a11303486e7d773f0ddfd2f47c4b374533580', // Aerodrome pool
-  '0xba420997ee5b98a8037e4395b2f4e9f9715a22a9256be1e880b2ff545ef7a327', // Aerodrome pool
-  '0x3968eff088dfde7b7d00e192fa9ef412aac583ebcb07971d516bd7951c1a74b0', // Aerodrome pool
-  '0xe80d2ef16abbaf4dd7ba60973fded0bb57295bc03b08446f4d3212a58c9cb085', // Aerodrome pool
-  '0xa27368cdd9c4e4f2b2f447c9a614682f14b378dab8715a293503b50d43236901', // Aerodrome pool
-  '0x74c754b0a0c1774601c4b92a975c068d4c000432aeffd980be7cbcc3c012ce65', // Aerodrome pool
-].map(addr => addr.toLowerCase());
+// Constants
+const BTC1_DECIMALS = 8;
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const ONE_ADDRESS = '0x0000000000000000000000000000000000000001';
+
+// Get Supabase table name based on network
+const getSupabaseTableName = (chainId: number): string => {
+  // Mainnet (Base = 8453)
+  if (chainId === 8453) {
+    return 'merkle_distributions_prod';
+  }
+  // Testnet (Base Sepolia = 84532 or any other testnet)
+  return 'merkle_distributions_dev';
+};
+
+// Helper to get holders from BaseScan API
+const getHoldersFromBaseScan = async (tokenAddress: string, chainId: number, retries = 3): Promise<string[]> => {
+  const baseScanApiKey = process.env.BASESCAN_API_KEY;
+  if (!baseScanApiKey) {
+    console.log('⚠️ BaseScan API key not found');
+    return [];
+  }
+
+  // Determine the correct API endpoint based on network
+  const apiBaseUrl = chainId === 8453 
+    ? 'https://api.basescan.org/api' 
+    : 'https://api-sepolia.basescan.org/api';
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`🔍 Fetching holders from BaseScan (attempt ${attempt}/${retries})...`);
+      
+      // Use BaseScan's token holder list API
+      const url = `${apiBaseUrl}?module=token&action=tokenholderlist&contractaddress=${tokenAddress}&apikey=${baseScanApiKey}`;
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+
+      if (data.status === '1' && data.result) {
+        const holders = data.result.map((holder: any) => holder.TokenHolderAddress);
+        console.log(`✅ BaseScan found ${holders.length} token holders`);
+        return holders;
+      } else if (data.message === 'No holders found') {
+        console.log('ℹ️ BaseScan: No token holders found yet');
+        return [];
+      } else {
+        console.log('🔍 BaseScan tokenholderlist failed, trying tokentxns instead...');
+        
+        // Alternative: Get holders from token transactions
+        const txUrl = `${apiBaseUrl}?module=account&action=tokentxns&contractaddress=${tokenAddress}&apikey=${baseScanApiKey}`;
+        const txResponse = await fetch(txUrl);
+        
+        if (!txResponse.ok) {
+          throw new Error(`HTTP error! status: ${txResponse.status}`);
+        }
+        
+        const txData = await txResponse.json();
+        
+        if (txData.status === '1' && txData.result) {
+          const uniqueAddresses = new Set<string>();
+          
+          txData.result.forEach((tx: any) => {
+            if (tx.from && tx.from !== '0x0000000000000000000000000000000000000000') {
+              uniqueAddresses.add(tx.from.toLowerCase());
+            }
+            if (tx.to) {
+              uniqueAddresses.add(tx.to.toLowerCase());
+            }
+          });
+          
+          const holders = Array.from(uniqueAddresses);
+          console.log(`✅ BaseScan found ${holders.length} unique addresses from token transactions`);
+          return holders;
+        }
+        
+        throw new Error(`BaseScan API error: ${data.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.warn(`⚠️ BaseScan attempt ${attempt}/${retries} failed:`, error instanceof Error ? error.message : error);
+      
+      if (attempt === retries) {
+        console.error(`❌ All ${retries} attempts failed for BaseScan API`);
+        return [];
+      }
+      
+      // Exponential backoff
+      const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+      console.log(`   Retrying in ${waitTime}ms...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+
+  return [];
+};
 
 // Load deployment configuration - Environment variables ONLY for production
 const getContractAddresses = () => {
@@ -234,19 +320,20 @@ const getProvider = async () => {
 };
 
 // Helper to get holders using Alchemy API with retry logic (if available)
-const getHoldersFromAlchemy = async (tokenAddress: string, retries = 3): Promise<string[]> => {
+const getHoldersFromAlchemy = async (tokenAddress: string, chainId: number, retries = 3): Promise<string[]> => {
   const alchemyApiKey = process.env.ALCHEMY_API_KEY;
   if (!alchemyApiKey) {
-    console.log('Alchemy API key not found, skipping Alchemy method');
+    console.log('⚠️ Alchemy API key not found, skipping Alchemy method');
     return [];
   }
 
+  // Determine the correct Alchemy endpoint based on network
+  const alchemyNetwork = chainId === 8453 ? 'base-mainnet' : 'base-sepolia';
+  const alchemyUrl = `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyApiKey}`;
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      console.log(`Fetching holders from Alchemy API (attempt ${attempt}/${retries})...`);
-
-      // Use Alchemy's Transfers API to get all unique addresses
-      const alchemyUrl = `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
+      console.log(`🔍 Fetching holders from Alchemy API (attempt ${attempt}/${retries})...`);
 
       // Get asset transfers for the token
       const response = await fetch(alchemyUrl, {
@@ -268,11 +355,20 @@ const getHoldersFromAlchemy = async (tokenAddress: string, retries = 3): Promise
         })
       });
 
-      if (!response.ok) {
-        throw new Error(`Alchemy API error: ${response.status} ${response.statusText}`);
+      // Read body only once - either as JSON or text
+      let data: any;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        // If JSON parsing fails, response was likely an error
+        throw new Error(`Alchemy API error: ${response.status} - Failed to parse response`);
       }
 
-      const data = await response.json();
+      // Check if response was successful based on data
+      if (!response.ok || (data.error)) {
+        const errorMsg = data.error?.message || data.message || `HTTP ${response.status}`;
+        throw new Error(`Alchemy API error: ${errorMsg}`);
+      }
 
       if (data.result?.transfers) {
         const uniqueAddresses = new Set<string>();
@@ -289,6 +385,9 @@ const getHoldersFromAlchemy = async (tokenAddress: string, retries = 3): Promise
         const holders = Array.from(uniqueAddresses);
         console.log(`✅ Alchemy found ${holders.length} unique addresses from transfers`);
         return holders;
+      } else {
+        console.log('ℹ️ Alchemy returned no transfers');
+        return [];
       }
     } catch (error) {
       console.warn(`⚠️ Alchemy attempt ${attempt}/${retries} failed:`, error instanceof Error ? error.message : error);
@@ -572,38 +671,39 @@ const processLPPool = async (
 const getAllHolders = async (
   btc1usdContract: ethers.Contract, 
   provider: ethers.JsonRpcProvider,
-  excludedSet: Set<string>
+  excludedSet: Set<string>,
+  chainId: number
 ): Promise<{ address: string; balance: bigint }[]> => {
-  console.log('Fetching all BTC1USD holders...');
+  console.log('📋 Fetching all BTC1USD holders...');
   
   // Get token address
   const tokenAddress = await btc1usdContract.getAddress();
+  console.log(`   Token address: ${tokenAddress}`);
+  console.log(`   Network: ${chainId === 8453 ? 'Base Mainnet' : 'Base Sepolia'}`);
 
-  // Try to get holders from Alchemy first
-  const alchemyHolders = await getHoldersFromAlchemy(tokenAddress);
+  // Try BaseScan first (most reliable for holder lists)
+  let allHolderAddresses = await getHoldersFromBaseScan(tokenAddress, chainId);
+  
+  // If BaseScan didn't work, try Alchemy
+  if (allHolderAddresses.length === 0) {
+    console.log('ℹ️ BaseScan returned no holders, trying Alchemy...');
+    allHolderAddresses = await getHoldersFromAlchemy(tokenAddress, chainId);
+  }
 
-  if (alchemyHolders.length > 0) {
-    console.log(`✅ Alchemy found ${alchemyHolders.length} unique addresses`);
+  if (allHolderAddresses.length > 0) {
+    console.log(`✅ Found ${allHolderAddresses.length} unique addresses from APIs`);
     
-    // Track balances: direct EOA balances + LP-derived balances
+    // Track balances - only direct EOA balances (no LP processing for Sepolia)
     const balanceMap = new Map<string, bigint>();
-    const approvedLPPools: string[] = [];
     
-    // First pass: collect EOA balances and identify approved LP pools only
-    for (const address of alchemyHolders) {
+    // Collect EOA balances
+    for (const address of allHolderAddresses) {
       try {
         // Check if it's a smart contract
         const isContractAddress = await isContract(provider, address);
         
         if (isContractAddress) {
-          // Only check if it's in the approved LP pools list
-          const addressLower = address.toLowerCase();
-          if (APPROVED_LP_POOLS.includes(addressLower)) {
-            console.log(`🏊 Approved LP pool found: ${address}`);
-            approvedLPPools.push(address);
-          } else {
-            console.log(`⊘ Skipping non-approved smart contract: ${address}`);
-          }
+          console.log(`⊘ Skipping smart contract: ${address}`);
           continue;
         }
         
@@ -618,21 +718,83 @@ const getAllHolders = async (
       }
     }
     
-    console.log(`\n📍 Processing ${approvedLPPools.length} approved LP pools...`);
-    
-    // Second pass: process only approved LP pools
-    for (const poolAddress of approvedLPPools) {
-      const lpShares = await processLPPool(provider, poolAddress, tokenAddress, excludedSet);
-      
-      // Add LP shares to existing balances
-      for (const [eoaAddress, btc1Share] of lpShares.entries()) {
-        const currentBalance = balanceMap.get(eoaAddress) || BigInt(0);
-        const newBalance = currentBalance + btc1Share;
-        balanceMap.set(eoaAddress, newBalance);
-        
-        console.log(`  📊 ${eoaAddress}: total ${ethers.formatUnits(newBalance, 8)} BTC1USD (direct: ${ethers.formatUnits(currentBalance, 8)}, LP: ${ethers.formatUnits(btc1Share, 8)})`);
+    // Convert balance map to holders array
+    const holders: { address: string; balance: bigint }[] = [];
+    for (const [address, balance] of balanceMap.entries()) {
+      if (balance > BigInt(0)) {
+        holders.push({ address, balance });
       }
     }
+    
+    if (holders.length > 0) {
+      console.log(`\n✅ Total unique EOA holders: ${holders.length}`);
+      return holders;
+    }
+  }
+
+  // Fallback: If APIs didn't work, scan Transfer events on-chain
+  console.log('🔍 Fallback: Scanning Transfer events on-chain...');
+  console.log(`   Token address: ${tokenAddress}`);
+  console.log(`   Network: ${chainId === 8453 ? 'Base Mainnet' : 'Base Sepolia (84532)'} - Chain ID: ${chainId}`);
+  
+  try {
+    // Get Transfer events from the token contract
+    const transferFilter = btc1usdContract.filters.Transfer();
+    console.log('   Querying Transfer events from block 0 to latest...');
+    const events = await btc1usdContract.queryFilter(transferFilter, 0, 'latest');
+    
+    console.log(`   Found ${events.length} Transfer events`);
+    
+    if (events.length === 0) {
+      console.log('   ⚠️ No Transfer events found - token may not have any transactions yet');
+    }
+    
+    // Track all unique addresses that have received tokens
+    const uniqueAddresses = new Set<string>();
+    
+    for (const event of events) {
+      // Check if this is an EventLog (has args) vs plain Log
+      if ('args' in event && event.args) {
+        const to = event.args.to;
+        if (to && to !== ZERO_ADDRESS && to !== ONE_ADDRESS) {
+          uniqueAddresses.add(to.toLowerCase());
+        }
+      }
+    }
+    
+    console.log(`   Found ${uniqueAddresses.size} unique recipient addresses from Transfer events`);
+    
+    if (uniqueAddresses.size === 0) {
+      console.log('   ⚠️ No recipients found in Transfer events');
+    }
+    
+    // Check balances for all recipients
+    const balanceMap = new Map<string, bigint>();
+    let checkedCount = 0;
+    
+    for (const address of uniqueAddresses) {
+      try {
+        // Check if it's a smart contract
+        const isContractAddress = await isContract(provider, address);
+        
+        if (isContractAddress) {
+          console.log(`   ⊘ Skipping smart contract: ${address}`);
+          continue;
+        }
+        
+        // It's an EOA, get direct balance
+        const balance = await btc1usdContract.balanceOf(address);
+        if (balance > BigInt(0)) {
+          balanceMap.set(address.toLowerCase(), BigInt(balance));
+          console.log(`   ✓ ${address}: ${ethers.formatUnits(balance, 8)} BTC1USD`);
+          checkedCount++;
+        }
+      } catch (error) {
+        console.warn(`   Failed to process ${address}:`, error instanceof Error ? error.message : error);
+      }
+    }
+    
+    console.log(`   Checked ${checkedCount} EOA addresses, found ${balanceMap.size} with positive balances`);
     
     // Convert balance map to holders array
     const holders: { address: string; balance: bigint }[] = [];
@@ -643,19 +805,22 @@ const getAllHolders = async (
     }
     
     if (holders.length > 0) {
-      console.log(`\n✅ Total unique EOA holders (including LP providers): ${holders.length}`);
+      console.log(`\n✅ Total unique EOA holders from on-chain scan: ${holders.length}`);
       return holders;
     }
+  } catch (error) {
+    console.error('❌ On-chain Transfer event scan failed:', error instanceof Error ? error.message : error);
   }
-
-  // Fallback: If Alchemy didn't work or no holders found, check some known addresses
-  console.log('Trying fallback method to get holders...');
   
-  // Use addresses from the deployment file
+  // Last resort fallback: Check known deployment addresses
+  console.log('\nTrying last resort: checking known deployment addresses...');
+  
   const knownAddresses = [
-    '0x0c8852280df8ef9fcb2a24e9d76f1ee4779773e9', // deployer
-    '0x6cf855d7c79f05b549674916bfa23b5742db143e', // devWallet
-    '0x223a0b6cae408c91973852c5bcd55567c7b2e1c0'  // endowmentWallet
+    '0x0c8852280df8eF9fCb2a24e9d76f1ee4779773E9', // deployer
+    '0xf7D9655656F8ad38d915dDbdE0bceC7530598b56', // devWallet from Sepolia deployment
+    '0xD720b15020d78Ba9484EC13270B1D24b03135927', // endowmentWallet from Sepolia deployment
+    '0x6cf855d7c79f05b549674916bfa23b5742db143e', // devWallet (legacy)
+    '0x223a0b6cae408c91973852c5bcd55567c7b2e1c0'  // endowmentWallet (legacy)
   ];
   
   const holders: { address: string; balance: bigint }[] = [];
@@ -718,15 +883,25 @@ export async function POST(request: NextRequest) {
     }
 
     // Initialize provider with better error handling
+    // Determine chain ID early for use throughout the function
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+    console.log(`🌐 Network: ${chainId === 8453 ? 'Base Mainnet (8453)' : 'Base Sepolia (84532)'} - Chain ID: ${chainId}`);
+    
     let provider: ethers.JsonRpcProvider;
     try {
-      provider = await getProvider(); // This is now async
+      // Use robust provider with fallback mechanism and chain ID
+      provider = await createProviderWithFallback(chainId, {
+        timeout: 15000, // Increased timeout
+        maxRetries: 3,
+        retryDelay: 2000, // Increased initial delay
+        backoffMultiplier: 2
+      });
     } catch (error) {
       console.error('Provider initialization failed:', error);
       return NextResponse.json(
         { 
           error: 'Network connection failed', 
-          details: error instanceof Error ? error.message : 'Failed to connect to Base Sepolia network',
+          details: error instanceof Error ? error.message : 'Failed to connect to Base network',
           suggestions: [
             'Check your internet connection',
             'Verify RPC configuration in environment variables',
@@ -818,9 +993,9 @@ export async function POST(request: NextRequest) {
     // Create a Set for faster lookups (case-insensitive)
     const excludedSet = new Set(excludedAddresses.map(addr => addr.toLowerCase()));
 
-    // Get all token holders via Alchemy (EOAs only, smart contracts filtered out)
+    // Get all token holders via BaseScan/Alchemy (EOAs only, smart contracts filtered out)
     // LP pools will be processed to calculate BTC1 shares for their EOA holders
-    const allHolders = await getAllHolders(btc1usd, provider, excludedSet);
+    const allHolders = await getAllHolders(btc1usd, provider, excludedSet, chainId);
 
     if (allHolders.length === 0) {
       // Provide more helpful error message
@@ -933,6 +1108,8 @@ export async function POST(request: NextRequest) {
     };
 
     // Save to Supabase as PRIMARY storage for both local and Netlify
+    const supabaseTableName = getSupabaseTableName(chainId);
+    console.log('💾 Using Supabase table:', supabaseTableName, '(chainId:', chainId, ')');
     console.log('💾 Supabase configured?', isSupabaseConfigured());
     console.log('💾 Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
     let supabaseSuccess = false;
@@ -951,7 +1128,7 @@ export async function POST(request: NextRequest) {
         // Use a more generic approach to avoid typing issues
         const sb: any = supabase;
         const result = await sb
-          .from('merkle_distributions')
+          .from(supabaseTableName)  // Use the correct table based on network
           .upsert(supabaseData, {
             onConflict: 'id'
           });
@@ -988,7 +1165,7 @@ export async function POST(request: NextRequest) {
             'Verify NEXT_PUBLIC_SUPABASE_URL is set correctly',
             'Verify NEXT_PUBLIC_SUPABASE_ANON_KEY is set correctly',
             'Check Supabase service status at https://status.supabase.com',
-            'Verify merkle_distributions table exists in your Supabase project',
+            `Verify ${supabaseTableName} table exists in your Supabase project`,
             'Check Supabase project logs for more details'
           ]
         },
