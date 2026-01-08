@@ -18,7 +18,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ArrowLeftRight, Loader2, X, CheckCircle2, XCircle } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowLeftRight, Loader2, X, CheckCircle2, XCircle, Droplets, ArrowRightLeft } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useWeb3 } from "@/lib/web3-provider";
 
@@ -152,7 +153,7 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
           </div>
         </div>
         <CardDescription className="text-gray-400">
-          Swap any token to get BTC1 at the best rates
+          Swap tokens or add liquidity to earn fees
         </CardDescription>
       </CardHeader>
       
@@ -166,7 +167,7 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
         {!address && (
           <Alert className="bg-orange-500/10 border-orange-500/50">
             <AlertDescription className="text-orange-400">
-              Please connect your wallet to start swapping
+              Please connect your wallet to start
             </AlertDescription>
           </Alert>
         )}
@@ -179,20 +180,67 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
           </Alert>
         )}
 
-        {config && config.poolAddresses[selectedPlatform] === "0x0000000000000000000000000000000000000000" && (
-          <Alert className="bg-yellow-500/10 border-yellow-500/50">
-            <AlertDescription className="text-yellow-400">
-              ⚠️ BTC1 liquidity pool not yet created. Please create a liquidity pool on Uniswap V3, Aerodrome, or Balancer first.
-            </AlertDescription>
-          </Alert>
-        )}
-
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
           </div>
         ) : config && address && chainId === 8453 ? (
-          <div className="space-y-4">
+          <Tabs defaultValue="swap" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsTrigger value="swap" className="gap-2">
+                <ArrowRightLeft className="h-4 w-4" />
+                Swap
+              </TabsTrigger>
+              <TabsTrigger value="liquidity" className="gap-2">
+                <Droplets className="h-4 w-4" />
+                Add Liquidity
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="swap" className="space-y-4">
+              <div className="rounded-lg border border-gray-700 bg-gray-900 overflow-hidden p-4">
+                {/* Transaction Status Notification */}
+                {txStatus.type && (
+                  <div className={`mb-4 p-4 rounded-lg border flex items-start gap-3 ${
+                    txStatus.type === 'success' 
+                      ? 'bg-green-500/10 border-green-500/50 text-green-400' 
+                      : 'bg-red-500/10 border-red-500/50 text-red-400'
+                  }`}>
+                    {txStatus.type === 'success' ? (
+                      <CheckCircle2 className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <XCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                    )}
+                    <div className="flex-1">
+                      <p className="font-medium">
+                        {txStatus.type === 'success' ? 'Success!' : 'Error'}
+                      </p>
+                      <p className="text-sm mt-1 break-all">{txStatus.message}</p>
+                    </div>
+                    <button
+                      onClick={() => setTxStatus({ type: null, message: '' })}
+                      className="text-current hover:opacity-70 transition-opacity"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+                
+                {/* TODO: Replace with actual swap component */}
+                <div className="text-center py-8 text-gray-400">
+                  <ArrowRightLeft className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="text-base font-medium">Direct Token Swap</p>
+                  <p className="text-sm mt-2">
+                    Swap any token for BTC1 at the best rates
+                  </p>
+                  <p className="text-xs mt-4 text-orange-400">
+                    Coming soon: Integration with Uniswap/1inch for direct swaps
+                  </p>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="liquidity" className="space-y-4">
             <div className="rounded-lg border border-gray-700 bg-gray-900 overflow-hidden p-4">
               {/* Transaction Status Notification */}
               {txStatus.type && (
@@ -295,10 +343,11 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
                 colorScheme={customColorScheme}
               />
             </div>
-          </div>
+            </TabsContent>
+          </Tabs>
         ) : (
           <div className="text-center py-8 text-gray-400">
-            <p>Connect wallet and switch to Base network to start swapping</p>
+            <p>Connect wallet and switch to Base network to start</p>
           </div>
         )}
       </CardContent>
