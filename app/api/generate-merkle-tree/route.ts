@@ -252,24 +252,39 @@ const detectPoolType = async (provider: ethers.JsonRpcProvider, address: string,
   return 'Unknown';
 };
 
-// Load deployment configuration - Environment variables ONLY for production
+// Load deployment configuration - Environment variables with dev/prod suffix support
 const getContractAddresses = () => {
   try {
-    // Use environment variables (REQUIRED for production)
-    const btc1usd = process.env.NEXT_PUBLIC_BTC1USD_CONTRACT;
-    const weeklyDistribution = process.env.NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT;
-    const merkleDistributor = process.env.NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT;
+    // Determine environment based on chain ID
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+    const isMainnet = chainId === 8453; // Base Mainnet
+    const envSuffix = isMainnet ? "_PROD" : "_DEV";
+    
+    console.log(`🌐 Environment: ${isMainnet ? 'PRODUCTION (Mainnet)' : 'DEVELOPMENT (Testnet)'} - Chain ID: ${chainId}`);
+    
+    // Try to load environment-specific addresses first (with suffix)
+    let btc1usd = process.env[`NEXT_PUBLIC_BTC1USD_CONTRACT${envSuffix}`];
+    let weeklyDistribution = process.env[`NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT${envSuffix}`];
+    let merkleDistributor = process.env[`NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT${envSuffix}`];
+    
+    // Fallback to non-suffixed environment variables if suffixed ones don't exist
+    if (!btc1usd) btc1usd = process.env.NEXT_PUBLIC_BTC1USD_CONTRACT;
+    if (!weeklyDistribution) weeklyDistribution = process.env.NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT;
+    if (!merkleDistributor) merkleDistributor = process.env.NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT;
 
     if (btc1usd && weeklyDistribution && merkleDistributor) {
-      console.log('✅ Using contract addresses from environment variables');
+      console.log(`✅ Using contract addresses for ${isMainnet ? 'PROD' : 'DEV'} environment:`);
+      console.log(`   BTC1USD: ${btc1usd}`);
+      console.log(`   WeeklyDistribution: ${weeklyDistribution}`);
+      console.log(`   MerkleDistributor: ${merkleDistributor}`);
       return { btc1usd, weeklyDistribution, merkleDistributor };
     }
 
     // If we get here, environment variables are missing
     console.error('❌ Contract addresses not found. Please set environment variables:');
-    console.error('   NEXT_PUBLIC_BTC1USD_CONTRACT');
-    console.error('   NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT');
-    console.error('   NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT');
+    console.error(`   NEXT_PUBLIC_BTC1USD_CONTRACT${envSuffix} (or NEXT_PUBLIC_BTC1USD_CONTRACT)`);
+    console.error(`   NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT${envSuffix} (or NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT)`);
+    console.error(`   NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT${envSuffix} (or NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT)`);
     return null;
   } catch (error) {
     console.error('Failed to load deployment config:', error);

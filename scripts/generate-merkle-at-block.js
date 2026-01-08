@@ -15,9 +15,8 @@ require("dotenv").config({ path: ".env.local" });
 const TARGET_BLOCK = 	40117383;
 const BTC1_DECIMALS = 8;
 
-// Load contract addresses from environment (mainnet/prod config)
-const BTC1USD = (process.env.NEXT_PUBLIC_BTC1USD_CONTRACT || "0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5").toLowerCase();
-const WEEKLY = process.env.NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT || "0x1FEf2533641cA69B9E30fA734944BB219b2152B6";
+const BTC1USD = "0x6dC9C43278AeEa063c01d97505f215ECB6da4a21".toLowerCase();
+const WEEKLY = "0x51D622A533C56256c5E318f5aB9844334523dFe0";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 const ONE  = "0x0000000000000000000000000000000000000001";
@@ -29,8 +28,11 @@ const MANUALLY_APPROVED_POOLS = [
   // Add specific pool addresses here if auto-detection misses them
 ].map(a => a.toLowerCase());
 
-// EXCLUDED POOLS - Empty list, all pools are treated as direct holders
-const EXCLUDED_POOLS = [];
+// EXCLUDED POOLS (will not receive rewards)
+const EXCLUDED_POOLS = [
+  "0x269251b69fcd1ceb0500a86408cab39666b2077a", // UniswapV2 BTC1/WETH
+  "0xf669d50334177dc11296b61174955a0216adad38", // UniswapV3 BTC1/USDC
+].map(a => a.toLowerCase());
 
 /* ---------- POOL TYPE DETECTION ---------- */
 const POOL_TYPES = {
@@ -60,8 +62,8 @@ const POOL_SIGNATURES = {
 // No longer needed - we'll discover owners dynamically
 
 /* ---------- UNISWAP V3 HELPERS ---------- */
-// Position Manager contract for V3/Slipstream (Base mainnet)
-const POSITION_MANAGER = "0x827922686190790b37229fd06084350E74485b72"; // NonfungiblePositionManager on Base
+// Position Manager contract for V3/Slipstream
+const POSITION_MANAGER = "0x827922686190790b37229fd06084350E74485b72";
 
 // NOTE: UniswapV3 position tracking via events requires upgraded Alchemy plan
 // Free tier only allows 10-block ranges for eth_getLogs
