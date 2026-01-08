@@ -314,20 +314,72 @@ const getProvider = async () => {
   }
 };
 
-// Helper to get holders using Alchemy API with retry logic (if available)
-const getHoldersFromAlchemy = async (tokenAddress: string, retries = 3): Promise<string[]> => {
-  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
-  if (!alchemyApiKey) {
-    console.log('Alchemy API key not found, skipping Alchemy method');
+// Helper to get holders from BaseScan API
+const getHoldersFromBaseScan = async (tokenAddress: string, chainId: number, retries = 3): Promise<string[]> => {
+  const baseScanApiKey = process.env.BASESCAN_API_KEY;
+  if (!baseScanApiKey) {
+    console.log('⚠️ BaseScan API key not found');
     return [];
   }
 
+  // Determine the correct API endpoint based on network
+  const apiBaseUrl = chainId === 8453 
+    ? 'https://api.basescan.org/api' 
+    : 'https://api-sepolia.basescan.org/api';
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      console.log(`Fetching holders from Alchemy API (attempt ${attempt}/${retries})...`);
+      console.log(`🔍 Fetching holders from BaseScan (attempt ${attempt}/${retries})...`);
+      
+      // Use BaseScan's token holder list API
+      const url = `${apiBaseUrl}?module=token&action=tokenholderlist&contractaddress=${tokenAddress}&apikey=${baseScanApiKey}`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
 
-      // Use Alchemy's Transfers API to get all unique addresses
-      const alchemyUrl = `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
+      if (data.status === '1' && data.result) {
+        const holders = data.result.map((holder: any) => holder.TokenHolderAddress);
+        console.log(`✅ BaseScan found ${holders.length} token holders`);
+        return holders;
+      } else if (data.message === 'No transactions found') {
+        console.log('ℹ️ BaseScan: No token holders found yet');
+        return [];
+      } else {
+        throw new Error(`BaseScan API error: ${data.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.warn(`⚠️ BaseScan attempt ${attempt}/${retries} failed:`, error instanceof Error ? error.message : error);
+      
+      if (attempt === retries) {
+        console.error(`❌ All ${retries} attempts failed for BaseScan API`);
+        return [];
+      }
+      
+      // Exponential backoff
+      const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+      console.log(`   Retrying in ${waitTime}ms...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+
+  return [];
+};
+
+// Helper to get holders using Alchemy API with retry logic (if available)
+const getHoldersFromAlchemy = async (tokenAddress: string, chainId: number, retries = 3): Promise<string[]> => {
+  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  if (!alchemyApiKey) {
+    console.log('⚠️ Alchemy API key not found, skipping Alchemy method');
+    return [];
+  }
+
+  // Determine the correct Alchemy endpoint based on network
+  const alchemyNetwork = chainId === 8453 ? 'base-mainnet' : 'base-sepolia';
+  const alchemyUrl = `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyApiKey}`;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`🔍 Fetching holders from Alchemy API (attempt ${attempt}/${retries})...`);
 
       // Get asset transfers for the token
       const response = await fetch(alchemyUrl, {
@@ -653,15 +705,27 @@ const processLPPool = async (
 const getAllHolders = async (
   btc1usdContract: ethers.Contract, 
   provider: ethers.JsonRpcProvider,
-  excludedSet: Set<string>
+  excludedSet: Set<string>,
+  chainId: number
 ): Promise<{ address: string; balance: bigint }[]> => {
-  console.log('Fetching all BTC1USD holders...');
+  console.log('📋 Fetching all BTC1USD holders...');
   
   // Get token address
   const tokenAddress = await btc1usdContract.getAddress();
+  console.log(`   Token address: ${tokenAddress}`);
+  console.log(`   Network: ${chainId === 8453 ? 'Base Mainnet' : 'Base Sepolia'}`);
 
-  // Try to get holders from Alchemy first
-  const alchemyHolders = await getHoldersFromAlchemy(tokenAddress);
+  // Try BaseScan first (most reliable for holder lists)
+  let allHolderAddresses = await getHoldersFromBaseScan(tokenAddress, chainId);
+  
+  // If BaseScan didn't work, try Alchemy
+  if (allHolderAddresses.length === 0) {
+    console.log('ℹ️ BaseScan returned no holders, trying Alchemy...');
+    allHolderAddresses = await getHoldersFromAlchemy(tokenAddress, chainId);
+  }
+  
+  // Rename variable for clarity
+  const alchemyHolders = allHolderAddresses;
 
   if (alchemyHolders.length > 0) {
     console.log(`✅ Alchemy found ${alchemyHolders.length} unique addresses`);
@@ -787,6 +851,10 @@ const getAllHolders = async (
 export async function POST(request: NextRequest) {
   try {
     console.log('🚀 Starting merkle tree generation process...');
+    
+    // Determine chain ID early for use throughout the function
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+    console.log(`🌐 Network: ${chainId === 8453 ? 'Base Mainnet (8453)' : 'Base Sepolia (84532)'} - Chain ID: ${chainId}`);
     
     const addresses = getContractAddresses();
     if (!addresses) {
@@ -923,9 +991,9 @@ export async function POST(request: NextRequest) {
     // Create a Set for faster lookups (case-insensitive)
     const excludedSet = new Set(excludedAddresses.map(addr => addr.toLowerCase()));
 
-    // Get all token holders via Alchemy (EOAs only, smart contracts filtered out)
+    // Get all token holders via BaseScan/Alchemy (EOAs only, smart contracts filtered out)
     // LP pools will be processed to calculate BTC1 shares for their EOA holders
-    const allHolders = await getAllHolders(btc1usd, provider, excludedSet);
+    const allHolders = await getAllHolders(btc1usd, provider, excludedSet, chainId);
 
     if (allHolders.length === 0) {
       // Provide more helpful error message
@@ -1040,7 +1108,6 @@ export async function POST(request: NextRequest) {
     };
 
     // Save to Supabase as PRIMARY storage
-    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
     const supabaseTableName = getSupabaseTableName(chainId);
     console.log(`💾 Using Supabase table: ${supabaseTableName} (chainId: ${chainId})`);
     
