@@ -27,6 +27,7 @@
 [functions]
   directory = ".netlify/functions"
   node_bundler = "esbuild"
+  timeout = 26  # Maximum allowed timeout (26 seconds) to prevent 504 Gateway Timeout
   included_files = [
     "merkle-distributions/**",
     "deployment-base-sepolia.json"
