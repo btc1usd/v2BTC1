@@ -4,7 +4,7 @@
 
 [build.environment]
   NPM_FLAGS = "--legacy-peer-deps"
-  NODE_VERSION = "22"
+  NODE_VERSION = "20"
 
 # DEV (develop branch)
 [context.branch-deploy.environment]

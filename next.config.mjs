@@ -1,12 +1,7 @@
-import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Use standard output for Netlify compatibility
+  // Disable ISR/caching to prevent Netlify Blobs usage
+  output: 'standalone',
   experimental: {
     instrumentationHook: true,
   },
@@ -17,12 +12,6 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   webpack: (config, { isServer }) => {
-    // Explicitly set up path aliases for webpack
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      '@': __dirname,
-    };
-
     // Prevent Next.js from trying to bundle these optional deps
     config.resolve.fallback = {
       ...config.resolve.fallback,
@@ -38,7 +27,10 @@ const nextConfig = {
 
     // Polyfill indexedDB for SSR
     if (isServer) {
-      config.resolve.alias["idb-keyval"] = false;
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "idb-keyval": false,
+      };
     }
 
     // Ignore missing optional dependencies
