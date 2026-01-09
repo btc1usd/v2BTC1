@@ -11,6 +11,12 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   webpack: (config, { isServer }) => {
+    // Explicitly set up path aliases for webpack
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': __dirname,
+    };
+
     // Prevent Next.js from trying to bundle these optional deps
     config.resolve.fallback = {
       ...config.resolve.fallback,
@@ -26,10 +32,7 @@ const nextConfig = {
 
     // Polyfill indexedDB for SSR
     if (isServer) {
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        "idb-keyval": false,
-      };
+      config.resolve.alias["idb-keyval"] = false;
     }
 
     // Ignore missing optional dependencies
