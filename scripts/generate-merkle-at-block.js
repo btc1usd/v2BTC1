@@ -11,7 +11,7 @@ require("dotenv").config({ path: ".env.production" });
 
 /* ================= CONFIG ================= */
 
-const TARGET_BLOCK = 	40596432;
+const TARGET_BLOCK = 	40596432 ;
 const BTC1_DECIMALS = 8;
 
 const BTC1USD = "0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5".toLowerCase();
@@ -29,8 +29,7 @@ const MANUALLY_APPROVED_POOLS = [
 
 // EXCLUDED POOLS (will not receive rewards)
 const EXCLUDED_POOLS = [
-  "0x269251b69fcd1ceb0500a86408cab39666b2077a", // UniswapV2 BTC1/WETH
-  "0xf669d50334177dc11296b61174955a0216adad38", // UniswapV3 BTC1/USDC
+  
 ].map(a => a.toLowerCase());
 
 /* ---------- POOL TYPE DETECTION ---------- */
@@ -38,7 +37,6 @@ const POOL_TYPES = {
   UNISWAP_V2: 'UniswapV2',
   AERODROME: 'Aerodrome',
   UNISWAP_V3: 'UniswapV3',
-  UNISWAP_V4: 'UniswapV4',
   CURVE: 'Curve',
   BALANCER: 'Balancer',
   UNKNOWN: 'Unknown'
@@ -52,8 +50,6 @@ const POOL_SIGNATURES = {
   AERODROME: ['0x5001f3b5', '0x9d63848a'], // reserve0(), reserve1()
   // UniswapV3/Slipstream
   UNISWAP_V3: ['0x3850c7bd'], // slot0()
-  // UniswapV4 (uses PoolManager singleton pattern)
-  UNISWAP_V4: ['0x8a7c195f'], // getLiquidity() or poolManager()
   // Curve
   CURVE: ['0xeb8d72b7'], // coins(uint256)
   // Balancer
@@ -149,14 +145,6 @@ const CL_POOL_ABI = [
   "function slot0() view returns (uint160,int24,uint16,uint16,uint16,uint8,bool)"
 ];
 
-const UNISWAP_V4_POOL_ABI = [
-  "function poolManager() view returns (address)",
-  "function currency0() view returns (address)",
-  "function currency1() view returns (address)",
-  "function getLiquidity() view returns (uint128)",
-  "function slot0() view returns (uint160,int24)"
-];
-
 const POSITION_MANAGER_ABI = [
   "function balanceOf(address) view returns (uint256)",
   "function tokenOfOwnerByIndex(address,uint256) view returns (uint256)",
@@ -213,23 +201,6 @@ async function detectPoolTypeBySelectors(addr) {
       if (slot0) detectedTypes.push(POOL_TYPES.UNISWAP_V3);
     } catch {}
     
-    // UniswapV4: poolManager() or getLiquidity()
-    try {
-      const uniV4 = new ethers.Contract(addr, UNISWAP_V4_POOL_ABI, provider);
-      // Try to get poolManager (V4 pools reference the singleton)
-      const poolManager = await uniV4.poolManager({ blockTag: TARGET_BLOCK });
-      if (poolManager && poolManager !== ZERO) {
-        detectedTypes.push(POOL_TYPES.UNISWAP_V4);
-      }
-    } catch {
-      // Alternative: try getLiquidity for V4
-      try {
-        const uniV4 = new ethers.Contract(addr, UNISWAP_V4_POOL_ABI, provider);
-        const liquidity = await uniV4.getLiquidity({ blockTag: TARGET_BLOCK });
-        if (liquidity !== undefined) detectedTypes.push(POOL_TYPES.UNISWAP_V4);
-      } catch {}
-    }
-    
     // Curve: coins(uint256) selector = 0xeb8d72b7
     try {
       const curve = new ethers.Contract(addr, ["function coins(uint256) view returns (address)"], provider);
@@ -284,13 +255,6 @@ async function getPoolTokens(pool, poolType) {
         pool3.token1({ blockTag: TARGET_BLOCK })
       ]);
       return { token0: token0.toLowerCase(), token1: token1.toLowerCase() };
-    } else if (poolType === POOL_TYPES.UNISWAP_V4) {
-      const pool4 = new ethers.Contract(pool, UNISWAP_V4_POOL_ABI, provider);
-      const [currency0, currency1] = await Promise.all([
-        pool4.currency0({ blockTag: TARGET_BLOCK }),
-        pool4.currency1({ blockTag: TARGET_BLOCK })
-      ]);
-      return { token0: currency0.toLowerCase(), token1: currency1.toLowerCase() };
     }
   } catch {}
   return null;
@@ -703,19 +667,19 @@ async function generateMerkleTree() {
         const poolType = await detectPoolType(addr);
         detectedPools.push({ address: addr, type: poolType });
         console.log(`   🏊 LP Pool detected: ${addr} (${poolType})`);
-        // LP pools are tracked but NOT added to EOAs - they won't get direct rewards
+        // IMPORTANT: Also add pools to EOAs list so they get balances in Step 3
+        eoas.push(addr);
       } else {
-        // Skip ALL other contracts (smart wallets, vaults, etc.) - they are NOT eligible for direct rewards
-        console.log(`   ⛔ Contract excluded: ${addr} (non-pool contract)`);
+        // Non-pool contracts are treated as EOAs (smart wallets, etc.)
+        eoas.push(addr);
       }
     } else {
-      // Only EOAs (externally owned accounts) are eligible
       eoas.push(addr);
     }
   }
   
-  console.log(`   ✅ EOAs only (contracts excluded): ${eoas.length}`);
-  console.log(`   🏊 LP Pools detected (not eligible): ${detectedPools.length}\n`);
+  console.log(`   ✅ EOAs (including smart wallets): ${eoas.length}`);
+  console.log(`   ✅ LP Pools (treated as direct holders): ${detectedPools.length}\n`);
 
   /* ---------- STEP 3: PROCESS DIRECT BTC1 BALANCES ---------- */
   console.log('📊 STEP 3: Processing direct BTC1 balances...');
@@ -791,8 +755,14 @@ async function generateMerkleTree() {
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   );
+  
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn('⚠️ WARNING: Using ANON key instead of SERVICE_ROLE key');
+    console.warn('⚠️ This may fail due to Row-Level Security policies');
+    console.warn('⚠️ Set SUPABASE_SERVICE_ROLE_KEY in .env.production to fix this');
+  }
 
   // Get the next ID
   const TABLE_NAME = process.env.SUPABASE_TABLE || 'merkle_distributions_prod'; // Default to prod table
@@ -813,7 +783,7 @@ async function generateMerkleTree() {
     total_rewards: totalRewards.toString(),
     claims: claimsObj,
     metadata: {
-      note: "Protocol wallets are excluded. Only EOAs (externally owned accounts) receive rewards. Smart contracts (including smart wallets, vaults, and LP pools) are NOT eligible for direct rewards.",
+      note: "Protocol wallets are excluded. All BTC1USD holders receive rewards - includes direct holders and LP providers whose BTC1USD share in pools has been calculated and aggregated to their addresses. Smart wallets and non-pool contracts are treated as regular holders.",
       generated: new Date().toISOString(),
       blockNumber: TARGET_BLOCK,
       totalHolders: claims.length,
@@ -829,29 +799,11 @@ async function generateMerkleTree() {
     console.error("❌ Failed to save to Supabase:");
     console.error("   Error:", error.message);
     console.error("   Details:", JSON.stringify(error, null, 2));
-    throw error; // Throw error so API can catch it
   } else {
     console.log("💾 Saved to Supabase successfully!\n");
   }
-  
-  // Return the result for API use
-  return {
-    success: true,
-    merkleRoot: tree.getHexRoot(),
-    totalRewards: totalRewards.toString(),
-    activeHolders: claims.length,
-    distributionId: nextId,
-    claims: claims.length,
-    blockNumber: TARGET_BLOCK
-  };
 }
 
-// Export for use as module
-module.exports = { generateMerkleTree };
-
-// Run directly if not imported
-if (require.main === module) {
-  warmUpProvider()
-    .then(generateMerkleTree)
-    .catch(console.error);
-}
+warmUpProvider()
+  .then(generateMerkleTree)
+  .catch(console.error);

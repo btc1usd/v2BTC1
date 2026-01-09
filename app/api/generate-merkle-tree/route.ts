@@ -1,48 +1,87 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import path from 'path';
+
+const execAsync = promisify(exec);
 
 export async function POST(request: NextRequest) {
   try {
     console.log('🚀 Starting merkle tree generation via script...');
     
-    // Dynamically import the script
-    const scriptPath = require('path').join(process.cwd(), 'scripts', 'generate-merkle-at-block.js');
+    // Path to the script
+    const scriptPath = path.join(process.cwd(), 'scripts', 'generate-merkle-at-block.js');
+    console.log('📝 Script path:', scriptPath);
     
-    // Set environment variable for production table
-    process.env.SUPABASE_TABLE = 'merkle_distributions_prod';
+    // Execute the Node.js script
+    console.log('⚡ Executing script...');
+    const { stdout, stderr } = await execAsync(`node "${scriptPath}"`, {
+      cwd: process.cwd(),
+      env: { ...process.env },
+      maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large output
+      timeout: 300000 // 5 minutes timeout
+    });
     
-    console.log(`   📝 Using script: ${scriptPath}`);
-    console.log(`   💾 Target table: merkle_distributions_prod`);
+    // Log the output
+    if (stdout) {
+      console.log('📊 Script output:');
+      console.log(stdout);
+    }
     
-    // Import and run the script
-    const { generateMerkleTree } = require(scriptPath);
+    if (stderr) {
+      console.warn('⚠️ Script warnings:');
+      console.warn(stderr);
+    }
     
-    // Execute the merkle tree generation
-    const result = await generateMerkleTree();
+    // Parse the output to extract merkle root and other info
+    // Look for patterns like "Merkle Root: 0x..."
+    const merkleRootMatch = stdout.match(/Merkle Root: (0x[a-fA-F0-9]{64})/);
+    const totalRewardsMatch = stdout.match(/Total Rewards: ([\d.]+)/);
+    const totalClaimsMatch = stdout.match(/Total Claims: (\d+)/);
+    const successMatch = stdout.match(/Saved to Supabase successfully/);
+    
+    if (!successMatch) {
+      throw new Error('Script execution did not complete successfully. Check logs for details.');
+    }
+    
+    const merkleRoot = merkleRootMatch ? merkleRootMatch[1] : null;
+    const totalRewards = totalRewardsMatch ? totalRewardsMatch[1] : null;
+    const totalClaims = totalClaimsMatch ? parseInt(totalClaimsMatch[1]) : null;
+    
+    if (!merkleRoot) {
+      throw new Error('Could not extract merkle root from script output');
+    }
     
     console.log('✅ Merkle tree generation completed successfully');
     
     return NextResponse.json({
       success: true,
-      merkleRoot: result.merkleRoot,
-      totalRewards: result.totalRewards,
-      activeHolders: result.activeHolders,
-      distributionId: result.distributionId,
-      claims: result.claims,
-      blockNumber: result.blockNumber,
-      table: 'merkle_distributions_prod'
+      merkleRoot,
+      totalRewards,
+      activeHolders: totalClaims,
+      distributionId: '1', // The script handles this internally
+      claims: totalClaims,
+      message: 'Merkle tree generated and saved to Supabase successfully'
     });
-
+    
   } catch (error) {
-    console.error('💥 Error generating merkle tree:', error);
+    console.error('💥 Error executing merkle generation script:', error);
+    
+    // Provide detailed error information
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorDetails = error instanceof Error && 'stderr' in error 
+      ? (error as any).stderr 
+      : errorMessage;
+    
     return NextResponse.json(
       { 
         error: 'Failed to generate merkle tree', 
-        details: error instanceof Error ? error.message : 'Unknown error',
+        details: errorDetails,
         suggestions: [
-          'Check server logs for more details',
-          'Verify RPC configuration',
-          'Ensure Supabase is accessible',
-          'Check that generate-merkle-at-block.js script exists'
+          'Check if SUPABASE_SERVICE_ROLE_KEY is set in .env.production',
+          'Ensure Alchemy API key is valid',
+          'Check if contracts are deployed on the correct network',
+          'Review server logs for detailed error messages'
         ]
       },
       { status: 500 }
