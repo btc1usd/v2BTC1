@@ -72,8 +72,15 @@ export async function GET(request: NextRequest) {
   const merkleDistributorAddress = getContractAddress();
   const url = new URL(request.url);
   const userAddress = url.searchParams.get("address")?.toLowerCase();
+  
+  console.log("🔍 USER ADDRESS DEBUG:");
+  console.log("  Raw address param:", url.searchParams.get("address"));
+  console.log("  Lowercased address:", userAddress);
+  console.log("  Full URL:", request.url);
+  console.log("  Search params:", [...url.searchParams.entries()]);
 
   if (!userAddress) {
+    console.error("❌ Missing address parameter!");
     return NextResponse.json(
       { error: "Missing ?address parameter" },
       { status: 400 }
