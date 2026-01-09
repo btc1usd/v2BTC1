@@ -97,6 +97,7 @@
     "vaul": "0.9.9",
     "viem": "2.38.0",
     "wagmi": "2.18.0",
+    "cross-env": "10.1.0",
     "zod": "3.25.67"
   },
   "devDependencies": {
@@ -108,7 +109,6 @@
     "@types/react-dom": "18.3.7",
     "autoprefixer": "^10.4.21",
     "baseline-browser-mapping": "2.9.11",
-    "cross-env": "10.1.0",
     "hardhat": "2.26.3",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
