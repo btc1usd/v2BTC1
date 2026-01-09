@@ -187,11 +187,19 @@ export async function GET(request: NextRequest) {
     // Determine chain ID and table name
     const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
     const tableName = getSupabaseTableName(chainId);
-    console.log(`📊 Using Supabase table: ${tableName} for chain ${chainId}`);
+    
+    // FORCE production to use merkle_distributions_prod
+    // Only force if we're actually on production domain (not preview)
+    const isProductionDeploy = process.env.CONTEXT === 'production' || process.env.URL?.includes('app.btc1usd.com');
+    const finalTableName = isProductionDeploy
+      ? 'merkle_distributions_prod'
+      : tableName;
+    
+    console.log(`📊 Using Supabase table: ${finalTableName} for chain ${chainId} (context: ${process.env.CONTEXT})`);
 
     try {
       const { data, error } = await supabase
-        .from(tableName)  // ✅ Use correct table based on network
+        .from(finalTableName)  // ✅ Use forced production table
         .select("id, merkle_root, claims, total_rewards, metadata")
         .gte("id", startDistributionId)
         .lte("id", endDistributionId)
@@ -353,10 +361,17 @@ export async function GET(request: NextRequest) {
         // Use same chain ID and table name as main query
         const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
         const tableName = getSupabaseTableName(chainId);
-        console.log(`⚠️ Fallback: Using Supabase table ${tableName}`);
+        
+        // FORCE production to use merkle_distributions_prod
+        const isProductionDeploy = process.env.CONTEXT === 'production' || process.env.URL?.includes('app.btc1usd.com');
+        const finalTableName = isProductionDeploy
+          ? 'merkle_distributions_prod'
+          : tableName;
+        
+        console.log(`⚠️ Fallback: Using Supabase table ${finalTableName}`);
         
         const { data, error: supabaseError } = await supabase
-          .from(tableName)  // ✅ Use correct table based on network
+          .from(finalTableName)  // ✅ Use forced production table
           .select("id, merkle_root, claims, total_rewards, metadata")
           .order("id", { ascending: false });
 

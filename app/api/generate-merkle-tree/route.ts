@@ -387,7 +387,8 @@ export async function POST() {
 
     /* ---------- MERKLE TREE GENERATION ---------- */
     console.log('\n🌳 STEP 5: Generating Merkle Tree...');
-    const [, rewardPerToken] = await weekly.getCurrentDistributionInfo({ blockTag: TARGET_BLOCK });
+    const [distributionId, rewardPerToken, totalSupply, timestamp] = await weekly.getCurrentDistributionInfo({ blockTag: TARGET_BLOCK });
+    console.log(`📊 Weekly distribution info: ID=${distributionId}, rewardPerToken=${rewardPerToken}, totalSupply=${totalSupply}, timestamp=${timestamp}`);
 
     const claims: Array<{ index: number; account: string; amount: string; proof: string[] }> = [];
     let totalRewards = 0n;
