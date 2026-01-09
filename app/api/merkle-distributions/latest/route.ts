@@ -108,8 +108,21 @@ export async function GET(request: NextRequest) {
     // Determine chain ID and table name
     const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
     const tableName = getSupabaseTableName(chainId);
-    console.log(`📊 Network: ${chainId === 8453 ? 'Base Mainnet' : 'Base Sepolia (84532)'} - Chain ID: ${chainId}`);
+    console.log(`📊 Network: ${chainId === 8453 ? 'Base Mainnet' : `Base Sepolia (${chainId})`} - Chain ID: ${chainId}`);
     console.log(`📊 Using Supabase table: ${tableName}`);
+    console.log(`📊 NEXT_PUBLIC_CHAIN_ID env var: ${process.env.NEXT_PUBLIC_CHAIN_ID}`);
+    console.log(`📊 NODE_ENV: ${process.env.NODE_ENV}`);
+    console.log(`📊 NETLIFY: ${process.env.NETLIFY}`);
+    console.log(`📊 CONTEXT: ${process.env.CONTEXT}`);
+    
+    // FORCE production to use merkle_distributions_prod
+    const finalTableName = process.env.NODE_ENV === 'production' || process.env.NETLIFY === 'true' || process.env.CONTEXT === 'production'
+      ? 'merkle_distributions_prod'
+      : tableName;
+    
+    if (finalTableName !== tableName) {
+      console.log(`⚠️ OVERRIDE: Forcing production table. Changed from ${tableName} to ${finalTableName}`);
+    }
 
     let data: any[] = [];
     let supabaseError: Error | null = null;
@@ -117,7 +130,7 @@ export async function GET(request: NextRequest) {
     try {
       console.log("Attempting Supabase query...");
       const { data: supabaseData, error } = await supabase
-        .from(tableName)  // ✅ Use correct table based on network
+        .from(finalTableName)  // ✅ Use forced production table
         .select("id, merkle_root, claims, total_rewards, metadata")
         .order("id", { ascending: false })
         .limit(10);
