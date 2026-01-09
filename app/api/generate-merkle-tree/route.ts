@@ -1233,16 +1233,69 @@ async function getAllHolders(
   
   const balances = new Map<string, bigint>();
   
-  // Process all EOAs (including smart wallets/contracts that aren't LP pools)
-  for (const addr of eoas) {
-    const bal = await btc1usdContract.balanceOf(addr, { blockTag });
-    if (bal > BigInt(0)) {
-      balances.set(addr, BigInt(bal));
-      console.log(`   👤 ${addr} = ${ethers.formatUnits(bal, BTC1_DECIMALS)} BTC1`);
+  // OPTIMIZED: Use Multicall3 to batch all balanceOf calls
+  // Base Mainnet Multicall3: 0xcA11bde05977b3631167028862bE2a173976CA11
+  const MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11';
+  const MULTICALL3_ABI = [
+    {
+      "inputs": [{"components": [{"internalType": "address", "name": "target", "type": "address"}, {"internalType": "bytes", "name": "callData", "type": "bytes"}], "internalType": "struct Multicall3.Call[]", "name": "calls", "type": "tuple[]"}],
+      "name": "aggregate",
+      "outputs": [{"internalType": "uint256", "name": "blockNumber", "type": "uint256"}, {"internalType": "bytes[]", "name": "returnData", "type": "bytes[]"}],
+      "stateMutability": "payable",
+      "type": "function"
+    }
+  ];
+  
+  const multicall = new ethers.Contract(MULTICALL3_ADDRESS, MULTICALL3_ABI, provider);
+  const btc1Interface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
+  
+  // Batch size of 100 to avoid RPC limits
+  const BATCH_SIZE = 100;
+  console.log(`   📦 Processing ${eoas.length} addresses in batches of ${BATCH_SIZE}...`);
+  
+  for (let i = 0; i < eoas.length; i += BATCH_SIZE) {
+    const batch = eoas.slice(i, Math.min(i + BATCH_SIZE, eoas.length));
+    console.log(`   📦 Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(eoas.length / BATCH_SIZE)}: Processing ${batch.length} addresses...`);
+    
+    // Prepare multicall
+    const calls = batch.map(addr => ({
+      target: btc1Address,
+      callData: btc1Interface.encodeFunctionData('balanceOf', [addr])
+    }));
+    
+    try {
+      const [, returnData] = await multicall.aggregate(calls, { blockTag });
+      
+      // Decode results
+      batch.forEach((addr, idx) => {
+        try {
+          const bal = btc1Interface.decodeFunctionResult('balanceOf', returnData[idx])[0];
+          if (bal > BigInt(0)) {
+            balances.set(addr, BigInt(bal));
+            console.log(`   👤 ${addr} = ${ethers.formatUnits(bal, BTC1_DECIMALS)} BTC1`);
+          }
+        } catch (decodeError) {
+          console.warn(`   ⚠️ Failed to decode balance for ${addr}`);
+        }
+      });
+    } catch (batchError) {
+      console.warn(`   ⚠️ Batch failed, falling back to individual calls for this batch:`, batchError instanceof Error ? batchError.message : 'Unknown error');
+      // Fallback to individual calls for this batch only
+      for (const addr of batch) {
+        try {
+          const bal = await btc1usdContract.balanceOf(addr, { blockTag });
+          if (bal > BigInt(0)) {
+            balances.set(addr, BigInt(bal));
+            console.log(`   👤 ${addr} = ${ethers.formatUnits(bal, BTC1_DECIMALS)} BTC1`);
+          }
+        } catch (err) {
+          console.warn(`   ⚠️ Failed to get balance for ${addr}`);
+        }
+      }
     }
   }
   
-  console.log(`   ✅ Processed ${eoas.length} addresses\n`);
+  console.log(`   ✅ Processed ${eoas.length} addresses (${balances.size} with non-zero balances)\n`);
 
   /* ---------- STEP 4: PROCESS DETECTED LP POOLS ---------- */
   console.log('📊 STEP 4: Processing detected LP pools...');
