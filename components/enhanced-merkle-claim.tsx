@@ -568,9 +568,11 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
     address: MERKLE_DISTRIBUTOR_ADDRESS as `0x${string}`,
     abi: MERKLE_DISTRIBUTOR_ABI,
     functionName: "getDistributionInfo",
-    args: distributionData?.distributionId ? [BigInt(distributionData.distributionId)] : undefined,
+    args: distributionData?.distributionId && Number(distributionData.distributionId) > 0 
+      ? [BigInt(distributionData.distributionId)] 
+      : undefined,
     query: {
-      enabled: isConnected && !!distributionData?.distributionId,
+      enabled: isConnected && !!distributionData?.distributionId && Number(distributionData.distributionId) > 0,
     },
   });
 
