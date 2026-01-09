@@ -7,6 +7,16 @@ import { executeWithProviderFallback } from "@/lib/rpc-provider";
 export const dynamic = 'force-dynamic';
 export const revalidate = 0; // Disable caching
 
+// Get Supabase table name based on network
+function getSupabaseTableName(chainId: number): string {
+  // ALWAYS use merkle_distributions_prod on mainnet (Base = 8453)
+  if (chainId === 8453) {
+    return 'merkle_distributions_prod';
+  }
+  // Testnet (Base Sepolia = 84532 or any other testnet)
+  return 'merkle_distributions_dev';
+}
+
 // ------------------------------
 // 🔒 CACHE SETTINGS
 // ------------------------------
@@ -95,13 +105,19 @@ export async function GET(request: NextRequest) {
     console.log("Supabase configured:", isSupabaseConfigured());
     console.log("Supabase client:", supabase ? "initialized" : "null");
 
+    // Determine chain ID and table name
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+    const tableName = getSupabaseTableName(chainId);
+    console.log(`📊 Network: ${chainId === 8453 ? 'Base Mainnet' : 'Base Sepolia (84532)'} - Chain ID: ${chainId}`);
+    console.log(`📊 Using Supabase table: ${tableName}`);
+
     let data: any[] = [];
     let supabaseError: Error | null = null;
 
     try {
       console.log("Attempting Supabase query...");
       const { data: supabaseData, error } = await supabase
-        .from("merkle_distributions")
+        .from(tableName)  // ✅ Use correct table based on network
         .select("id, merkle_root, claims, total_rewards, metadata")
         .order("id", { ascending: false })
         .limit(10);
