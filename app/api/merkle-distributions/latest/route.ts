@@ -123,9 +123,16 @@ export async function GET(request: NextRequest) {
     console.log(`📊 CONTEXT: ${process.env.CONTEXT}`);
     
     // FORCE production to use merkle_distributions_prod
-    const finalTableName = process.env.NODE_ENV === 'production' || process.env.NETLIFY === 'true' || process.env.CONTEXT === 'production'
+    // Only force if we're actually on production domain (not preview)
+    const isProductionDeploy = process.env.CONTEXT === 'production' || process.env.URL?.includes('app.btc1usd.com');
+    const finalTableName = isProductionDeploy
       ? 'merkle_distributions_prod'
       : tableName;
+    
+    console.log(`🎯 Deployment context: ${process.env.CONTEXT}`);
+    console.log(`🎯 URL: ${process.env.URL}`);
+    console.log(`🎯 Is production deploy: ${isProductionDeploy}`);
+    console.log(`🎯 Final table name: ${finalTableName}`);
     
     if (finalTableName !== tableName) {
       console.log(`⚠️ OVERRIDE: Forcing production table. Changed from ${tableName} to ${finalTableName}`);
