@@ -81,6 +81,23 @@ const WEEKLY_DISTRIBUTION_ABI = [
     "outputs": [{ "internalType": "address[]", "name": "", "type": "address[]" }],
     "stateMutability": "view",
     "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "lastDistributionBlock",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "uint256", "name": "distributionId", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "totalRewards", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "blockNumber", "type": "uint256" }
+    ],
+    "name": "DistributionExecuted",
+    "type": "event"
   }
 ];
 
@@ -172,14 +189,153 @@ const AERODROME_POOL_ABI = [
   }
 ];
 
+const CL_POOL_ABI = [
+  {
+    "inputs": [],
+    "name": "token0",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "token1",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "slot0",
+    "outputs": [
+      { "internalType": "uint160", "name": "sqrtPriceX96", "type": "uint160" },
+      { "internalType": "int24", "name": "tick", "type": "int24" },
+      { "internalType": "uint16", "name": "observationIndex", "type": "uint16" },
+      { "internalType": "uint16", "name": "observationCardinality", "type": "uint16" },
+      { "internalType": "uint16", "name": "observationCardinalityNext", "type": "uint16" },
+      { "internalType": "uint8", "name": "feeProtocol", "type": "uint8" },
+      { "internalType": "bool", "name": "unlocked", "type": "bool" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+];
+
+const POSITION_MANAGER_ABI = [
+  {
+    "inputs": [{ "internalType": "address", "name": "owner", "type": "address" }],
+    "name": "balanceOf",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "owner", "type": "address" },
+      { "internalType": "uint256", "name": "index", "type": "uint256" }
+    ],
+    "name": "tokenOfOwnerByIndex",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }],
+    "name": "positions",
+    "outputs": [
+      { "internalType": "uint96", "name": "nonce", "type": "uint96" },
+      { "internalType": "address", "name": "operator", "type": "address" },
+      { "internalType": "address", "name": "token0", "type": "address" },
+      { "internalType": "address", "name": "token1", "type": "address" },
+      { "internalType": "uint24", "name": "fee", "type": "uint24" },
+      { "internalType": "int24", "name": "tickLower", "type": "int24" },
+      { "internalType": "int24", "name": "tickUpper", "type": "int24" },
+      { "internalType": "uint128", "name": "liquidity", "type": "uint128" },
+      { "internalType": "uint256", "name": "feeGrowthInside0LastX128", "type": "uint256" },
+      { "internalType": "uint256", "name": "feeGrowthInside1LastX128", "type": "uint256" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }],
+    "name": "ownerOf",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "uint256", "name": "tokenId", "type": "uint256" },
+      { "indexed": false, "internalType": "uint128", "name": "liquidity", "type": "uint128" },
+      { "indexed": false, "internalType": "uint256", "name": "amount0", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "amount1", "type": "uint256" }
+    ],
+    "name": "IncreaseLiquidity",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "uint256", "name": "tokenId", "type": "uint256" },
+      { "indexed": false, "internalType": "uint128", "name": "liquidity", "type": "uint128" },
+      { "indexed": false, "internalType": "uint256", "name": "amount0", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "amount1", "type": "uint256" }
+    ],
+    "name": "DecreaseLiquidity",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "address", "name": "from", "type": "address" },
+      { "indexed": true, "internalType": "address", "name": "to", "type": "address" },
+      { "indexed": true, "internalType": "uint256", "name": "tokenId", "type": "uint256" }
+    ],
+    "name": "Transfer",
+    "type": "event"
+  }
+];
+
 // Constants
 const BTC1_DECIMALS = 8;
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const ONE_ADDRESS = '0x0000000000000000000000000000000000000001';
 
+// Pool type detection constants
+const POOL_TYPES = {
+  UNISWAP_V2: 'UniswapV2',
+  AERODROME: 'Aerodrome',
+  UNISWAP_V3: 'UniswapV3',
+  UNISWAP_V4: 'UniswapV4',
+  CURVE: 'Curve',
+  BALANCER: 'Balancer',
+  UNKNOWN: 'Unknown'
+};
+
+// Excluded pools (will not receive rewards as direct holders)
+const EXCLUDED_POOLS = [
+  "0x269251b69fcd1ceb0500a86408cab39666b2077a", // UniswapV2 BTC1/WETH
+  "0xf669d50334177dc11296b61174955a0216adad38", // UniswapV3 BTC1/USDC
+].map(a => a.toLowerCase());
+
+// Manually approved pools (optional override)
+const MANUALLY_APPROVED_POOLS: string[] = [
+  // Add specific pool addresses here if auto-detection misses them
+];
+
+// UniswapV3 Position Manager contract for NFT position tracking
+const POSITION_MANAGER = "0x827922686190790b37229fd06084350E74485b72";
+
+// Manual V3 position override (if you know specific NFT token IDs)
+const MANUALLY_APPROVED_V3_POSITIONS: string[] = [
+  // Add known NFT token IDs here, e.g.: "12345", "67890"
+];
+
 // Get Supabase table name based on network
 const getSupabaseTableName = (chainId: number): string => {
-  // Mainnet (Base = 8453)
+  // ALWAYS use merkle_distributions_prod on mainnet (Base = 8453)
   if (chainId === 8453) {
     return 'merkle_distributions_prod';
   }
@@ -408,31 +564,174 @@ const getHoldersFromAlchemy = async (tokenAddress: string, chainId: number, retr
 };
 
 // Helper function to check if an address is a smart contract
-// Exception: Small contracts (<100 bytes) are treated as EOAs (e.g., smart contract wallets, proxies)
-const isContract = async (provider: ethers.JsonRpcProvider, address: string): Promise<boolean> => {
+// Updated to match script logic: Small contracts (<100 bytes) are treated as EOAs
+async function isContract(provider: ethers.JsonRpcProvider, address: string, blockTag?: number | string): Promise<boolean> {
   try {
-    const code = await provider.getCode(address);
+    const code = await provider.getCode(address, blockTag);
     
     // No code = EOA
-    if (code === '0x') {
+    if (code === '0x' || code.length <= 2) {
       return false;
     }
     
-    // Small bytecode (<100 bytes) = likely smart contract wallet/proxy, treat as EOA
-    // This includes: Safe wallets, EIP-3074 invokers, minimal proxies, forwarders
-    const bytecodeLength = (code.length - 2) / 2; // Remove '0x' and convert hex pairs to bytes
-    if (bytecodeLength < 100) {
-      console.log(`  💼 Small contract detected (${bytecodeLength} bytes), treating as EOA: ${address}`);
-      return false;
-    }
-    
-    // Large bytecode = actual smart contract (DEX, LP pool, etc.)
+    // Any bytecode means it's a contract (we handle it separately for reward eligibility)
     return true;
   } catch (error) {
     console.warn(`⚠️ Failed to check if ${address} is contract, treating as EOA`);
     return false; // Treat as EOA if check fails
   }
-};
+}
+
+// Check if address is an EOA
+async function isEOA(provider: ethers.JsonRpcProvider, address: string, blockTag?: number | string): Promise<boolean> {
+  return !(await isContract(provider, address, blockTag));
+}
+
+// Check if address is manually approved pool
+function isManuallyApprovedPool(addr: string): boolean {
+  return MANUALLY_APPROVED_POOLS.includes(addr.toLowerCase());
+}
+
+// Industry-standard pool detection using function selectors
+async function detectPoolTypeBySelectors(provider: ethers.JsonRpcProvider, addr: string, blockTag?: number | string): Promise<string[]> {
+  const detectedTypes: string[] = [];
+  
+  try {
+    // UniswapV2: Try calling getReserves()
+    try {
+      const uniV2 = new ethers.Contract(addr, UNIV2_PAIR_ABI, provider);
+      const reserves = await uniV2.getReserves({ blockTag });
+      if (reserves) detectedTypes.push(POOL_TYPES.UNISWAP_V2);
+    } catch {}
+    
+    // Aerodrome: Try calling reserve0() and reserve1()
+    try {
+      const aero = new ethers.Contract(addr, AERODROME_POOL_ABI, provider);
+      const r0 = await aero.reserve0({ blockTag });
+      if (r0 !== undefined) detectedTypes.push(POOL_TYPES.AERODROME);
+    } catch {}
+    
+    // UniswapV3/V4: Try calling slot0()
+    try {
+      const uniV3 = new ethers.Contract(addr, CL_POOL_ABI, provider);
+      const slot0 = await uniV3.slot0({ blockTag });
+      if (slot0) detectedTypes.push(POOL_TYPES.UNISWAP_V3);
+    } catch {}
+    
+    // Curve: Try calling coins(0)
+    try {
+      const curve = new ethers.Contract(addr, ["function coins(uint256) view returns (address)"], provider);
+      await curve.coins(0, { blockTag });
+      detectedTypes.push(POOL_TYPES.CURVE);
+    } catch {}
+    
+    // Balancer: Try calling getPoolId()
+    try {
+      const bal = new ethers.Contract(addr, ["function getPoolId() view returns (bytes32)"], provider);
+      await bal.getPoolId({ blockTag });
+      detectedTypes.push(POOL_TYPES.BALANCER);
+    } catch {}
+  } catch {}
+  
+  return detectedTypes;
+}
+
+// Detect pool type
+async function detectPoolType(provider: ethers.JsonRpcProvider, addr: string, blockTag?: number | string): Promise<string> {
+  try {
+    const types = await detectPoolTypeBySelectors(provider, addr, blockTag);
+    return types.length > 0 ? types[0] : POOL_TYPES.UNKNOWN;
+  } catch {
+    return POOL_TYPES.UNKNOWN;
+  }
+}
+
+// Check if address is an LP pool
+async function isLPPool(provider: ethers.JsonRpcProvider, addr: string, blockTag?: number | string): Promise<boolean> {
+  if (isManuallyApprovedPool(addr)) return true;
+  if (!(await isContract(provider, addr, blockTag))) return false;
+
+  const poolType = await detectPoolType(provider, addr, blockTag);
+  return poolType !== POOL_TYPES.UNKNOWN;
+}
+
+// Get pool tokens using standard interface
+async function getPoolTokens(provider: ethers.JsonRpcProvider, pool: string, poolType: string, blockTag?: number | string): Promise<{ token0: string; token1: string } | null> {
+  try {
+    if (poolType === POOL_TYPES.UNISWAP_V2 || poolType === POOL_TYPES.AERODROME) {
+      const pair = new ethers.Contract(pool, UNIV2_PAIR_ABI, provider);
+      const [token0, token1] = await Promise.all([
+        pair.token0({ blockTag }),
+        pair.token1({ blockTag })
+      ]);
+      return { token0: token0.toLowerCase(), token1: token1.toLowerCase() };
+    } else if (poolType === POOL_TYPES.UNISWAP_V3) {
+      const pool3 = new ethers.Contract(pool, CL_POOL_ABI, provider);
+      const [token0, token1] = await Promise.all([
+        pool3.token0({ blockTag }),
+        pool3.token1({ blockTag })
+      ]);
+      return { token0: token0.toLowerCase(), token1: token1.toLowerCase() };
+    }
+  } catch {}
+  return null;
+}
+
+// Helper to get transfers using Alchemy API with retry logic
+async function alchemyTransfers(token: string, chainId: number, toBlock?: number, retries = 3): Promise<any[]> {
+  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  if (!alchemyApiKey) {
+    console.log('⚠️ Alchemy API key not found');
+    return [];
+  }
+
+  const alchemyNetwork = chainId === 8453 ? 'base-mainnet' : 'base-sepolia';
+  const alchemyUrl = `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyApiKey}`;
+  const toBlockHex = toBlock ? `0x${toBlock.toString(16)}` : 'latest';
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(alchemyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "alchemy_getAssetTransfers",
+          params: [{
+            fromBlock: "0x0",
+            toBlock: toBlockHex,
+            contractAddresses: [token],
+            category: ["erc20"],
+            excludeZeroValue: true,
+            maxCount: "0x3e8" // 1000 max
+          }]
+        })
+      });
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      return data.result?.transfers || [];
+    } catch (error) {
+      console.warn(`⚠️  Alchemy attempt ${attempt}/${retries} failed for ${token.slice(0, 10)}...`);
+      console.warn(`   Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      if (attempt === retries) {
+        console.error(`❌ All ${retries} attempts failed for ${token}`);
+        return [];
+      }
+      
+      // Exponential backoff
+      const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+      console.log(`   Retrying in ${waitTime}ms...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+  return [];
+}
 
 // Helper to get LP token holders using Alchemy API with pagination and retry logic
 const getLPHoldersFromAlchemy = async (lpTokenAddress: string, retries = 3): Promise<Map<string, bigint>> => {
@@ -524,351 +823,439 @@ const getLPHoldersFromAlchemy = async (lpTokenAddress: string, retries = 3): Pro
   return new Map();
 };
 
-// Detect if a smart contract is a UniswapV2-style LP pool containing BTC1
-const detectUniV2Pool = async (
-  provider: ethers.JsonRpcProvider,
-  poolAddress: string,
-  btc1Address: string
-): Promise<{ isBTC1Pool: boolean; btc1Reserve: bigint; totalSupply: bigint } | null> => {
-  try {
-    const pool = new ethers.Contract(poolAddress, UNIV2_PAIR_ABI, provider);
-    
-    const [token0, token1, reserves, totalSupply] = await Promise.all([
-      pool.token0(),
-      pool.token1(),
-      pool.getReserves(),
-      pool.totalSupply()
-    ]);
+// UniswapV3 liquidity math helpers
+function getLiquidityAmounts(liquidity: bigint, sqrtPriceX96: bigint, tickLower: number, tickUpper: number): { amount0: bigint; amount1: bigint } {
+  const Q96 = BigInt(2) ** BigInt(96);
+  const sqrtRatioA = getSqrtRatioAtTick(tickLower);
+  const sqrtRatioB = getSqrtRatioAtTick(tickUpper);
+  
+  // Simplified calculation for in-range positions
+  const amount0 = (liquidity * (sqrtRatioB - sqrtPriceX96)) / sqrtPriceX96;
+  const amount1 = (liquidity * (sqrtPriceX96 - sqrtRatioA)) / Q96;
+  
+  return { amount0, amount1 };
+}
 
-    const isBTC1Pool = 
-      token0.toLowerCase() === btc1Address.toLowerCase() || 
-      token1.toLowerCase() === btc1Address.toLowerCase();
+function getSqrtRatioAtTick(tick: number): bigint {
+  const Q96 = BigInt(2) ** BigInt(96);
+  return Q96 * BigInt(Math.floor(Math.sqrt(1.0001 ** Number(tick))));
+}
 
-    if (!isBTC1Pool) {
-      return null;
+// Safe event query helper with chunking and retry logic
+async function safeQueryFilter(
+  contract: ethers.Contract,
+  filter: ethers.DeferredTopicFilter,
+  from: number,
+  to: number,
+  step: number = 5000
+): Promise<(ethers.EventLog | ethers.Log)[]> {
+  const results: (ethers.EventLog | ethers.Log)[] = [];
+  for (let i = from; i <= to; i += step) {
+    const end = Math.min(i + step - 1, to);
+    try {
+      const logs = await contract.queryFilter(filter, i, end);
+      results.push(...logs);
+    } catch {
+      await new Promise(r => setTimeout(r, 500));
     }
-
-    const btc1Reserve = token0.toLowerCase() === btc1Address.toLowerCase() 
-      ? BigInt(reserves[0]) 
-      : BigInt(reserves[1]);
-
-    return {
-      isBTC1Pool: true,
-      btc1Reserve,
-      totalSupply: BigInt(totalSupply)
-    };
-  } catch (error) {
-    return null; // Not a UniV2 pool or failed to fetch
   }
-};
+  return results;
+}
 
-// Detect if a smart contract is an Aerodrome-style LP pool containing BTC1
-const detectAerodromePool = async (
+// Process UniswapV3 pool NFT positions
+async function processUniswapV3Pool(
   provider: ethers.JsonRpcProvider,
-  poolAddress: string,
-  btc1Address: string
-): Promise<{ isBTC1Pool: boolean; btc1Reserve: bigint; totalSupply: bigint } | null> => {
-  try {
-    const pool = new ethers.Contract(poolAddress, AERODROME_POOL_ABI, provider);
-    
-    const [token0, token1, reserve0, reserve1, totalSupply] = await Promise.all([
-      pool.token0(),
-      pool.token1(),
-      pool.reserve0(),
-      pool.reserve1(),
-      pool.totalSupply()
-    ]);
-
-    const isBTC1Pool = 
-      token0.toLowerCase() === btc1Address.toLowerCase() || 
-      token1.toLowerCase() === btc1Address.toLowerCase();
-
-    if (!isBTC1Pool) {
-      return null;
-    }
-
-    const btc1Reserve = token0.toLowerCase() === btc1Address.toLowerCase() 
-      ? BigInt(reserve0) 
-      : BigInt(reserve1);
-
-    return {
-      isBTC1Pool: true,
-      btc1Reserve,
-      totalSupply: BigInt(totalSupply)
-    };
-  } catch (error) {
-    return null; // Not an Aerodrome pool or failed to fetch
-  }
-};
-
-// Process LP pool and calculate BTC1 shares for each LP holder
-const processLPPool = async (
-  provider: ethers.JsonRpcProvider,
-  poolAddress: string,
+  pool: string,
   btc1Address: string,
-  excludedSet: Set<string>
-): Promise<Map<string, bigint>> => {
-  console.log(`  🏊 Processing potential LP pool: ${poolAddress}`);
-  
-  // Try to detect as UniswapV2 pool
-  let poolInfo = await detectUniV2Pool(provider, poolAddress, btc1Address);
-  let poolType = 'UniswapV2';
-  
-  // If not UniV2, try Aerodrome
-  if (!poolInfo) {
-    poolInfo = await detectAerodromePool(provider, poolAddress, btc1Address);
-    poolType = 'Aerodrome';
-  }
-  
-  if (!poolInfo || !poolInfo.isBTC1Pool) {
-    console.log(`  ⊘ Not a BTC1 LP pool`);
-    return new Map();
-  }
-
-  console.log(`  ✅ Detected ${poolType} LP pool with BTC1`);
-  console.log(`     BTC1 Reserve: ${ethers.formatUnits(poolInfo.btc1Reserve, 8)} BTC1USD`);
-  console.log(`     Total LP Supply: ${ethers.formatUnits(poolInfo.totalSupply, 18)} LP tokens`);
-
-  // Get all LP token holders
-  const lpHolders = await getLPHoldersFromAlchemy(poolAddress);
-  
-  if (lpHolders.size === 0) {
-    console.log(`  ⚠️ No LP holders found`);
-    return new Map();
-  }
-
-  // Calculate BTC1 share for each LP holder
-  const btc1Shares = new Map<string, bigint>();
-  
-  for (const [holderAddress, lpBalance] of lpHolders.entries()) {
-    // Skip if excluded (protocol wallets)
-    if (excludedSet.has(holderAddress.toLowerCase())) {
-      console.log(`     ⊘ Skipping excluded LP holder: ${holderAddress}`);
-      continue;
-    }
-
-    // Skip if holder is a contract (only EOAs get rewards)
-    const isContractAddress = await isContract(provider, holderAddress);
-    if (isContractAddress) {
-      console.log(`     ⊘ Skipping smart contract LP holder: ${holderAddress}`);
-      continue;
-    }
-
-    // Calculate BTC1 share: (lpBalance * btc1Reserve) / totalSupply
-    const btc1Share = (lpBalance * poolInfo.btc1Reserve) / poolInfo.totalSupply;
+  balances: Map<string, bigint>,
+  excluded: Set<string>,
+  blockTag: number
+): Promise<void> {
+  try {
+    console.log(`  ✅ UniswapV3 pool detected - processing NFT positions`);
     
-    if (btc1Share > BigInt(0)) {
-      btc1Shares.set(holderAddress.toLowerCase(), btc1Share);
-      console.log(`     ✓ LP holder ${holderAddress}: ${ethers.formatUnits(btc1Share, 8)} BTC1USD share`);
+    const poolContract = new ethers.Contract(pool, CL_POOL_ABI, provider);
+    const [token0, token1, slot0] = await Promise.all([
+      poolContract.token0({ blockTag }),
+      poolContract.token1({ blockTag }),
+      poolContract.slot0({ blockTag })
+    ]);
+    
+    const t0 = token0.toLowerCase();
+    const t1 = token1.toLowerCase();
+    
+    // Check if pool contains BTC1USD
+    if (![t0, t1].includes(btc1Address.toLowerCase())) {
+      console.log(`   ⊘ Not a BTC1 pool`);
+      return;
     }
+    
+    const isBTC1Token0 = t0 === btc1Address.toLowerCase();
+    console.log(`   BTC1 is token${isBTC1Token0 ? '0' : '1'}`);
+    console.log(`   Current sqrtPriceX96: ${slot0[0].toString()}`);
+    
+    // Get Position Manager contract
+    const positionManager = new ethers.Contract(
+      POSITION_MANAGER,
+      POSITION_MANAGER_ABI,
+      provider
+    );
+    
+    // Discover all NFT positions through Transfer events
+    console.log(`   Querying NFT positions in chunks...`);
+    
+    const allTokenIds = new Set<string>();
+    const START_BLOCK = Math.max(0, blockTag - 500000); // Last ~500k blocks
+    
+    try {
+      const filter = positionManager.filters.Transfer();
+      const events = await safeQueryFilter(
+        positionManager,
+        filter,
+        START_BLOCK,
+        blockTag
+      );
+      
+      console.log(`   Found ${events.length} Transfer events`);
+      
+      for (const event of events) {
+        if ('args' in event && event.args && event.args.tokenId) {
+          allTokenIds.add(event.args.tokenId.toString());
+        }
+      }
+      
+      console.log(`   ✅ Discovered ${allTokenIds.size} unique NFT positions`);
+    } catch (err) {
+      console.log(`   ⚠️ Event scanning failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      console.log(`   Trying fallback: IncreaseLiquidity events...`);
+      
+      // Fallback: Use IncreaseLiquidity events
+      try {
+        const liquidityFilter = positionManager.filters.IncreaseLiquidity();
+        const liquidityEvents = await safeQueryFilter(
+          positionManager,
+          liquidityFilter,
+          START_BLOCK,
+          blockTag
+        );
+        
+        for (const event of liquidityEvents) {
+          if ('args' in event && event.args) {
+            allTokenIds.add(event.args.tokenId.toString());
+          }
+        }
+        
+        console.log(`   Found ${allTokenIds.size} positions via liquidity events`);
+      } catch (fallbackErr) {
+        console.log(`   ❌ Fallback also failed: ${fallbackErr instanceof Error ? fallbackErr.message : 'Unknown error'}`);
+        console.log(`   ⚠️ UniswapV3 position tracking requires RPC with better event query support`);
+        return;
+      }
+    }
+    
+    if (allTokenIds.size === 0) {
+      console.log(`   ⚠️ No NFT positions discovered via events`);
+      
+      if (MANUALLY_APPROVED_V3_POSITIONS.length > 0) {
+        console.log(`   💡 Using ${MANUALLY_APPROVED_V3_POSITIONS.length} manually approved V3 positions...`);
+        MANUALLY_APPROVED_V3_POSITIONS.forEach(id => allTokenIds.add(id));
+      } else {
+        console.log(`   💡 TIP: You can manually add known NFT token IDs to MANUALLY_APPROVED_V3_POSITIONS`);
+        return;
+      }
+    }
+    
+    let validPositions = 0;
+    let totalBTC1Liquidity = BigInt(0);
+    let processedCount = 0;
+    
+    console.log(`\n   Processing ${allTokenIds.size} NFT positions...`);
+    
+    // Process each NFT position
+    for (const tokenId of allTokenIds) {
+      processedCount++;
+      if (processedCount % 100 === 0) {
+        console.log(`   Progress: ${processedCount}/${allTokenIds.size} positions...`);
+      }
+      
+      try {
+        // Get position details
+        const position = await positionManager.positions(tokenId, { blockTag });
+        const [
+          nonce,
+          operator,
+          posToken0,
+          posToken1,
+          fee,
+          tickLower,
+          tickUpper,
+          liquidity,
+          feeGrowthInside0LastX128,
+          feeGrowthInside1LastX128
+        ] = position;
+        
+        // Verify position is for this pool
+        if (posToken0.toLowerCase() !== t0 || posToken1.toLowerCase() !== t1) {
+          continue;
+        }
+        
+        // Skip positions with no liquidity
+        if (liquidity === BigInt(0)) continue;
+        
+        // Get current owner of the NFT
+        const owner = await positionManager.ownerOf(tokenId, { blockTag });
+        const ownerAddr = owner.toLowerCase();
+        
+        // Skip excluded addresses
+        if (excluded.has(ownerAddr)) continue;
+        
+        // Calculate token amounts from liquidity
+        const amounts = getLiquidityAmounts(
+          BigInt(liquidity),
+          BigInt(slot0[0]),
+          Number(tickLower),
+          Number(tickUpper)
+        );
+        
+        // Get BTC1 amount based on which token it is
+        const btc1Amount = isBTC1Token0 ? amounts.amount0 : amounts.amount1;
+        
+        if (btc1Amount > BigInt(0)) {
+          // Check if owner is a contract we haven't seen
+          const isContractCheck = await isContract(provider, ownerAddr, blockTag);
+          const alreadyInBalances = balances.has(ownerAddr);
+          
+          if (isContractCheck && !alreadyInBalances) {
+            continue; // Skip new contracts
+          }
+          
+          balances.set(ownerAddr, (balances.get(ownerAddr) || BigInt(0)) + btc1Amount);
+          totalBTC1Liquidity += btc1Amount;
+          validPositions++;
+          
+          console.log(`   └─ NFT #${tokenId} owner ${ownerAddr.slice(0,10)}... = ${ethers.formatUnits(btc1Amount, BTC1_DECIMALS)} BTC1 (total: ${ethers.formatUnits(balances.get(ownerAddr)!, BTC1_DECIMALS)})`);
+        }
+      } catch (err) {
+        // Position might not exist at this block
+        continue;
+      }
+    }
+    
+    console.log(`   ✅ Processed ${validPositions} valid positions with liquidity`);
+    console.log(`   💰 Total BTC1 in V3 positions: ${ethers.formatUnits(totalBTC1Liquidity, BTC1_DECIMALS)}\n`);
+    
+  } catch (err) {
+    console.log(`   ❌ Failed to process V3 pool: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  }
+}
+
+// Process ERC20 LP pools (UniswapV2, Aerodrome)
+async function processERC20LP(
+  provider: ethers.JsonRpcProvider,
+  pool: string,
+  btc1Address: string,
+  balances: Map<string, bigint>,
+  excluded: Set<string>,
+  chainId: number,
+  blockTag: number
+): Promise<void> {
+  const poolType = await detectPoolType(provider, pool, blockTag);
+  
+  if (poolType === POOL_TYPES.UNKNOWN) {
+    console.log(`   ⊘ Unknown pool type - skipping`);
+    return;
+  }
+  
+  // UniswapV3 uses NFT positions, requires different handling
+  if (poolType === POOL_TYPES.UNISWAP_V3) {
+    await processUniswapV3Pool(provider, pool, btc1Address, balances, excluded, blockTag);
+    return;
   }
 
-  console.log(`  ✅ Processed ${btc1Shares.size} EOA LP holders from pool`);
-  return btc1Shares;
-};
+  try {
+    let p: ethers.Contract;
+    let t0: string, t1: string, ts: bigint, reserve: bigint;
+    
+    if (poolType === POOL_TYPES.UNISWAP_V2) {
+      p = new ethers.Contract(pool, UNIV2_PAIR_ABI, provider);
+      [t0, t1, ts] = await Promise.all([
+        p.token0({ blockTag }),
+        p.token1({ blockTag }),
+        p.totalSupply({ blockTag })
+      ]);
+      const r = await p.getReserves({ blockTag });
+      
+      if (![t0, t1].map(a => a.toLowerCase()).includes(btc1Address.toLowerCase())) {
+        console.log(`   ⊘ Not a BTC1 pool`);
+        return;
+      }
+      
+      reserve = BigInt(t0.toLowerCase() === btc1Address.toLowerCase() ? r[0] : r[1]);
+      console.log(`   ✅ UniswapV2 BTC1 pool detected`);
+      
+    } else if (poolType === POOL_TYPES.AERODROME) {
+      p = new ethers.Contract(pool, AERODROME_POOL_ABI, provider);
+      [t0, t1, ts] = await Promise.all([
+        p.token0({ blockTag }),
+        p.token1({ blockTag }),
+        p.totalSupply({ blockTag })
+      ]);
+      const [r0, r1] = await Promise.all([
+        p.reserve0({ blockTag }),
+        p.reserve1({ blockTag })
+      ]);
+      
+      if (![t0, t1].map(a => a.toLowerCase()).includes(btc1Address.toLowerCase())) {
+        console.log(`   ⊘ Not a BTC1 pool`);
+        return;
+      }
+      
+      reserve = BigInt(t0.toLowerCase() === btc1Address.toLowerCase() ? r0 : r1);
+      console.log(`   ✅ Aerodrome BTC1 pool detected`);
+    } else {
+      return;
+    }
+    
+    const info = { reserve, totalSupply: ts };
 
-// Helper function to get all holders with balances using robust provider
-const getAllHolders = async (
+    console.log(`   BTC1 Reserve: ${ethers.formatUnits(info.reserve, BTC1_DECIMALS)}`);
+    console.log(`   Fetching LP holders...`);
+
+    const lpBalances = new Map<string, bigint>();
+    const transfers = await alchemyTransfers(pool, chainId, blockTag);
+    
+    if (transfers.length === 0) {
+      console.log(`   ⚠️ No transfers found for this pool`);
+      return;
+    }
+    
+    console.log(`   Processing ${transfers.length} transfers...`);
+    
+    for (const t of transfers) {
+      const v = BigInt(t.rawContract?.value || 0);
+      if (t.from && t.from !== ZERO_ADDRESS)
+        lpBalances.set(t.from.toLowerCase(), (lpBalances.get(t.from.toLowerCase()) || BigInt(0)) - v);
+      if (t.to)
+        lpBalances.set(t.to.toLowerCase(), (lpBalances.get(t.to.toLowerCase()) || BigInt(0)) + v);
+    }
+
+    let validHolders = 0;
+    for (const [addr, bal] of lpBalances) {
+      if (
+        bal <= BigInt(0) ||
+        addr === ZERO_ADDRESS ||
+        addr === ONE_ADDRESS ||
+        addr === pool ||
+        excluded.has(addr)
+      ) continue;
+
+      // Allow addresses that are already in balances
+      const isContractCheck = await isContract(provider, addr, blockTag);
+      const alreadyInBalances = balances.has(addr);
+      
+      if (isContractCheck && !alreadyInBalances) continue;
+
+      const share = (bal * info.reserve) / info.totalSupply;
+      if (share > BigInt(0)) {
+        balances.set(addr, (balances.get(addr) || BigInt(0)) + share);
+        validHolders++;
+        console.log(`   └─ LP holder ${addr.slice(0,10)}... = ${ethers.formatUnits(share, BTC1_DECIMALS)} BTC1 (total: ${ethers.formatUnits(balances.get(addr)!, BTC1_DECIMALS)})`);
+      }
+    }
+    
+    console.log(`   ✅ Found ${validHolders} valid LP holders\n`);
+  } catch (err) {
+    console.log(`   ❌ Failed to read pool: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    return;
+  }
+}
+
+// Helper function to get all holders with balances - REWRITTEN to match script logic
+// This function now implements the EXACT same logic as generate-merkle-at-block.js
+async function getAllHolders(
   btc1usdContract: ethers.Contract, 
   provider: ethers.JsonRpcProvider,
   excludedSet: Set<string>,
-  chainId: number
-): Promise<{ address: string; balance: bigint }[]> => {
-  console.log('📋 Fetching all BTC1USD holders...');
+  chainId: number,
+  blockTag: number
+): Promise<Map<string, bigint>> {
+  console.log(`\n📊 STEP 1: Fetching all BTC1USD holders (EOAs + Contracts) at block ${blockTag}...`);
   
-  // Get token address
-  const tokenAddress = await btc1usdContract.getAddress();
-  console.log(`   Token address: ${tokenAddress}`);
-  console.log(`   Network: ${chainId === 8453 ? 'Base Mainnet' : 'Base Sepolia'}`);
+  const btc1Address = (await btc1usdContract.getAddress()).toLowerCase();
+  const allHolders = new Set<string>();
+  const transfers = await alchemyTransfers(btc1Address, chainId, blockTag);
+  
+  for (const t of transfers) {
+    if (t.from) allHolders.add(t.from.toLowerCase());
+    if (t.to) allHolders.add(t.to.toLowerCase());
+  }
+  
+  console.log(`   Found ${allHolders.size} unique addresses\n`);
 
-  // Try BaseScan first (most reliable for holder lists)
-  let allHolderAddresses = await getHoldersFromBaseScan(tokenAddress, chainId);
+  /* ---------- STEP 2: CATEGORIZE HOLDERS ---------- */
+  console.log('📊 STEP 2: Categorizing holders (EOAs vs LP Pools)...');
+  const eoas: string[] = [];
+  const detectedPools: Array<{ address: string; type: string }> = [];
   
-  // If BaseScan didn't work, try Alchemy
-  if (allHolderAddresses.length === 0) {
-    console.log('ℹ️ BaseScan returned no holders, trying Alchemy...');
-    allHolderAddresses = await getHoldersFromAlchemy(tokenAddress, chainId);
+  for (const addr of allHolders) {
+    if (addr === ZERO_ADDRESS || addr === ONE_ADDRESS || excludedSet.has(addr) || EXCLUDED_POOLS.includes(addr)) continue;
+    
+    // Check if it's a contract first
+    if (await isContract(provider, addr, blockTag)) {
+      // Check if it's an LP pool
+      if (await isLPPool(provider, addr, blockTag)) {
+        const poolType = await detectPoolType(provider, addr, blockTag);
+        detectedPools.push({ address: addr, type: poolType });
+        console.log(`   🏊 LP Pool detected: ${addr} (${poolType})`);
+        // IMPORTANT: Also add pools to EOAs list so they get balances in Step 3
+        eoas.push(addr);
+      } else {
+        // Non-pool contracts are treated as EOAs (smart wallets, etc.)
+        eoas.push(addr);
+      }
+    } else {
+      eoas.push(addr);
+    }
+  }
+  
+  console.log(`   ✅ EOAs (including smart wallets): ${eoas.length}`);
+  console.log(`   ✅ LP Pools (treated as direct holders): ${detectedPools.length}\n`);
+
+  /* ---------- STEP 3: PROCESS DIRECT BTC1 BALANCES ---------- */
+  console.log('📊 STEP 3: Processing direct BTC1 balances...');
+  
+  const balances = new Map<string, bigint>();
+  
+  // Process all EOAs (including smart wallets/contracts that aren't LP pools)
+  for (const addr of eoas) {
+    const bal = await btc1usdContract.balanceOf(addr, { blockTag });
+    if (bal > BigInt(0)) {
+      balances.set(addr, BigInt(bal));
+      console.log(`   👤 ${addr} = ${ethers.formatUnits(bal, BTC1_DECIMALS)} BTC1`);
+    }
+  }
+  
+  console.log(`   ✅ Processed ${eoas.length} addresses\n`);
+
+  /* ---------- STEP 4: PROCESS DETECTED LP POOLS ---------- */
+  console.log('📊 STEP 4: Processing detected LP pools...');
+  console.log(`   Found ${detectedPools.length} LP pools to expand\n`);
+  
+  for (const { address: pool, type: poolType } of detectedPools) {
+    console.log(`\n🔍 Processing ${poolType} pool: ${pool}`);
+    
+    // DON'T remove pool's direct balance - keep pools as direct holders
+    console.log(`   ℹ️  Pool treated as direct holder (not expanding LP providers)`);
+    
+    // If pool already has balance from Step 3, keep it
+    if (balances.has(pool)) {
+      console.log(`   ✅ Pool balance: ${ethers.formatUnits(balances.get(pool)!, BTC1_DECIMALS)} BTC1`);
+    }
   }
 
-  if (allHolderAddresses.length > 0) {
-    console.log(`✅ Found ${allHolderAddresses.length} unique addresses from APIs`);
-    
-    // Track balances - only direct EOA balances (no LP processing for Sepolia)
-    const balanceMap = new Map<string, bigint>();
-    
-    // Collect EOA balances
-    for (const address of allHolderAddresses) {
-      try {
-        // Check if it's a smart contract
-        const isContractAddress = await isContract(provider, address);
-        
-        if (isContractAddress) {
-          console.log(`⊘ Skipping smart contract: ${address}`);
-          continue;
-        }
-        
-        // It's an EOA, get direct balance
-        const balance = await btc1usdContract.balanceOf(address);
-        if (balance > BigInt(0)) {
-          balanceMap.set(address.toLowerCase(), BigInt(balance));
-          console.log(`✓ ${address}: ${ethers.formatUnits(balance, 8)} BTC1USD (direct EOA balance)`);
-        }
-      } catch (error) {
-        console.warn(`Failed to process ${address}:`, error);
-      }
-    }
-    
-    // Convert balance map to holders array
-    const holders: { address: string; balance: bigint }[] = [];
-    for (const [address, balance] of balanceMap.entries()) {
-      if (balance > BigInt(0)) {
-        holders.push({ address, balance });
-      }
-    }
-    
-    if (holders.length > 0) {
-      console.log(`\n✅ Total unique EOA holders: ${holders.length}`);
-      return holders;
-    }
-  }
-
-  // Fallback: If APIs didn't work, scan Transfer events on-chain
-  console.log('🔍 Fallback: Scanning Transfer events on-chain...');
-  console.log(`   Token address: ${tokenAddress}`);
-  console.log(`   Network: ${chainId === 8453 ? 'Base Mainnet' : 'Base Sepolia (84532)'} - Chain ID: ${chainId}`);
-  
-  try {
-    // Get Transfer events from the token contract
-    const transferFilter = btc1usdContract.filters.Transfer();
-    console.log('   Querying Transfer events from block 0 to latest...');
-    const events = await btc1usdContract.queryFilter(transferFilter, 0, 'latest');
-    
-    console.log(`   Found ${events.length} Transfer events`);
-    
-    if (events.length === 0) {
-      console.log('   ⚠️ No Transfer events found - token may not have any transactions yet');
-    }
-    
-    // Track all unique addresses that have received tokens
-    const uniqueAddresses = new Set<string>();
-    
-    for (const event of events) {
-      // Check if this is an EventLog (has args) vs plain Log
-      if ('args' in event && event.args) {
-        const to = event.args.to;
-        if (to && to !== ZERO_ADDRESS && to !== ONE_ADDRESS) {
-          uniqueAddresses.add(to.toLowerCase());
-        }
-      }
-    }
-    
-    console.log(`   Found ${uniqueAddresses.size} unique recipient addresses from Transfer events`);
-    
-    if (uniqueAddresses.size === 0) {
-      console.log('   ⚠️ No recipients found in Transfer events');
-    }
-    
-    // Check balances for all recipients
-    const balanceMap = new Map<string, bigint>();
-    let checkedCount = 0;
-    
-    for (const address of uniqueAddresses) {
-      try {
-        // Check if it's a smart contract
-        const isContractAddress = await isContract(provider, address);
-        
-        if (isContractAddress) {
-          console.log(`   ⊘ Skipping smart contract: ${address}`);
-          continue;
-        }
-        
-        // It's an EOA, get direct balance
-        const balance = await btc1usdContract.balanceOf(address);
-        if (balance > BigInt(0)) {
-          balanceMap.set(address.toLowerCase(), BigInt(balance));
-          console.log(`   ✓ ${address}: ${ethers.formatUnits(balance, 8)} BTC1USD`);
-          checkedCount++;
-        }
-      } catch (error) {
-        console.warn(`   Failed to process ${address}:`, error instanceof Error ? error.message : error);
-      }
-    }
-    
-    console.log(`   Checked ${checkedCount} EOA addresses, found ${balanceMap.size} with positive balances`);
-    
-    // Convert balance map to holders array
-    const holders: { address: string; balance: bigint }[] = [];
-    for (const [address, balance] of balanceMap.entries()) {
-      if (balance > BigInt(0)) {
-        holders.push({ address, balance });
-      }
-    }
-    
-    if (holders.length > 0) {
-      console.log(`\n✅ Total unique EOA holders from on-chain scan: ${holders.length}`);
-      return holders;
-    }
-  } catch (error) {
-    console.error('❌ On-chain Transfer event scan failed:', error instanceof Error ? error.message : error);
-  }
-  
-  // Last resort fallback: Check known deployment addresses
-  console.log('\nTrying last resort: checking known deployment addresses...');
-  
-  const knownAddresses = [
-    '0x0c8852280df8eF9fCb2a24e9d76f1ee4779773E9', // deployer
-    '0xf7D9655656F8ad38d915dDbdE0bceC7530598b56', // devWallet from Sepolia deployment
-    '0xD720b15020d78Ba9484EC13270B1D24b03135927', // endowmentWallet from Sepolia deployment
-    '0x6cf855d7c79f05b549674916bfa23b5742db143e', // devWallet (legacy)
-    '0x223a0b6cae408c91973852c5bcd55567c7b2e1c0'  // endowmentWallet (legacy)
-  ];
-  
-  const holders: { address: string; balance: bigint }[] = [];
-  
-  for (const address of knownAddresses) {
-    try {
-      const balance = await btc1usdContract.balanceOf(address);
-      if (balance > BigInt(0)) {
-        holders.push({ address, balance });
-        console.log(`✓ ${address}: ${ethers.formatUnits(balance, 8)} BTC1USD`);
-      }
-    } catch (error) {
-      console.warn(`Failed to get balance for ${address}:`, error);
-    }
-  }
-  
-  // If we still have no holders, check if any of these addresses have tokens
-  if (holders.length === 0) {
-    console.log('Checking for any accounts with balances...');
-    
-    // Try a few more common test addresses
-    const testAddresses = [
-      '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', // Common Hardhat test account
-      '0x70997970C51812dc3A010C7d01b50e0d17dc79C8', // Another test account
-      '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC'  // Another test account
-    ];
-    
-    for (const address of testAddresses) {
-      try {
-        const balance = await btc1usdContract.balanceOf(address);
-        if (balance > BigInt(0)) {
-          holders.push({ address, balance });
-          console.log(`✓ ${address}: ${ethers.formatUnits(balance, 8)} BTC1USD`);
-        }
-      } catch (error) {
-        console.warn(`Failed to get balance for ${address}:`, error);
-      }
-    }
-  }
-  
-  if (holders.length === 0) {
-    // Final fallback: Create a helpful error message
-    throw new Error('No holders with positive balances found. Please ensure there are accounts with BTC1USD tokens. You may need to mint tokens to test accounts first.');
-  }
-  
-  console.log(`✅ Total holders with balance > 0: ${holders.length}`);
-  return holders;
-};
+  console.log(`\n✅ Total unique holders: ${balances.size}`);
+  return balances;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -993,18 +1380,67 @@ export async function POST(request: NextRequest) {
     // Create a Set for faster lookups (case-insensitive)
     const excludedSet = new Set(excludedAddresses.map(addr => addr.toLowerCase()));
 
-    // Get all token holders via BaseScan/Alchemy (EOAs only, smart contracts filtered out)
-    // LP pools will be processed to calculate BTC1 shares for their EOA holders
-    const allHolders = await getAllHolders(btc1usd, provider, excludedSet, chainId);
+    // Get the target block for snapshot - use the last distribution execution block
+    let targetBlock: number;
+    try {
+      console.log('\n📅 Determining snapshot block...');
+      
+      // Try to get lastDistributionBlock from contract
+      try {
+        const lastDistBlock = await weeklyDistribution.lastDistributionBlock();
+        if (lastDistBlock && Number(lastDistBlock) > 0) {
+          targetBlock = Number(lastDistBlock);
+          console.log(`   ✅ Using lastDistributionBlock from contract: ${targetBlock}`);
+        } else {
+          throw new Error('lastDistributionBlock is 0 or not set');
+        }
+      } catch (contractError) {
+        console.log('   ⚠️ lastDistributionBlock not available, querying DistributionExecuted events...');
+        
+        // Fallback: Query DistributionExecuted events to find the last distribution block
+        try {
+          const filter = weeklyDistribution.filters.DistributionExecuted();
+          const events = await weeklyDistribution.queryFilter(filter, 0, 'latest');
+          
+          if (events.length > 0) {
+            // Get the most recent event
+            const lastEvent = events[events.length - 1];
+            if ('args' in lastEvent && lastEvent.args) {
+              targetBlock = Number(lastEvent.args.blockNumber);
+              console.log(`   ✅ Found last distribution at block ${targetBlock} from event (distributionId: ${lastEvent.args.distributionId})`);
+            } else {
+              throw new Error('Event found but no blockNumber in args');
+            }
+          } else {
+            throw new Error('No DistributionExecuted events found');
+          }
+        } catch (eventError) {
+          console.log(`   ⚠️ Could not query events: ${eventError instanceof Error ? eventError.message : 'Unknown error'}`);
+          console.log('   Using current block as fallback...');
+          targetBlock = await provider.getBlockNumber();
+          console.log(`   📆 Using current block: ${targetBlock}`);
+        }
+      }
+    } catch (error) {
+      console.warn('   ❌ Block determination failed, using current block');
+      targetBlock = await provider.getBlockNumber();
+      console.log(`   📆 Fallback to current block: ${targetBlock}`);
+    }
+    
+    console.log(`\n📸 Snapshot will be taken at block ${targetBlock}\n`);
 
-    if (allHolders.length === 0) {
+    // Get all token holders with their balances (returns Map<address, balance>)
+    // This now follows the EXACT same logic as generate-merkle-at-block.js
+    const balances = await getAllHolders(btc1usd, provider, excludedSet, chainId, targetBlock);
+
+    if (balances.size === 0) {
       // Provide more helpful error message
       return NextResponse.json(
         {
-          error: 'No EOA token holders found. Only Externally Owned Accounts (EOAs) are eligible for rewards.',
+          error: 'No token holders found with positive balances.',
           suggestions: [
-            'Smart contracts (including LP pools) are automatically excluded from rewards',
-            'Mint or transfer BTC1USD tokens to EOA addresses (wallet addresses, not contracts)',
+            'Ensure there are accounts with BTC1USD tokens',
+            'Mint or transfer BTC1USD tokens to test accounts',
             'Verify that the contract addresses are correct in deployment configuration'
           ]
         },
@@ -1012,25 +1448,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Filter out excluded addresses (protocol wallets)
-    const holders = allHolders.filter(holder => {
-      const isExcluded = excludedSet.has(holder.address.toLowerCase());
-      if (isExcluded) {
-        console.log(`⊘ Excluding protocol wallet: ${holder.address} (balance: ${ethers.formatUnits(holder.balance, 8)} BTC1USD)`);
+    // Filter out excluded addresses (protocol wallets) - already done in getAllHolders but double-check
+    const holders: Array<{ address: string; balance: bigint }> = [];
+    for (const [address, balance] of balances.entries()) {
+      if (!excludedSet.has(address.toLowerCase()) && balance > BigInt(0)) {
+        holders.push({ address, balance });
+      } else if (excludedSet.has(address.toLowerCase())) {
+        console.log(`⊘ Excluding protocol wallet: ${address} (balance: ${ethers.formatUnits(balance, 8)} BTC1USD)`);
       }
-      return !isExcluded;
-    });
+    }
 
-    console.log(`👥 Found ${allHolders.length} unique EOA holders (including LP providers with aggregated BTC1 shares), ${holders.length} eligible after excluding protocol wallets`);
+    console.log(`👥 Found ${balances.size} total holders, ${holders.length} eligible after excluding protocol wallets`);
 
     if (holders.length === 0) {
       return NextResponse.json(
         {
-          error: 'No eligible EOA holders found after excluding protocol wallets.',
+          error: 'No eligible holders found after excluding protocol wallets.',
           suggestions: [
             'All current token holders are protocol wallets',
-            'Only EOAs (Externally Owned Accounts) receive rewards',
-            'LP providers are included - their BTC1USD share in pools is calculated and aggregated',
             'Mint or transfer tokens to EOA addresses to create eligible holders'
           ]
         },
@@ -1100,10 +1535,11 @@ export async function POST(request: NextRequest) {
       metadata: {
         generated: new Date().toISOString(),
         activeHolders: claims.length,
-        totalHolders: allHolders.length,
+        totalHolders: balances.size,
         excludedAddresses: excludedAddresses,
         excludedCount: excludedAddresses.length,
-        note: 'Protocol wallets are excluded. EOAs and smart contract wallets (bytecode <100 bytes) receive rewards - includes both direct BTC1USD holders and LP providers whose BTC1USD share in pools has been calculated and aggregated to their addresses.'
+        blockNumber: targetBlock,
+        note: 'Protocol wallets are excluded. Pools are treated as direct holders (not expanded to LP providers). Distribution snapshot taken at block ' + targetBlock + '.'
       } as any
     };
 

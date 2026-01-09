@@ -1,6 +1,19 @@
 [build]
   command = "npm run build"
   publish = ".next"
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+# DEV (develop branch)
+[context.branch-deploy.environment]
+  NEXT_PUBLIC_ENV = "development"
+  NODE_ENV = "development"
+
+# PROD (main branch)
+[context.production.environment]
+  NEXT_PUBLIC_ENV = "production"
+  NODE_ENV = "production"
 
 # Disable Netlify Blobs to avoid deployment errors
 [blobs]
