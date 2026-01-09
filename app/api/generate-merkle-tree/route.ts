@@ -285,10 +285,103 @@ export async function POST() {
     
     for (const { address: pool, type: poolType } of detectedPools) {
       console.log(`\n🔍 Processing ${poolType} pool: ${pool}`);
-      console.log(`   ℹ️  Pool treated as direct holder (not expanding LP providers)`);
       
-      if (balances.has(pool)) {
-        console.log(`   ✅ Pool balance: ${ethers.formatUnits(balances.get(pool)!, BTC1_DECIMALS)} BTC1`);
+      // Remove pool's direct balance - we'll distribute it to LP providers
+      const poolDirectBalance = balances.get(pool) || 0n;
+      if (poolDirectBalance > 0n) {
+        console.log(`   ℹ️  Pool has direct balance: ${ethers.formatUnits(poolDirectBalance, BTC1_DECIMALS)} BTC1`);
+        balances.delete(pool); // Remove pool, add to LP providers instead
+      }
+      
+      try {
+        // Get pool info
+        const poolContract = new ethers.Contract(pool, UNIV2_ABI, provider);
+        const [token0, token1, totalSupply] = await Promise.all([
+          poolContract.token0({ blockTag: TARGET_BLOCK }),
+          poolContract.token1({ blockTag: TARGET_BLOCK }),
+          poolContract.totalSupply({ blockTag: TARGET_BLOCK })
+        ]);
+        
+        const t0 = token0.toLowerCase();
+        const t1 = token1.toLowerCase();
+        
+        // Check if pool contains BTC1USD
+        if (![t0, t1].includes(BTC1USD)) {
+          console.log(`   ⊘ Not a BTC1 pool`);
+          continue;
+        }
+        
+        const isBTC1Token0 = t0 === BTC1USD;
+        console.log(`   BTC1 is token${isBTC1Token0 ? '0' : '1'}`);
+        
+        // Get reserves based on pool type
+        let btc1Reserve: bigint;
+        if (poolType === POOL_TYPES.AERODROME || poolType === POOL_TYPES.AERODROME_CL) {
+          const aeroContract = new ethers.Contract(pool, AERODROME_ABI, provider);
+          const [r0, r1] = await Promise.all([
+            aeroContract.reserve0({ blockTag: TARGET_BLOCK }),
+            aeroContract.reserve1({ blockTag: TARGET_BLOCK })
+          ]);
+          btc1Reserve = isBTC1Token0 ? BigInt(r0) : BigInt(r1);
+        } else {
+          const reserves = await poolContract.getReserves({ blockTag: TARGET_BLOCK });
+          btc1Reserve = isBTC1Token0 ? BigInt(reserves[0]) : BigInt(reserves[1]);
+        }
+        
+        console.log(`   BTC1 Reserve: ${ethers.formatUnits(btc1Reserve, BTC1_DECIMALS)}`);
+        console.log(`   Total LP Supply: ${ethers.formatUnits(totalSupply, 18)}`);
+        console.log(`   Fetching LP holders...`);
+        
+        // Get all LP token transfers to find holders
+        const lpTransfers = await alchemyTransfers(pool);
+        
+        if (lpTransfers.length === 0) {
+          console.log(`   ⚠️ No LP transfers found`);
+          continue;
+        }
+        
+        console.log(`   Processing ${lpTransfers.length} LP transfers...`);
+        
+        // Calculate LP balances
+        const lpBalances = new Map<string, bigint>();
+        for (const t of lpTransfers) {
+          const value = BigInt(t.rawContract?.value || 0);
+          if (t.from && t.from !== ZERO) {
+            const current = lpBalances.get(t.from.toLowerCase()) || 0n;
+            lpBalances.set(t.from.toLowerCase(), current - value);
+          }
+          if (t.to) {
+            const current = lpBalances.get(t.to.toLowerCase()) || 0n;
+            lpBalances.set(t.to.toLowerCase(), current + value);
+          }
+        }
+        
+        // Distribute BTC1 to LP providers based on their LP share
+        let validHolders = 0;
+        for (const [addr, lpBal] of lpBalances) {
+          if (
+            lpBal <= 0n ||
+            addr === ZERO ||
+            addr === ONE ||
+            addr === pool ||
+            excluded.has(addr)
+          ) continue;
+          
+          // Calculate BTC1 share: (lpBalance / totalSupply) * btc1Reserve
+          const btc1Share = (lpBal * btc1Reserve) / totalSupply;
+          
+          if (btc1Share > 0n) {
+            const existingBalance = balances.get(addr) || 0n;
+            balances.set(addr, existingBalance + btc1Share);
+            validHolders++;
+            console.log(`   └─ LP holder ${addr.slice(0,10)}... = ${ethers.formatUnits(btc1Share, BTC1_DECIMALS)} BTC1 (total: ${ethers.formatUnits(balances.get(addr)!, BTC1_DECIMALS)})`);
+          }
+        }
+        
+        console.log(`   ✅ Distributed to ${validHolders} LP providers`);
+        
+      } catch (err: any) {
+        console.log(`   ❌ Failed to process pool: ${err.message}`);
       }
     }
 
