@@ -1204,6 +1204,16 @@ async function getAllHolders(
   const eoas: string[] = [];
   const detectedPools: Array<{ address: string; type: string }> = [];
   
+  // TEMPORARY OPTIMIZATION: Skip pool detection, treat all as direct holders
+  console.log('   ⚡ FAST MODE: Treating all addresses as direct holders (skipping pool detection)');
+  for (const addr of allHolders) {
+    if (addr === ZERO_ADDRESS || addr === ONE_ADDRESS || excludedSet.has(addr) || EXCLUDED_POOLS.includes(addr)) continue;
+    eoas.push(addr);
+  }
+  
+  console.log(`   ✅ Processing ${eoas.length} addresses as direct holders\n`);
+  
+  /* ORIGINAL POOL DETECTION - Commented out for speed
   for (const addr of allHolders) {
     if (addr === ZERO_ADDRESS || addr === ONE_ADDRESS || excludedSet.has(addr) || EXCLUDED_POOLS.includes(addr)) continue;
     
@@ -1227,6 +1237,7 @@ async function getAllHolders(
   
   console.log(`   ✅ EOAs (including smart wallets): ${eoas.length}`);
   console.log(`   ✅ LP Pools (treated as direct holders): ${detectedPools.length}\n`);
+  */
 
   /* ---------- STEP 3: PROCESS DIRECT BTC1 BALANCES ---------- */
   console.log('📊 STEP 3: Processing direct BTC1 balances...');
