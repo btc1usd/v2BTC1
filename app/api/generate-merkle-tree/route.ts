@@ -84,6 +84,13 @@ const WEEKLY_DISTRIBUTION_ABI = [
   },
   {
     "inputs": [],
+    "name": "lastDistributionTime",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "lastDistributionBlock",
     "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
     "stateMutability": "view",
@@ -1395,27 +1402,131 @@ export async function POST(request: NextRequest) {
           throw new Error('lastDistributionBlock is 0 or not set');
         }
       } catch (contractError) {
-        console.log('   ⚠️ lastDistributionBlock not available, querying DistributionExecuted events...');
+        console.log('   ⚠️ lastDistributionBlock not available, using lastDistributionTime to find exact block...');
         
-        // Fallback: Query DistributionExecuted events to find the last distribution block
+        // Fallback: Use lastDistributionTime to find the exact block with that timestamp
         try {
-          const filter = weeklyDistribution.filters.DistributionExecuted();
-          const events = await weeklyDistribution.queryFilter(filter, 0, 'latest');
+          const lastDistTime = await weeklyDistribution.lastDistributionTime();
           
-          if (events.length > 0) {
-            // Get the most recent event
-            const lastEvent = events[events.length - 1];
-            if ('args' in lastEvent && lastEvent.args) {
-              targetBlock = Number(lastEvent.args.blockNumber);
-              console.log(`   ✅ Found last distribution at block ${targetBlock} from event (distributionId: ${lastEvent.args.distributionId})`);
-            } else {
-              throw new Error('Event found but no blockNumber in args');
+          console.log(`   📅 Last distribution timestamp: ${lastDistTime} (${new Date(Number(lastDistTime) * 1000).toISOString()})`);
+          
+          // Try BaseScan API first to get exact block by timestamp (fastest method)
+          const baseScanApiKey = process.env.BASESCAN_API_KEY;
+          if (baseScanApiKey) {
+            try {
+              const apiBaseUrl = chainId === 8453 
+                ? 'https://api.basescan.org/api' 
+                : 'https://api-sepolia.basescan.org/api';
+              
+              const url = `${apiBaseUrl}?module=block&action=getblocknobytime&timestamp=${lastDistTime}&closest=before&apikey=${baseScanApiKey}`;
+              
+              console.log(`   🔍 Querying BaseScan for exact block at timestamp ${lastDistTime}...`);
+              const response = await fetch(url);
+              const data = await response.json();
+              
+              if (data.status === '1' && data.result) {
+                targetBlock = Number(data.result);
+                console.log(`   ✅ BaseScan found exact block: ${targetBlock}`);
+                
+                // Verify the block timestamp
+                const block = await provider.getBlock(targetBlock);
+                if (block) {
+                  console.log(`   ✅ Verified block ${targetBlock} timestamp: ${block.timestamp} (${new Date(block.timestamp * 1000).toISOString()})`);
+                } else {
+                  throw new Error('Could not verify block');
+                }
+              } else {
+                throw new Error(`BaseScan API error: ${data.message || 'Unknown error'}`);
+              }
+            } catch (baseScanError) {
+              console.log(`   ⚠️ BaseScan API failed: ${baseScanError instanceof Error ? baseScanError.message : 'Unknown error'}`);
+              console.log(`   🔄 Falling back to binary search...`);
+              
+              // Fallback to binary search if BaseScan fails
+              const currentBlock = await provider.getBlockNumber();
+              const currentTime = Math.floor(Date.now() / 1000);
+              const timeElapsed = currentTime - Number(lastDistTime);
+              const BASE_BLOCK_TIME = 2;
+              const blocksElapsed = Math.floor(timeElapsed / BASE_BLOCK_TIME);
+              const approximateBlock = currentBlock - blocksElapsed;
+              
+              console.log(`   ⏱️  Time elapsed: ${timeElapsed}s (~${blocksElapsed} blocks)`);
+              console.log(`   📍 Approximate distribution block: ${approximateBlock}`);
+              console.log(`   🔍 Binary searching for exact block with timestamp ${lastDistTime}...`);
+              
+              // Binary search to find the exact block with this timestamp
+              let left = Math.max(0, approximateBlock - 5000);
+              let right = Math.min(currentBlock, approximateBlock + 5000);
+              let exactBlock = approximateBlock;
+              
+              while (left <= right) {
+                const mid = Math.floor((left + right) / 2);
+                const block = await provider.getBlock(mid);
+                
+                if (!block) break;
+                
+                const blockTime = block.timestamp;
+                
+                if (blockTime === Number(lastDistTime)) {
+                  exactBlock = mid;
+                  console.log(`   ✅ Found EXACT block ${exactBlock} with timestamp ${blockTime}`);
+                  break;
+                } else if (blockTime < Number(lastDistTime)) {
+                  left = mid + 1;
+                  exactBlock = mid;
+                } else {
+                  right = mid - 1;
+                }
+              }
+              
+              targetBlock = exactBlock;
+              console.log(`   📸 Using block ${targetBlock} for snapshot`);
             }
           } else {
-            throw new Error('No DistributionExecuted events found');
+            console.log(`   ⚠️ BaseScan API key not found, using binary search...`);
+            
+            // No BaseScan key, use binary search
+            const currentBlock = await provider.getBlockNumber();
+            const currentTime = Math.floor(Date.now() / 1000);
+            const timeElapsed = currentTime - Number(lastDistTime);
+            const BASE_BLOCK_TIME = 2;
+            const blocksElapsed = Math.floor(timeElapsed / BASE_BLOCK_TIME);
+            const approximateBlock = currentBlock - blocksElapsed;
+            
+            console.log(`   ⏱️  Time elapsed: ${timeElapsed}s (~${blocksElapsed} blocks)`);
+            console.log(`   📍 Approximate distribution block: ${approximateBlock}`);
+            console.log(`   🔍 Binary searching for exact block with timestamp ${lastDistTime}...`);
+            
+            let left = Math.max(0, approximateBlock - 5000);
+            let right = Math.min(currentBlock, approximateBlock + 5000);
+            let exactBlock = approximateBlock;
+            
+            while (left <= right) {
+              const mid = Math.floor((left + right) / 2);
+              const block = await provider.getBlock(mid);
+              
+              if (!block) break;
+              
+              const blockTime = block.timestamp;
+              
+              if (blockTime === Number(lastDistTime)) {
+                exactBlock = mid;
+                console.log(`   ✅ Found EXACT block ${exactBlock} with timestamp ${blockTime}`);
+                break;
+              } else if (blockTime < Number(lastDistTime)) {
+                left = mid + 1;
+                exactBlock = mid;
+              } else {
+                right = mid - 1;
+              }
+            }
+            
+            targetBlock = exactBlock;
+            console.log(`   📸 Using block ${targetBlock} for snapshot`);
           }
-        } catch (eventError) {
-          console.log(`   ⚠️ Could not query events: ${eventError instanceof Error ? eventError.message : 'Unknown error'}`);
+          
+        } catch (timeError) {
+          console.log(`   ⚠️ Could not use lastDistributionTime: ${timeError instanceof Error ? timeError.message : 'Unknown error'}`);
           console.log('   Using current block as fallback...');
           targetBlock = await provider.getBlockNumber();
           console.log(`   📆 Using current block: ${targetBlock}`);
