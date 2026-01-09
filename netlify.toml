@@ -37,6 +37,10 @@
     "node_modules/dotenv/**"
   ]
 
-# Set function timeout to 26 seconds (maximum allowed)
+# Set function timeout to 26 seconds (maximum allowed for regular functions)
 [functions."*"]
   max_duration = 26
+
+# Set background function timeout for merkle generation (15 minutes max)
+[functions."api/generate-merkle-tree"]
+  max_duration = 900
