@@ -1389,6 +1389,13 @@ export async function POST(request: NextRequest) {
 
     // Get the target block for snapshot - use the last distribution execution block
     let targetBlock: number;
+    
+    // TEMPORARY: Use hardcoded block for testing
+    const HARDCODED_BLOCK = 40596432;
+    console.log(`\n📅 Using hardcoded block number: ${HARDCODED_BLOCK}`);
+    targetBlock = HARDCODED_BLOCK;
+    
+    /* ORIGINAL LOGIC - Commented out for now
     try {
       console.log('\n📅 Determining snapshot block...');
       
@@ -1537,6 +1544,7 @@ export async function POST(request: NextRequest) {
       targetBlock = await provider.getBlockNumber();
       console.log(`   📆 Fallback to current block: ${targetBlock}`);
     }
+    */
     
     console.log(`\n📸 Snapshot will be taken at block ${targetBlock}\n`);
 
