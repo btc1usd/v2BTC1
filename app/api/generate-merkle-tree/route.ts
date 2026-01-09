@@ -254,7 +254,7 @@ export async function POST() {
           const poolType = await detectPoolType(provider, addr);
           detectedPools.push({ address: addr, type: poolType });
           console.log(`   🏊 LP Pool detected: ${addr} (${poolType})`);
-          eoas.push(addr);
+          // DON'T add pools to eoas - we'll only distribute to their LP holders
         } else {
           eoas.push(addr);
         }
@@ -264,7 +264,7 @@ export async function POST() {
     }
     
     console.log(`   ✅ EOAs (including smart wallets): ${eoas.length}`);
-    console.log(`   ✅ LP Pools (treated as direct holders): ${detectedPools.length}\n`);
+    console.log(`   ✅ LP Pools to expand: ${detectedPools.length}\n`);
 
     /* ---------- STEP 3: PROCESS DIRECT BTC1 BALANCES ---------- */
     console.log('📊 STEP 3: Processing direct BTC1 balances...');
@@ -285,13 +285,6 @@ export async function POST() {
     
     for (const { address: pool, type: poolType } of detectedPools) {
       console.log(`\n🔍 Processing ${poolType} pool: ${pool}`);
-      
-      // Remove pool's direct balance - we'll distribute it to LP providers
-      const poolDirectBalance = balances.get(pool) || 0n;
-      if (poolDirectBalance > 0n) {
-        console.log(`   ℹ️  Pool has direct balance: ${ethers.formatUnits(poolDirectBalance, BTC1_DECIMALS)} BTC1`);
-        balances.delete(pool); // Remove pool, add to LP providers instead
-      }
       
       try {
         // Get pool info
@@ -371,10 +364,17 @@ export async function POST() {
           const btc1Share = (lpBal * btc1Reserve) / totalSupply;
           
           if (btc1Share > 0n) {
+            // Add to existing balance (if holder also has direct BTC1)
             const existingBalance = balances.get(addr) || 0n;
             balances.set(addr, existingBalance + btc1Share);
             validHolders++;
-            console.log(`   └─ LP holder ${addr.slice(0,10)}... = ${ethers.formatUnits(btc1Share, BTC1_DECIMALS)} BTC1 (total: ${ethers.formatUnits(balances.get(addr)!, BTC1_DECIMALS)})`);
+            
+            const hasDirectHolding = existingBalance > 0n;
+            if (hasDirectHolding) {
+              console.log(`   └─ LP holder ${addr.slice(0,10)}... = ${ethers.formatUnits(btc1Share, BTC1_DECIMALS)} BTC1 from pool + ${ethers.formatUnits(existingBalance, BTC1_DECIMALS)} direct = ${ethers.formatUnits(balances.get(addr)!, BTC1_DECIMALS)} total`);
+            } else {
+              console.log(`   └─ LP holder ${addr.slice(0,10)}... = ${ethers.formatUnits(btc1Share, BTC1_DECIMALS)} BTC1 from pool`);
+            }
           }
         }
         
