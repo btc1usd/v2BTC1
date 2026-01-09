@@ -177,6 +177,8 @@ export const ABIS = {
     "function hasUnclaimedRewards(address account) view returns (bool)",
     "function canClaim(uint256 distributionId, uint256 index, address account, uint256 amount, bytes32[] calldata merkleProof) view returns (bool)",
     "function getDistributionInfo(uint256 distributionId) view returns (bytes32 root, uint256 totalTokens, uint256 totalClaimed, uint256 timestamp, bool finalized)",
+    "function getCurrentDistributionStats() view returns (uint256 distributionId, uint256 totalTokens, uint256 totalClaimed, uint256 percentageClaimed)",
+    "function getContractTokenBalance() view returns (uint256)",
     "function startNewDistribution(bytes32 merkleRoot, uint256 totalTokens) external",
     "function startNewDistributionWithFinalization(bytes32 merkleRoot, uint256 totalTokens) external",
     "function updateMerkleRoot(uint256 distributionId, bytes32 newMerkleRoot) external",

@@ -557,7 +557,7 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
   // Contract address - use centralized configuration
   const MERKLE_DISTRIBUTOR_ADDRESS = CONTRACT_ADDRESSES.MERKLE_DISTRIBUTOR;
 
-  // Fetch distribution stats
+  // Fetch distribution info for current distribution
   const {
     data: distributionStats,
     isLoading: statsLoading,
@@ -567,9 +567,10 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
   } = useReadContract({
     address: MERKLE_DISTRIBUTOR_ADDRESS as `0x${string}`,
     abi: MERKLE_DISTRIBUTOR_ABI,
-    functionName: "getCurrentDistributionStats",
+    functionName: "getDistributionInfo",
+    args: distributionData?.distributionId ? [BigInt(distributionData.distributionId)] : undefined,
     query: {
-      enabled: isConnected,
+      enabled: isConnected && !!distributionData?.distributionId,
     },
   });
 
@@ -899,11 +900,13 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
   }
 
   const stats = distributionStats as
-    | [bigint, bigint, bigint, bigint]
+    | [string, bigint, bigint, bigint, boolean] // [root, totalTokens, totalClaimed, timestamp, finalized]
     | undefined;
   const totalTokens = stats ? formatUnits(stats[1], 8) : "0";
   const totalClaimed = stats ? formatUnits(stats[2], 8) : "0";
-  const percentageClaimed = stats ? Number(stats[3]) / 100 : 0;
+  const percentageClaimed = stats && stats[1] > BigInt(0)
+    ? Number((stats[2] * BigInt(10000)) / stats[1]) / 100
+    : 0;
 
   const userRewardAmount = userClaim
     ? formatUnits(userClaim.amount as any, 8)
