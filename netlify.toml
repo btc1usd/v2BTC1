@@ -23,13 +23,18 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# Include merkle-distributions in the build
+# Include merkle-distributions and scripts in the build
 [functions]
   directory = ".netlify/functions"
   node_bundler = "esbuild"
   included_files = [
     "merkle-distributions/**",
-    "deployment-base-sepolia.json"
+    "deployment-base-sepolia.json",
+    "scripts/**",
+    "node_modules/ethers/**",
+    "node_modules/merkletreejs/**",
+    "node_modules/@supabase/**",
+    "node_modules/dotenv/**"
   ]
 
 # Set function timeout to 26 seconds (maximum allowed)
