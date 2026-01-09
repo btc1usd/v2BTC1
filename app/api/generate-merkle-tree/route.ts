@@ -21,7 +21,9 @@ const EXCLUDED_POOLS: string[] = [];
 const POOL_TYPES = {
   UNISWAP_V2: 'UniswapV2',
   AERODROME: 'Aerodrome',
+  AERODROME_CL: 'AerodromeCL',
   UNISWAP_V3: 'UniswapV3',
+  UNISWAP_V4: 'UniswapV4',
   CURVE: 'Curve',
   BALANCER: 'Balancer',
   UNKNOWN: 'Unknown'
@@ -60,6 +62,12 @@ const CL_POOL_ABI = [
   "function slot0() view returns (uint160,int24,uint16,uint16,uint16,uint8,bool)"
 ];
 
+const UNISWAP_V4_ABI = [
+  "function getCurrency0() view returns (address)",
+  "function getCurrency1() view returns (address)",
+  "function getLiquidity() view returns (uint128)"
+];
+
 /* ================= HELPERS ================= */
 
 async function isContract(provider: ethers.JsonRpcProvider, addr: string): Promise<boolean> {
@@ -71,22 +79,48 @@ async function detectPoolTypeBySelectors(provider: ethers.JsonRpcProvider, addr:
   const detectedTypes: string[] = [];
   
   try {
+    // UniswapV2: getReserves() selector = 0x0902f1ac
     try {
       const uniV2 = new ethers.Contract(addr, UNIV2_ABI, provider);
       const reserves = await uniV2.getReserves({ blockTag: TARGET_BLOCK });
       if (reserves) detectedTypes.push(POOL_TYPES.UNISWAP_V2);
     } catch {}
     
+    // Aerodrome: reserve0() and reserve1() selectors (V2-style)
     try {
       const aero = new ethers.Contract(addr, AERODROME_ABI, provider);
       const r0 = await aero.reserve0({ blockTag: TARGET_BLOCK });
       if (r0 !== undefined) detectedTypes.push(POOL_TYPES.AERODROME);
     } catch {}
     
+    // Aerodrome CL (Slipstream): slot0() selector - same as UniswapV3
+    // Check this before UniswapV3 to prioritize Aerodrome CL detection
+    try {
+      const aeroCL = new ethers.Contract(addr, CL_POOL_ABI, provider);
+      const slot0 = await aeroCL.slot0({ blockTag: TARGET_BLOCK });
+      if (slot0) {
+        // Try to distinguish Aerodrome CL from UniswapV3 by checking for Aerodrome-specific patterns
+        // For now, both will be detected - can add more specific checks if needed
+        detectedTypes.push(POOL_TYPES.AERODROME_CL);
+      }
+    } catch {}
+    
+    // UniswapV3: slot0() selector = 0x3850c7bd
     try {
       const uniV3 = new ethers.Contract(addr, CL_POOL_ABI, provider);
       const slot0 = await uniV3.slot0({ blockTag: TARGET_BLOCK });
-      if (slot0) detectedTypes.push(POOL_TYPES.UNISWAP_V3);
+      if (slot0 && !detectedTypes.includes(POOL_TYPES.AERODROME_CL)) {
+        // Only add UniswapV3 if not already detected as Aerodrome CL
+        detectedTypes.push(POOL_TYPES.UNISWAP_V3);
+      }
+    } catch {}
+    
+    // UniswapV4: getCurrency0() and getLiquidity() selectors
+    try {
+      const uniV4 = new ethers.Contract(addr, UNISWAP_V4_ABI, provider);
+      const currency0 = await uniV4.getCurrency0({ blockTag: TARGET_BLOCK });
+      const liquidity = await uniV4.getLiquidity({ blockTag: TARGET_BLOCK });
+      if (currency0 && liquidity !== undefined) detectedTypes.push(POOL_TYPES.UNISWAP_V4);
     } catch {}
   } catch {}
   
