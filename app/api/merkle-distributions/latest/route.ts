@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { supabaseAdmin, isSupabaseAdminConfigured } from "@/lib/supabase";
 import { executeWithProviderFallback } from "@/lib/rpc-provider";
 
 // Force this route to be dynamic (not cached at build time)
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // ☁️ SUPABASE ONLY - No file system fallback
-    if (!isSupabaseConfigured() || !supabase) {
+    if (!isSupabaseAdminConfigured() || !supabaseAdmin) {
       return NextResponse.json(
         {
           error: "Supabase not configured",
@@ -92,15 +92,15 @@ export async function GET(request: NextRequest) {
     }
 
     console.log("☁️ Loading distributions from Supabase...");
-    console.log("Supabase configured:", isSupabaseConfigured());
-    console.log("Supabase client:", supabase ? "initialized" : "null");
+    console.log("Supabase Admin configured:", isSupabaseAdminConfigured());
+    console.log("Supabase Admin client:", supabaseAdmin ? "initialized" : "null");
 
     let data: any[] = [];
     let supabaseError: Error | null = null;
 
     try {
       console.log("Attempting Supabase query...");
-      const { data: supabaseData, error } = await supabase
+      const { data: supabaseData, error } = await supabaseAdmin
         .from("merkle_distributions_prod")
         .select("id, merkle_root, claims, total_rewards, metadata")
         .order("id", { ascending: false })
