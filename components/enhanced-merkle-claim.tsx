@@ -798,32 +798,14 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
         "Loading distribution data because isConnected and address are present"
       );
       loadDistributionData();
-    } else if (isConnected && !address) {
-      console.log("Connected but no address, will wait for address");
-      // Don't set loading to false here, wait for address to be available
     } else if (!isConnected) {
       console.log("Not connected, setting loading to false");
       setLoading(false);
-    } else {
-      console.log("Unexpected state, setting loading to false");
+    } else if (isConnected && !address) {
+      console.log("Connected but no address yet, setting loading to false");
       setLoading(false);
     }
   }, [address, isConnected]);
-
-  // Additional useEffect to handle case where address becomes available after initial render
-  useEffect(() => {
-    console.log("=== Address change useEffect triggered ===");
-    console.log("isConnected:", isConnected);
-    console.log("address:", address);
-    console.log("loading state:", loading);
-    console.log("distributionData:", distributionData);
-
-    // If we're connected, have an address, but haven't loaded data yet
-    if (isConnected && address && !distributionData && loading) {
-      console.log("Loading distribution data because address became available");
-      loadDistributionData();
-    }
-  }, [address, isConnected, distributionData, loading]);
 
   if (!isConnected) {
     return (
