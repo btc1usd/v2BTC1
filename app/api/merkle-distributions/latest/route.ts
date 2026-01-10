@@ -54,12 +54,27 @@ function getContractAddress(): string {
 /* ============================================================
    HELPERS
 ============================================================ */
-function normalizeClaims(claims: Record<string, any>) {
-  const normalized: Record<string, any> = {};
-  for (const [addr, value] of Object.entries(claims || {})) {
-    normalized[addr.toLowerCase()] = value;
+
+/* Find user claim regardless of claim structure */
+function findUserClaim(
+  claims: Record<string, any> | any[],
+  userAddress: string
+) {
+  const addr = userAddress.toLowerCase();
+
+  if (Array.isArray(claims)) {
+    return claims.find(
+      (c) => c?.account?.toLowerCase() === addr
+    );
   }
-  return normalized;
+
+  for (const value of Object.values(claims || {})) {
+    if (value?.account?.toLowerCase() === addr) {
+      return value;
+    }
+  }
+
+  return null;
 }
 
 async function checkClaimStatusCached(
@@ -103,7 +118,10 @@ export async function GET(request: NextRequest) {
   const addressParam = url.searchParams.get("address");
 
   if (!addressParam) {
-    return NextResponse.json({ error: "Missing address parameter" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing address parameter" },
+      { status: 400 }
+    );
   }
 
   const userAddress = addressParam.toLowerCase();
@@ -116,7 +134,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  /* FORCE production table */
+  /* Always use production table */
   const TABLE_NAME = "merkle_distributions_prod";
 
   const { data, error } = await supabase
@@ -132,13 +150,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const distributions = data.map((d) => ({
-    ...d,
-    claims: normalizeClaims(d.claims)
-  }));
-
+  /* Verify distributions on-chain */
   const verified = await Promise.all(
-    distributions.map(async (dist) => {
+    data.map(async (dist) => {
       try {
         const [root, totalTokens, totalClaimed, timestamp, finalized] =
           await executeWithProviderFallback(
@@ -173,9 +187,10 @@ export async function GET(request: NextRequest) {
 
   const valid = verified.filter(Boolean) as any[];
 
+  /* Extract user distributions */
   const userDistributions = await Promise.all(
     valid.map(async (dist) => {
-      const claim = dist.claims[userAddress];
+      const claim = findUserClaim(dist.claims, userAddress);
       if (!claim) return null;
 
       if (dist.metadata?.reclaimed === true) return null;
@@ -223,7 +238,10 @@ export async function POST(request: NextRequest) {
   const { contractAddress, distributionId, index } = body;
 
   if (!contractAddress || distributionId == null || index == null) {
-    return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing fields" },
+      { status: 400 }
+    );
   }
 
   const key = `${contractAddress}:${distributionId}:${index}`;
