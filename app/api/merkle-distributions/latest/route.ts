@@ -122,9 +122,21 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const userAddress = url.searchParams.get("address")?.toLowerCase();
 
+  // DEBUG: Log what we're receiving
+  console.log("🔍 API /latest GET called");
+  console.log("🔍 Full URL:", request.url);
+  console.log("🔍 Search params:", url.searchParams.toString());
+  console.log("🔍 Address param raw:", url.searchParams.get("address"));
+  console.log("🔍 userAddress after lowercase:", userAddress);
+  console.log("🔍 userAddress type:", typeof userAddress);
+  console.log("🔍 userAddress truthy check:", !!userAddress);
+
   if (!userAddress) {
+    console.log("❌ No userAddress, returning 400 error");
     return NextResponse.json({ error: "Missing address parameter" }, { status: 400 });
   }
+
+  console.log("✅ userAddress validated:", userAddress);
 
   if (!isSupabaseConfigured() || !supabase) {
     return NextResponse.json(
