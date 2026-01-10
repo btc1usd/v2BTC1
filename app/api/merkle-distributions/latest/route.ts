@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
     try {
       console.log("Attempting Supabase query...");
       const { data: supabaseData, error } = await supabase
-        .from("merkle_distributions")
+        .from("merkle_distributions_prod")
         .select("id, merkle_root, claims, total_rewards, metadata")
         .order("id", { ascending: false })
         .limit(10);
