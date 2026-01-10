@@ -433,30 +433,18 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
 
   // Load distribution data - moved to component scope
   const loadDistributionData = async () => {
-    console.log("🔵 loadDistributionData CALLED");
-    console.log("🔵 address at call time:", address);
-    console.log("🔵 isConnected at call time:", isConnected);
-    
     try {
       setLoading(true);
       setError(null);
       console.log("=== Loading distribution data ===");
       console.log("Current address:", address);
-      console.log("isConnected:", isConnected);
-
-      // CRITICAL: Don't make API call if address is not available
-      if (!address) {
-        console.log("⚠️ Address not available, skipping API call");
-        setLoading(false);
-        return;
-      }
-
-      console.log("✅ Address is available, proceeding with API call");
 
       // Make API call with user address to get all their claims
       // Normalize address to lowercase for consistent matching
-      const normalizedAddress = address.toLowerCase();
-      const apiUrl = `/api/merkle-distributions/latest?address=${normalizedAddress}`;
+      const normalizedAddress = address?.toLowerCase();
+      const apiUrl = normalizedAddress
+        ? `/api/merkle-distributions/latest?address=${normalizedAddress}`
+        : "/api/merkle-distributions/latest";
 
       console.log("Making API call to", apiUrl);
       const response = await fetch(apiUrl);
@@ -569,7 +557,7 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
   // Contract address - use centralized configuration
   const MERKLE_DISTRIBUTOR_ADDRESS = CONTRACT_ADDRESSES.MERKLE_DISTRIBUTOR;
 
-  // Fetch distribution info for current distribution
+  // Fetch distribution stats
   const {
     data: distributionStats,
     isLoading: statsLoading,
@@ -579,12 +567,9 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
   } = useReadContract({
     address: MERKLE_DISTRIBUTOR_ADDRESS as `0x${string}`,
     abi: MERKLE_DISTRIBUTOR_ABI,
-    functionName: "getDistributionInfo",
-    args: distributionData?.distributionId && Number(distributionData.distributionId) > 0 
-      ? [BigInt(distributionData.distributionId)] 
-      : undefined,
+    functionName: "getCurrentDistributionStats",
     query: {
-      enabled: isConnected && !!distributionData?.distributionId && Number(distributionData.distributionId) > 0,
+      enabled: isConnected,
     },
   });
 
@@ -810,14 +795,32 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
         "Loading distribution data because isConnected and address are present"
       );
       loadDistributionData();
+    } else if (isConnected && !address) {
+      console.log("Connected but no address, will wait for address");
+      // Don't set loading to false here, wait for address to be available
     } else if (!isConnected) {
       console.log("Not connected, setting loading to false");
       setLoading(false);
-    } else if (isConnected && !address) {
-      console.log("Connected but no address yet, setting loading to false");
+    } else {
+      console.log("Unexpected state, setting loading to false");
       setLoading(false);
     }
   }, [address, isConnected]);
+
+  // Additional useEffect to handle case where address becomes available after initial render
+  useEffect(() => {
+    console.log("=== Address change useEffect triggered ===");
+    console.log("isConnected:", isConnected);
+    console.log("address:", address);
+    console.log("loading state:", loading);
+    console.log("distributionData:", distributionData);
+
+    // If we're connected, have an address, but haven't loaded data yet
+    if (isConnected && address && !distributionData && loading) {
+      console.log("Loading distribution data because address became available");
+      loadDistributionData();
+    }
+  }, [address, isConnected, distributionData, loading]);
 
   if (!isConnected) {
     return (
@@ -896,13 +899,11 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
   }
 
   const stats = distributionStats as
-    | [string, bigint, bigint, bigint, boolean] // [root, totalTokens, totalClaimed, timestamp, finalized]
+    | [bigint, bigint, bigint, bigint]
     | undefined;
   const totalTokens = stats ? formatUnits(stats[1], 8) : "0";
   const totalClaimed = stats ? formatUnits(stats[2], 8) : "0";
-  const percentageClaimed = stats && stats[1] > BigInt(0)
-    ? Number((stats[2] * BigInt(10000)) / stats[1]) / 100
-    : 0;
+  const percentageClaimed = stats ? Number(stats[3]) / 100 : 0;
 
   const userRewardAmount = userClaim
     ? formatUnits(userClaim.amount as any, 8)
