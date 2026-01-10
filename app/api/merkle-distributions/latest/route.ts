@@ -3,40 +3,43 @@ import { ethers } from "ethers";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { executeWithProviderFallback } from "@/lib/rpc-provider";
 
+/* Force dynamic execution */
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-/* ================= CACHE ================= */
-
+/* ============================================================
+   CACHE SETTINGS
+============================================================ */
 const CLAIM_STATUS_CACHE = new Map<
   string,
   { claimed: boolean; timestamp: number }
 >();
-const CLAIM_STATUS_TTL = 30_000;
+const CLAIM_STATUS_TTL = 30 * 1000;
 
-/* ================= ABI ================= */
-
+/* ============================================================
+   CONTRACT ABI
+============================================================ */
 const MERKLE_DISTRIBUTOR_ABI = [
   {
-    inputs: [{ name: "distributionId", type: "uint256" }],
+    inputs: [{ internalType: "uint256", name: "distributionId", type: "uint256" }],
     name: "getDistributionInfo",
     outputs: [
-      { name: "root", type: "bytes32" },
-      { name: "totalTokens", type: "uint256" },
-      { name: "totalClaimed", type: "uint256" },
-      { name: "timestamp", type: "uint256" },
-      { name: "finalized", type: "bool" }
+      { internalType: "bytes32", name: "root", type: "bytes32" },
+      { internalType: "uint256", name: "totalTokens", type: "uint256" },
+      { internalType: "uint256", name: "totalClaimed", type: "uint256" },
+      { internalType: "uint256", name: "timestamp", type: "uint256" },
+      { internalType: "bool", name: "finalized", type: "bool" }
     ],
     stateMutability: "view",
     type: "function"
   },
   {
     inputs: [
-      { name: "distributionId", type: "uint256" },
-      { name: "index", type: "uint256" }
+      { internalType: "uint256", name: "distributionId", type: "uint256" },
+      { internalType: "uint256", name: "index", type: "uint256" }
     ],
     name: "isClaimed",
-    outputs: [{ type: "bool" }],
+    outputs: [{ internalType: "bool", name: "", type: "bool" }],
     stateMutability: "view",
     type: "function"
   }
@@ -44,12 +47,15 @@ const MERKLE_DISTRIBUTOR_ABI = [
 
 function getContractAddress(): string {
   const addr = process.env.NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT;
-  if (!addr) throw new Error("Merkle Distributor not set");
+  if (!addr) throw new Error("Merkle Distributor contract not set");
   return addr;
 }
 
-/* ================= HELPERS ================= */
+/* ============================================================
+   HELPERS
+============================================================ */
 
+/* Safe JSON parse for Supabase string columns */
 function safeJsonParse<T>(value: any, fallback: T): T {
   if (!value) return fallback;
   if (typeof value === "object") return value;
@@ -60,18 +66,17 @@ function safeJsonParse<T>(value: any, fallback: T): T {
   }
 }
 
+/* Find user claim regardless of claim key structure */
 function findUserClaim(
-  claims: Record<string, any> | any[],
+  claims: Record<string, any>,
   userAddress: string
 ) {
   const addr = userAddress.toLowerCase();
 
-  if (Array.isArray(claims)) {
-    return claims.find(c => c?.account?.toLowerCase() === addr);
-  }
-
-  for (const v of Object.values(claims || {})) {
-    if (v?.account?.toLowerCase() === addr) return v;
+  for (const value of Object.values(claims || {})) {
+    if (value?.account?.toLowerCase() === addr) {
+      return value;
+    }
   }
 
   return null;
@@ -97,9 +102,10 @@ async function checkClaimStatusCached(
           MERKLE_DISTRIBUTOR_ABI,
           provider
         );
-        return contract.isClaimed(distributionId, index);
+        return await contract.isClaimed(distributionId, index);
       },
-      Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453")
+      Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453"),
+      { timeout: 15000, maxRetries: 3 }
     );
 
     CLAIM_STATUS_CACHE.set(key, { claimed, timestamp: Date.now() });
@@ -109,19 +115,24 @@ async function checkClaimStatusCached(
   }
 }
 
-/* ================= GET ================= */
+/* ============================================================
+   GET HANDLER
+============================================================ */
+export async function GET(request: NextRequest) {
+  const url = new URL(request.url);
+  const userAddress = url.searchParams.get("address")?.toLowerCase();
 
-export async function GET(req: NextRequest) {
-  const address = req.nextUrl.searchParams.get("address");
-  if (!address) {
-    return NextResponse.json({ error: "Missing address" }, { status: 400 });
+  if (!userAddress) {
+    return NextResponse.json({ error: "Missing address parameter" }, { status: 400 });
   }
 
-  if (!supabase || !isSupabaseConfigured()) {
-    return NextResponse.json({ count: 0, userDistributions: [] });
+  if (!isSupabaseConfigured() || !supabase) {
+    return NextResponse.json(
+      { count: 0, userDistributions: [] },
+      { status: 500 }
+    );
   }
 
-  const userAddress = address.toLowerCase();
   const contractAddress = getContractAddress();
 
   const { data } = await supabase
@@ -130,33 +141,39 @@ export async function GET(req: NextRequest) {
     .order("id", { ascending: false })
     .limit(10);
 
-  if (!data) {
+  if (!data || data.length === 0) {
     return NextResponse.json({ count: 0, userDistributions: [] });
   }
 
-  const parsed = data.map((row) => ({
-    ...row,
+  /* Parse Supabase rows */
+  const parsed = data.map((row: any) => ({
+    id: row.id,
+    merkle_root: row.merkle_root,
+    total_rewards: row.total_rewards,
     claims: safeJsonParse<Record<string, any>>(row.claims, {}),
     metadata: safeJsonParse<Record<string, any>>(row.metadata, {})
   }));
 
+  /* Verify on-chain */
   const verified = await Promise.all(
     parsed.map(async (dist) => {
       try {
         const [root, totalTokens, totalClaimed, timestamp, finalized] =
           await executeWithProviderFallback(
             async (provider) => {
-              const c = new ethers.Contract(
+              const contract = new ethers.Contract(
                 contractAddress,
                 MERKLE_DISTRIBUTOR_ABI,
                 provider
               );
-              return c.getDistributionInfo(BigInt(dist.id));
+              return await contract.getDistributionInfo(BigInt(dist.id));
             },
             Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453")
           );
 
-        if (root.toLowerCase() !== dist.merkle_root.toLowerCase()) return null;
+        if (root.toLowerCase() !== dist.merkle_root.toLowerCase()) {
+          return null;
+        }
 
         return {
           ...dist,
@@ -172,10 +189,12 @@ export async function GET(req: NextRequest) {
     })
   );
 
+  /* Extract user distributions */
   const userDistributions = await Promise.all(
     verified.filter(Boolean).map(async (dist: any) => {
       const claim = findUserClaim(dist.claims, userAddress);
       if (!claim) return null;
+
       if (dist.metadata?.reclaimed === true) return null;
 
       const claimedOnChain = await checkClaimStatusCached(
@@ -208,11 +227,25 @@ export async function GET(req: NextRequest) {
   });
 }
 
-/* ================= POST ================= */
+/* ============================================================
+   POST: CACHE INVALIDATION
+============================================================ */
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+  const { contractAddress, distributionId, index } = body;
 
-export async function POST(req: NextRequest) {
-  const { contractAddress, distributionId, index } = await req.json();
+  if (!contractAddress || distributionId == null || index == null) {
+    return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  }
+
   const key = `${contractAddress}:${distributionId}:${index}`;
   CLAIM_STATUS_CACHE.delete(key);
+
+  for (const k of CLAIM_STATUS_CACHE.keys()) {
+    if (k.includes(`:${distributionId}:`)) {
+      CLAIM_STATUS_CACHE.delete(k);
+    }
+  }
+
   return NextResponse.json({ success: true });
 }
