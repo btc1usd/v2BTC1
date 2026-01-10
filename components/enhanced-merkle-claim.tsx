@@ -433,6 +433,10 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
 
   // Load distribution data - moved to component scope
   const loadDistributionData = async () => {
+    console.log("🔵 loadDistributionData CALLED");
+    console.log("🔵 address at call time:", address);
+    console.log("🔵 isConnected at call time:", isConnected);
+    
     try {
       setLoading(true);
       setError(null);
@@ -446,6 +450,8 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
         setLoading(false);
         return;
       }
+
+      console.log("✅ Address is available, proceeding with API call");
 
       // Make API call with user address to get all their claims
       // Normalize address to lowercase for consistent matching
