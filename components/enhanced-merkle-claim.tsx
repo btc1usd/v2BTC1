@@ -438,13 +438,19 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
       setError(null);
       console.log("=== Loading distribution data ===");
       console.log("Current address:", address);
+      console.log("isConnected:", isConnected);
+
+      // CRITICAL: Don't make API call if address is not available
+      if (!address) {
+        console.log("⚠️ Address not available, skipping API call");
+        setLoading(false);
+        return;
+      }
 
       // Make API call with user address to get all their claims
       // Normalize address to lowercase for consistent matching
-      const normalizedAddress = address?.toLowerCase();
-      const apiUrl = normalizedAddress
-        ? `/api/merkle-distributions/latest?address=${normalizedAddress}`
-        : "/api/merkle-distributions/latest";
+      const normalizedAddress = address.toLowerCase();
+      const apiUrl = `/api/merkle-distributions/latest?address=${normalizedAddress}`;
 
       console.log("Making API call to", apiUrl);
       const response = await fetch(apiUrl);
