@@ -3,43 +3,40 @@ import { ethers } from "ethers";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { executeWithProviderFallback } from "@/lib/rpc-provider";
 
-/* Force dynamic execution */
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-/* ============================================================
-   CACHE SETTINGS
-============================================================ */
+/* ================= CACHE ================= */
+
 const CLAIM_STATUS_CACHE = new Map<
   string,
   { claimed: boolean; timestamp: number }
 >();
-const CLAIM_STATUS_TTL = 30 * 1000;
+const CLAIM_STATUS_TTL = 30_000;
 
-/* ============================================================
-   CONTRACT ABI
-============================================================ */
+/* ================= ABI ================= */
+
 const MERKLE_DISTRIBUTOR_ABI = [
   {
-    inputs: [{ internalType: "uint256", name: "distributionId", type: "uint256" }],
+    inputs: [{ name: "distributionId", type: "uint256" }],
     name: "getDistributionInfo",
     outputs: [
-      { internalType: "bytes32", name: "root", type: "bytes32" },
-      { internalType: "uint256", name: "totalTokens", type: "uint256" },
-      { internalType: "uint256", name: "totalClaimed", type: "uint256" },
-      { internalType: "uint256", name: "timestamp", type: "uint256" },
-      { internalType: "bool", name: "finalized", type: "bool" }
+      { name: "root", type: "bytes32" },
+      { name: "totalTokens", type: "uint256" },
+      { name: "totalClaimed", type: "uint256" },
+      { name: "timestamp", type: "uint256" },
+      { name: "finalized", type: "bool" }
     ],
     stateMutability: "view",
     type: "function"
   },
   {
     inputs: [
-      { internalType: "uint256", name: "distributionId", type: "uint256" },
-      { internalType: "uint256", name: "index", type: "uint256" }
+      { name: "distributionId", type: "uint256" },
+      { name: "index", type: "uint256" }
     ],
     name: "isClaimed",
-    outputs: [{ internalType: "bool", name: "", type: "bool" }],
+    outputs: [{ type: "bool" }],
     stateMutability: "view",
     type: "function"
   }
@@ -47,15 +44,22 @@ const MERKLE_DISTRIBUTOR_ABI = [
 
 function getContractAddress(): string {
   const addr = process.env.NEXT_PUBLIC_MERKLE_DISTRIBUTOR_CONTRACT;
-  if (!addr) throw new Error("Merkle Distributor contract not set");
+  if (!addr) throw new Error("Merkle Distributor not set");
   return addr;
 }
 
-/* ============================================================
-   HELPERS
-============================================================ */
+/* ================= HELPERS ================= */
 
-/* Find user claim regardless of claim structure */
+function safeJsonParse<T>(value: any, fallback: T): T {
+  if (!value) return fallback;
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
 function findUserClaim(
   claims: Record<string, any> | any[],
   userAddress: string
@@ -63,15 +67,11 @@ function findUserClaim(
   const addr = userAddress.toLowerCase();
 
   if (Array.isArray(claims)) {
-    return claims.find(
-      (c) => c?.account?.toLowerCase() === addr
-    );
+    return claims.find(c => c?.account?.toLowerCase() === addr);
   }
 
-  for (const value of Object.values(claims || {})) {
-    if (value?.account?.toLowerCase() === addr) {
-      return value;
-    }
+  for (const v of Object.values(claims || {})) {
+    if (v?.account?.toLowerCase() === addr) return v;
   }
 
   return null;
@@ -97,10 +97,9 @@ async function checkClaimStatusCached(
           MERKLE_DISTRIBUTOR_ABI,
           provider
         );
-        return await contract.isClaimed(distributionId, index);
+        return contract.isClaimed(distributionId, index);
       },
-      Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453"),
-      { timeout: 15000, maxRetries: 3 }
+      Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453")
     );
 
     CLAIM_STATUS_CACHE.set(key, { claimed, timestamp: Date.now() });
@@ -110,66 +109,54 @@ async function checkClaimStatusCached(
   }
 }
 
-/* ============================================================
-   GET HANDLER
-============================================================ */
-export async function GET(request: NextRequest) {
-  const url = new URL(request.url);
-  const addressParam = url.searchParams.get("address");
+/* ================= GET ================= */
 
-  if (!addressParam) {
-    return NextResponse.json(
-      { error: "Missing address parameter" },
-      { status: 400 }
-    );
+export async function GET(req: NextRequest) {
+  const address = req.nextUrl.searchParams.get("address");
+  if (!address) {
+    return NextResponse.json({ error: "Missing address" }, { status: 400 });
   }
 
-  const userAddress = addressParam.toLowerCase();
+  if (!supabase || !isSupabaseConfigured()) {
+    return NextResponse.json({ count: 0, userDistributions: [] });
+  }
+
+  const userAddress = address.toLowerCase();
   const contractAddress = getContractAddress();
 
-  if (!isSupabaseConfigured() || !supabase) {
-    return NextResponse.json(
-      { error: "Supabase not configured", count: 0, userDistributions: [] },
-      { status: 500 }
-    );
-  }
-
-  /* Always use production table */
-  const TABLE_NAME = "merkle_distributions_prod";
-
-  const { data, error } = await supabase
-    .from(TABLE_NAME)
+  const { data } = await supabase
+    .from("merkle_distributions_prod")
     .select("id, merkle_root, claims, total_rewards, metadata")
     .order("id", { ascending: false })
     .limit(10);
 
-  if (error || !data) {
-    return NextResponse.json(
-      { error: "Failed to load distributions", count: 0, userDistributions: [] },
-      { status: 500 }
-    );
+  if (!data) {
+    return NextResponse.json({ count: 0, userDistributions: [] });
   }
 
-  /* Verify distributions on-chain */
+  const parsed = data.map((row) => ({
+    ...row,
+    claims: safeJsonParse<Record<string, any>>(row.claims, {}),
+    metadata: safeJsonParse<Record<string, any>>(row.metadata, {})
+  }));
+
   const verified = await Promise.all(
-    data.map(async (dist) => {
+    parsed.map(async (dist) => {
       try {
         const [root, totalTokens, totalClaimed, timestamp, finalized] =
           await executeWithProviderFallback(
             async (provider) => {
-              const contract = new ethers.Contract(
+              const c = new ethers.Contract(
                 contractAddress,
                 MERKLE_DISTRIBUTOR_ABI,
                 provider
               );
-              return await contract.getDistributionInfo(BigInt(dist.id));
+              return c.getDistributionInfo(BigInt(dist.id));
             },
             Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453")
           );
 
-        if (root.toLowerCase() !== dist.merkle_root.toLowerCase()) {
-          return null;
-        }
+        if (root.toLowerCase() !== dist.merkle_root.toLowerCase()) return null;
 
         return {
           ...dist,
@@ -185,14 +172,10 @@ export async function GET(request: NextRequest) {
     })
   );
 
-  const valid = verified.filter(Boolean) as any[];
-
-  /* Extract user distributions */
   const userDistributions = await Promise.all(
-    valid.map(async (dist) => {
+    verified.filter(Boolean).map(async (dist: any) => {
       const claim = findUserClaim(dist.claims, userAddress);
       if (!claim) return null;
-
       if (dist.metadata?.reclaimed === true) return null;
 
       const claimedOnChain = await checkClaimStatusCached(
@@ -216,42 +199,20 @@ export async function GET(request: NextRequest) {
     })
   );
 
-  const result = userDistributions
-    .filter(Boolean)
-    .sort((a, b) => b.id - a.id);
+  const result = userDistributions.filter(Boolean);
 
-  return NextResponse.json(
-    {
-      address: userAddress,
-      count: result.length,
-      userDistributions: result
-    },
-    { headers: { "Cache-Control": "no-store" } }
-  );
+  return NextResponse.json({
+    address: userAddress,
+    count: result.length,
+    userDistributions: result
+  });
 }
 
-/* ============================================================
-   POST: CACHE INVALIDATION
-============================================================ */
-export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { contractAddress, distributionId, index } = body;
+/* ================= POST ================= */
 
-  if (!contractAddress || distributionId == null || index == null) {
-    return NextResponse.json(
-      { error: "Missing fields" },
-      { status: 400 }
-    );
-  }
-
+export async function POST(req: NextRequest) {
+  const { contractAddress, distributionId, index } = await req.json();
   const key = `${contractAddress}:${distributionId}:${index}`;
   CLAIM_STATUS_CACHE.delete(key);
-
-  for (const k of CLAIM_STATUS_CACHE.keys()) {
-    if (k.includes(`:${distributionId}:`)) {
-      CLAIM_STATUS_CACHE.delete(k);
-    }
-  }
-
   return NextResponse.json({ success: true });
 }
