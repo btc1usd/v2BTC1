@@ -1,0 +1,150 @@
+{
+  "root": "0x468454a52c854a38aad68d94f2f71f39a8b777c32a0ccc5417c1fc43f6346147",
+  "totalRewards": "1017758498",
+  "recipientCount": 12,
+  "poolsProcessed": 3,
+  "block": 40596432,
+  "timestamp": "2026-01-15T02:58:15.132Z",
+  "claims": [
+    {
+      "index": 8,
+      "account": "0xb7addd0653f7e517b1d7e9e0beec9a8bf3a62d59",
+      "amount": "834000000",
+      "totalBalance": "83400000000",
+      "proof": [
+        "0xee3169d99b16d445c8154a1c92ce60e0e7564f64ee22bf067d4dad5c85ec7228",
+        "0x3d9490b690d185e27e735e5d482838e029c6f61f32c20bc8823b16621e53e633",
+        "0x5bf425c448272fddc5dc962ffae207c71b496605de61080d650f1f70c99063bc"
+      ]
+    },
+    {
+      "index": 3,
+      "account": "0xa1fcf334f8ee86ecad93d4271ed25a50d60aa72b",
+      "amount": "134774278",
+      "totalBalance": "13477427887",
+      "proof": [
+        "0x04e5b23d1cd9f32b857e48896cf88b0d835c7b8c7400240c3f09855a4857468b",
+        "0xad1f6752af297cc6e51d899fc1e6811f53baa2c5e86869e9a3e8393c70573cdd",
+        "0xedf3988ea55adf0299fac4704edb71a64e926fd2ca8b78b2efc304061e681ca7",
+        "0x47a8131d1220b0db0cedc4f8bb289ad52a8f985041344c1f8070ef098aa728be"
+      ]
+    },
+    {
+      "index": 6,
+      "account": "0x498581ff718922c3f8e6a244956af099b2652b2b",
+      "amount": "11157674",
+      "totalBalance": "1115767402",
+      "proof": [
+        "0x3a1909efd773ff5f250a4364875ed5ecbacb780c05c4fdcb9a1f72b490bf92d7",
+        "0x94152465fb014c82b0b9917cd4a6e8a0d2a8048a2c1cb57d7a8fef9da32d8b59",
+        "0x4d62f67b3c57cb3adf16f896d0cfbe3ee71335f9ccf89e64667b7835363f90e6",
+        "0x47a8131d1220b0db0cedc4f8bb289ad52a8f985041344c1f8070ef098aa728be"
+      ]
+    },
+    {
+      "index": 1,
+      "account": "0x62d3b45d872dd24cfb5f62e539e8c22068c30cdf",
+      "amount": "9990526",
+      "totalBalance": "999052657",
+      "proof": [
+        "0xacd0e5649a48eeaa576e560e862cab7767c1af3b909fca8ca48b65e8b7f3fd1c",
+        "0x8ce17acfdc5398a72be0e1fa2e390aa30edc42482c99ff3cb1f16bf89990030a",
+        "0xedf3988ea55adf0299fac4704edb71a64e926fd2ca8b78b2efc304061e681ca7",
+        "0x47a8131d1220b0db0cedc4f8bb289ad52a8f985041344c1f8070ef098aa728be"
+      ]
+    },
+    {
+      "index": 2,
+      "account": "0x9143c43e48344f89ff7ac318844bd0ae038a2bf6",
+      "amount": "9981544",
+      "totalBalance": "998154408",
+      "proof": [
+        "0xe0f3fa873280eb1815f5768f16f15ff2d493b95d49c71e376e88d5a017af186c",
+        "0xad1f6752af297cc6e51d899fc1e6811f53baa2c5e86869e9a3e8393c70573cdd",
+        "0xedf3988ea55adf0299fac4704edb71a64e926fd2ca8b78b2efc304061e681ca7",
+        "0x47a8131d1220b0db0cedc4f8bb289ad52a8f985041344c1f8070ef098aa728be"
+      ]
+    },
+    {
+      "index": 9,
+      "account": "0x248704c5491081d226ef8b98730d7f13b7bc7b3a",
+      "amount": "9980546",
+      "totalBalance": "998054603",
+      "proof": [
+        "0x38a8c2cd400bde00477fd35ece42ac61390fc6fcebcc77bad599964354338ff6",
+        "0x3d9490b690d185e27e735e5d482838e029c6f61f32c20bc8823b16621e53e633",
+        "0x5bf425c448272fddc5dc962ffae207c71b496605de61080d650f1f70c99063bc"
+      ]
+    },
+    {
+      "index": 0,
+      "account": "0x6210ffe7340dc47d5da4b888e850c036cc6ee835",
+      "amount": "7862432",
+      "totalBalance": "786243250",
+      "proof": [
+        "0xd2ea06faef28158166ddf0583a09c4d36cfab8cf29eb1fa8d1df3a921a193526",
+        "0x8ce17acfdc5398a72be0e1fa2e390aa30edc42482c99ff3cb1f16bf89990030a",
+        "0xedf3988ea55adf0299fac4704edb71a64e926fd2ca8b78b2efc304061e681ca7",
+        "0x47a8131d1220b0db0cedc4f8bb289ad52a8f985041344c1f8070ef098aa728be"
+      ]
+    },
+    {
+      "index": 5,
+      "account": "0x5aafc1f252d544f744d17a4e734afd6efc47ede4",
+      "amount": "8058",
+      "totalBalance": "805810",
+      "proof": [
+        "0x787cc48dc19038201bacf53d2683e6d6ab8e6f0f7f3147fb026b878d005755e5",
+        "0x9a58f6b797bde19360ef7327cd3672b1677902ff2e8a275c668a7aaa0cb01846",
+        "0x4d62f67b3c57cb3adf16f896d0cfbe3ee71335f9ccf89e64667b7835363f90e6",
+        "0x47a8131d1220b0db0cedc4f8bb289ad52a8f985041344c1f8070ef098aa728be"
+      ]
+    },
+    {
+      "index": 4,
+      "account": "0xc138d890e52a8240c48b4dbdfc8b5e23ae1b9a63",
+      "amount": "3243",
+      "totalBalance": "324343",
+      "proof": [
+        "0x49e4b9bf45c87a590180a2e148703e4f217fbe78aab06a10604b95781ed69a83",
+        "0x9a58f6b797bde19360ef7327cd3672b1677902ff2e8a275c668a7aaa0cb01846",
+        "0x4d62f67b3c57cb3adf16f896d0cfbe3ee71335f9ccf89e64667b7835363f90e6",
+        "0x47a8131d1220b0db0cedc4f8bb289ad52a8f985041344c1f8070ef098aa728be"
+      ]
+    },
+    {
+      "index": 10,
+      "account": "0x6ff65a3dce529c47880b4c83322da43f7f740126",
+      "amount": "99",
+      "totalBalance": "9981",
+      "proof": [
+        "0x088450897aa36ad7e33210a8c35d150237d898d6f98e25e8589c1cac1c00ae0a",
+        "0x63b919ce576357562c56268ca995a03282e4664f103970d1ba57b36321e1bb1d",
+        "0x5bf425c448272fddc5dc962ffae207c71b496605de61080d650f1f70c99063bc"
+      ]
+    },
+    {
+      "index": 11,
+      "account": "0x0000000000000000000000000000000000000001",
+      "amount": "88",
+      "totalBalance": "8815",
+      "proof": [
+        "0xa001cbcd9904ec3a5294375f237a907d644bc7827f96d8c47205638ab4cbd1f3",
+        "0x63b919ce576357562c56268ca995a03282e4664f103970d1ba57b36321e1bb1d",
+        "0x5bf425c448272fddc5dc962ffae207c71b496605de61080d650f1f70c99063bc"
+      ]
+    },
+    {
+      "index": 7,
+      "account": "0x79c360fca305a6a8082c94e3fc3c5efc9dfd5caf",
+      "amount": "10",
+      "totalBalance": "1031",
+      "proof": [
+        "0x161689f3b69706354a7a9292af82ab1ca0b1a43abc854630b7bcb67d19b3c1c7",
+        "0x94152465fb014c82b0b9917cd4a6e8a0d2a8048a2c1cb57d7a8fef9da32d8b59",
+        "0x4d62f67b3c57cb3adf16f896d0cfbe3ee71335f9ccf89e64667b7835363f90e6",
+        "0x47a8131d1220b0db0cedc4f8bb289ad52a8f985041344c1f8070ef098aa728be"
+      ]
+    }
+  ]
+}

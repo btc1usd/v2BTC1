@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 
 /* ================= CONFIG ================= */
 
-const TARGET_BLOCK = 40596432;
+const TARGET_BLOCK = 40900459;
 const BTC1_DECIMALS = 8;
 
 const BTC1USD = "0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5".toLowerCase();

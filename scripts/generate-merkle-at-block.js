@@ -784,6 +784,12 @@ async function generateMerkleTree() {
     };
   });
 
+  // TODO: Enable Supabase saving after testing
+  console.log("\n⚠️  SUPABASE SAVING DISABLED (Testing Mode)");
+  console.log("   Output ready for testing - not saved to database");
+  console.log("   Enable saving in production by uncommenting Supabase code\n");
+  
+  /*
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -796,7 +802,7 @@ async function generateMerkleTree() {
   }
 
   // Get the next ID
-  const TABLE_NAME = process.env.SUPABASE_TABLE || 'merkle_distributions_prod'; // Default to prod table
+  const TABLE_NAME = process.env.SUPABASE_TABLE || 'merkle_distributions_prod';
   console.log(`   💾 Using Supabase table: ${TABLE_NAME}`);
   
   const { data: existing, error: fetchError } = await supabase
@@ -833,6 +839,7 @@ async function generateMerkleTree() {
   } else {
     console.log("💾 Saved to Supabase successfully!\n");
   }
+  */
 }
 
 warmUpProvider()

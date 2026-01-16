@@ -1,4 +1,4 @@
-"use client"
+z"use client"
 
 import { WagmiWalletConnect } from "@/components/wagmi-wallet-connect"
 export * from "@/components/wagmi-wallet-connect"
