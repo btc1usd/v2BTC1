@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 
 /* ================= CONFIG ================= */
 
-const TARGET_BLOCK = 19176205; // Base Sepolia block
+const TARGET_BLOCK = 36427136; // Base Sepolia block
 const BTC1_DECIMALS = 8;
 
 // Base Sepolia addresses
