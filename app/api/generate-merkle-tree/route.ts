@@ -8,9 +8,9 @@ import { createClient } from '@supabase/supabase-js';
 const TARGET_BLOCK = 36427136; // Base Sepolia block
 const BTC1_DECIMALS = 8;
 
-// Base Sepolia addresses
-const BTC1USD = "0x4fd271e3970482e7ce098e46b57ba83be999087e".toLowerCase();
-const WEEKLY = "0x3e93Ed8862e20F9BF4aBc67BdbD79C14d5026F4C";
+// Base Sepolia addresses (checksummed)
+const BTC1USD = "0x4Fd271e3970482E7ce098E46B57ba83Be999087E".toLowerCase();
+const WEEKLY = "0x3E93ed8862E20f9BF4abc67bDbD79c14D5026f4c";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 const ONE = "0x0000000000000000000000000000000000000001";
