@@ -3089,8 +3089,8 @@ function Dashboard() {
                   </CardContent>
                 </Card>
 
-                {/* Swap Card - Krystal Integration */}
-                <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
+                {/* Swap Card - Krystal Integration - Hidden for now */}
+                {/* <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-gray-300">
                       Swap for BTC1
@@ -3114,7 +3114,7 @@ function Dashboard() {
                       SWAP
                     </Button>
                   </CardContent>
-                </Card>
+                </Card> */}
 
                 {/* Rewards Card */}
                 <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
