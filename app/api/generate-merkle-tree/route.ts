@@ -5,11 +5,12 @@ import { createClient } from '@supabase/supabase-js';
 
 /* ================= CONFIG ================= */
 
-const TARGET_BLOCK = 40900459;
+const TARGET_BLOCK = 19176205; // Base Sepolia block
 const BTC1_DECIMALS = 8;
 
-const BTC1USD = "0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5".toLowerCase();
-const WEEKLY = "0x1FEf2533641cA69B9E30fA734944BB219b2152B6";
+// Base Sepolia addresses
+const BTC1USD = "0x4fd271e3970482e7ce098e46b57ba83be999087e".toLowerCase();
+const WEEKLY = "0x3e93Ed8862e20F9BF4aBc67BdbD79C14d5026F4C";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 const ONE = "0x0000000000000000000000000000000000000001";
@@ -154,7 +155,7 @@ async function alchemyTransfers(token: string, retries = 3): Promise<any[]> {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const res = await fetch(
-        `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+        `https://base-sepolia.g.alchemy.com/v2/${alchemyApiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -208,10 +209,10 @@ export async function POST() {
       throw new Error('ALCHEMY_API_KEY not found in environment variables');
     }
 
-    const ALCHEMY_RPC = `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
+    const ALCHEMY_RPC = `https://base-sepolia.g.alchemy.com/v2/${alchemyApiKey}`;
     const provider = new ethers.JsonRpcProvider(
       ALCHEMY_RPC,
-      { name: "base", chainId: 8453 },
+      { name: "base-sepolia", chainId: 84532 },
       { staticNetwork: true, polling: false }
     );
 
