@@ -223,10 +223,26 @@ export async function POST() {
     const weekly = new ethers.Contract(WEEKLY, WEEKLY_ABI, provider);
     const btc1 = new ethers.Contract(BTC1USD, ERC20_ABI, provider);
 
-    const excluded = new Set(
-      (await weekly.getExcludedAddresses({ blockTag: TARGET_BLOCK }))
-        .map((a: string) => a.toLowerCase())
-    );
+    // Try to get excluded addresses, fallback to empty set if contract call fails
+    let excluded = new Set<string>();
+    try {
+      const excludedAddresses = await weekly.getExcludedAddresses({ blockTag: TARGET_BLOCK });
+      excluded = new Set(
+        excludedAddresses.map((a: string) => a.toLowerCase())
+      );
+      console.log(`✅ Found ${excluded.size} excluded addresses`);
+    } catch (error: any) {
+      console.warn('⚠️ Could not fetch excluded addresses from contract:', error.message);
+      console.warn('⚠️ Continuing with empty exclusion list...');
+      // Use default protocol addresses as excluded
+      excluded = new Set([
+        WEEKLY.toLowerCase(),
+        BTC1USD.toLowerCase(),
+        ZERO.toLowerCase(),
+        ONE.toLowerCase()
+      ]);
+      console.log(`✅ Using default exclusion list with ${excluded.size} addresses`);
+    }
 
     const balances = new Map<string, bigint>();
 
