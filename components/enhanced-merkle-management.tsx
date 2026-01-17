@@ -513,13 +513,14 @@ Check console for more details.`);
         console.log('Merkle tree generated successfully:', result);
         
         setMerkleRootInput(result.merkleRoot);
-        setTotalTokens(formatUnits(result.totalRewards, 8));
+        // Use the formatted value directly from API
+        setTotalTokens(result.totalRewardsFormatted);
         
         // Show success message with details
         alert(`✅ Merkle tree generated successfully!
 
 🌳 Merkle Root: ${result.merkleRoot.slice(0, 20)}...
-💰 Total Rewards: ${formatUnits(result.totalRewards, 8)} BTC1USD
+💰 Total Rewards: ${result.totalRewardsFormatted} BTC1USD
 👥 Active Holders: ${result.activeHolders}
 📋 Claims: ${result.claims}
 
@@ -572,7 +573,8 @@ Please check the console for more details and try again.`);
       // Step 2: Automatically set the merkle root
       console.log('Step 2: Setting merkle root...');
       setMerkleRootInput(result.merkleRoot);
-      setTotalTokens(formatUnits(BigInt(result.totalRewards), 8));
+      // Use the formatted value directly from API
+      setTotalTokens(result.totalRewardsFormatted);
       
       // Wait a moment for state to update
       setTimeout(() => {
@@ -581,7 +583,7 @@ Please check the console for more details and try again.`);
             address: WEEKLY_DISTRIBUTION_ADDRESS as `0x${string}`,
             abi: WEEKLY_DISTRIBUTION_ABI,
             functionName: 'updateMerkleRoot',
-            args: [result.merkleRoot as `0x${string}`, parseUnits(formatUnits(BigInt(result.totalRewards), 8), 8)],
+            args: [result.merkleRoot as `0x${string}`, BigInt(result.totalRewards)],
           });
           
           console.log('Merkle root transaction submitted');
@@ -597,7 +599,7 @@ Please check the console for more details and try again.`);
 Users can now claim their rewards!
 
 Merkle Root: ${result.merkleRoot.slice(0, 20)}...
-Total Rewards: ${formatUnits(BigInt(result.totalRewards), 8)} BTC1USD
+Total Rewards: ${result.totalRewardsFormatted} BTC1USD
 Active Holders: ${result.activeHolders}`);
           }, 2000);
         }

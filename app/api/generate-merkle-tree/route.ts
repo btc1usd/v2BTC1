@@ -1,16 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import { MerkleTree } from 'merkletreejs';
 import { createClient } from '@supabase/supabase-js';
 
 /* ================= CONFIG ================= */
 
-const TARGET_BLOCK = 36427136; // Base Sepolia block
 const BTC1_DECIMALS = 8;
-
-// Base Sepolia addresses (checksummed) - from deployment-base-sepolia.json
-const BTC1USD = "0x43Cd5E8A5bdaEa790a23C4a5DcCc0c11E70C9daB".toLowerCase();
-const WEEKLY = "0xc03a2eB3191999AF651B11DCD81293aBf6e0307c";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 const ONE = "0x0000000000000000000000000000000000000001";
@@ -71,26 +66,26 @@ const UNISWAP_V4_ABI = [
 
 /* ================= HELPERS ================= */
 
-async function isContract(provider: ethers.JsonRpcProvider, addr: string): Promise<boolean> {
-  const code = await provider.getCode(addr, TARGET_BLOCK);
+async function isContract(provider: ethers.JsonRpcProvider, addr: string, blockTag: number): Promise<boolean> {
+  const code = await provider.getCode(addr, blockTag);
   return code !== "0x" && code.length > 2;
 }
 
-async function detectPoolTypeBySelectors(provider: ethers.JsonRpcProvider, addr: string) {
+async function detectPoolTypeBySelectors(provider: ethers.JsonRpcProvider, addr: string, blockTag: number) {
   const detectedTypes: string[] = [];
   
   try {
     // UniswapV2: getReserves() selector = 0x0902f1ac
     try {
       const uniV2 = new ethers.Contract(addr, UNIV2_ABI, provider);
-      const reserves = await uniV2.getReserves({ blockTag: TARGET_BLOCK });
+      const reserves = await uniV2.getReserves({ blockTag });
       if (reserves) detectedTypes.push(POOL_TYPES.UNISWAP_V2);
     } catch {}
     
     // Aerodrome: reserve0() and reserve1() selectors (V2-style)
     try {
       const aero = new ethers.Contract(addr, AERODROME_ABI, provider);
-      const r0 = await aero.reserve0({ blockTag: TARGET_BLOCK });
+      const r0 = await aero.reserve0({ blockTag });
       if (r0 !== undefined) detectedTypes.push(POOL_TYPES.AERODROME);
     } catch {}
     
@@ -98,7 +93,7 @@ async function detectPoolTypeBySelectors(provider: ethers.JsonRpcProvider, addr:
     // Check this before UniswapV3 to prioritize Aerodrome CL detection
     try {
       const aeroCL = new ethers.Contract(addr, CL_POOL_ABI, provider);
-      const slot0 = await aeroCL.slot0({ blockTag: TARGET_BLOCK });
+      const slot0 = await aeroCL.slot0({ blockTag });
       if (slot0) {
         // Try to distinguish Aerodrome CL from UniswapV3 by checking for Aerodrome-specific patterns
         // For now, both will be detected - can add more specific checks if needed
@@ -109,7 +104,7 @@ async function detectPoolTypeBySelectors(provider: ethers.JsonRpcProvider, addr:
     // UniswapV3: slot0() selector = 0x3850c7bd
     try {
       const uniV3 = new ethers.Contract(addr, CL_POOL_ABI, provider);
-      const slot0 = await uniV3.slot0({ blockTag: TARGET_BLOCK });
+      const slot0 = await uniV3.slot0({ blockTag });
       if (slot0 && !detectedTypes.includes(POOL_TYPES.AERODROME_CL)) {
         // Only add UniswapV3 if not already detected as Aerodrome CL
         detectedTypes.push(POOL_TYPES.UNISWAP_V3);
@@ -119,8 +114,8 @@ async function detectPoolTypeBySelectors(provider: ethers.JsonRpcProvider, addr:
     // UniswapV4: getCurrency0() and getLiquidity() selectors
     try {
       const uniV4 = new ethers.Contract(addr, UNISWAP_V4_ABI, provider);
-      const currency0 = await uniV4.getCurrency0({ blockTag: TARGET_BLOCK });
-      const liquidity = await uniV4.getLiquidity({ blockTag: TARGET_BLOCK });
+      const currency0 = await uniV4.getCurrency0({ blockTag });
+      const liquidity = await uniV4.getLiquidity({ blockTag });
       if (currency0 && liquidity !== undefined) detectedTypes.push(POOL_TYPES.UNISWAP_V4);
     } catch {}
   } catch {}
@@ -128,34 +123,38 @@ async function detectPoolTypeBySelectors(provider: ethers.JsonRpcProvider, addr:
   return detectedTypes;
 }
 
-async function detectPoolType(provider: ethers.JsonRpcProvider, addr: string): Promise<string> {
+async function detectPoolType(provider: ethers.JsonRpcProvider, addr: string, blockTag: number): Promise<string> {
   try {
-    const types = await detectPoolTypeBySelectors(provider, addr);
+    const types = await detectPoolTypeBySelectors(provider, addr, blockTag);
     return types.length > 0 ? types[0] : POOL_TYPES.UNKNOWN;
   } catch {
     return POOL_TYPES.UNKNOWN;
   }
 }
 
-async function isLPPool(provider: ethers.JsonRpcProvider, addr: string): Promise<boolean> {
-  if (MANUALLY_APPROVED_POOLS.includes(addr.toLowerCase())) return true;
-  if (!(await isContract(provider, addr))) return false;
+async function isLPPool(provider: ethers.JsonRpcProvider, addr: string, blockTag: number, manuallyApproved: string[]): Promise<boolean> {
+  if (manuallyApproved.includes(addr.toLowerCase())) return true;
+  if (!(await isContract(provider, addr, blockTag))) return false;
 
-  const poolType = await detectPoolType(provider, addr);
+  const poolType = await detectPoolType(provider, addr, blockTag);
   return poolType !== POOL_TYPES.UNKNOWN;
 }
 
-async function alchemyTransfers(token: string, retries = 3): Promise<any[]> {
-  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+async function alchemyTransfers(token: string, targetBlock: number, alchemyApiKey: string, chainId: number, retries = 3): Promise<any[]> {
   if (!alchemyApiKey) {
     console.log('⚠️ Alchemy API key not found');
     return [];
   }
 
+  // Determine RPC URL based on chain ID
+  const alchemyUrl = chainId === 84532
+    ? `https://base-sepolia.g.alchemy.com/v2/${alchemyApiKey}`
+    : `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const res = await fetch(
-        `https://base-sepolia.g.alchemy.com/v2/${alchemyApiKey}`,
+        alchemyUrl,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -165,7 +164,7 @@ async function alchemyTransfers(token: string, retries = 3): Promise<any[]> {
             method: "alchemy_getAssetTransfers",
             params: [{
               fromBlock: "0x0",
-              toBlock: `0x${TARGET_BLOCK.toString(16)}`,
+              toBlock: `0x${targetBlock.toString(16)}`,
               contractAddresses: [token],
               category: ["erc20"],
               excludeZeroValue: true,
@@ -200,25 +199,62 @@ async function alchemyTransfers(token: string, retries = 3): Promise<any[]> {
 
 /* ================= MAIN LOGIC ================= */
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    console.log(`🌳 Generating Merkle Tree @ block ${TARGET_BLOCK}`);
+    // Get contract addresses from environment variables
+    const BTC1USD = process.env.NEXT_PUBLIC_BTC1USD_CONTRACT?.toLowerCase();
+    const WEEKLY = process.env.NEXT_PUBLIC_WEEKLY_DISTRIBUTION_CONTRACT;
+    const CHAIN_ID = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+
+    if (!BTC1USD || !WEEKLY) {
+      throw new Error('Contract addresses not configured in environment variables');
+    }
+
+    console.log(`🌳 Generating Merkle Tree on chain ${CHAIN_ID}`);
+    console.log(`📍 BTC1USD: ${BTC1USD}`);
+    console.log(`📍 Weekly Distribution: ${WEEKLY}`);
+
+    // Parse request body to get optional block number
+    let TARGET_BLOCK: number | null = null;
+    try {
+      const body = await request.json();
+      if (body.blockNumber) {
+        TARGET_BLOCK = parseInt(body.blockNumber.toString());
+        console.log(`📍 Using provided block number: ${TARGET_BLOCK}`);
+      }
+    } catch {
+      // No body or invalid JSON - will use latest block
+    }
 
     const alchemyApiKey = process.env.ALCHEMY_API_KEY;
     if (!alchemyApiKey) {
       throw new Error('ALCHEMY_API_KEY not found in environment variables');
     }
 
-    const ALCHEMY_RPC = `https://base-sepolia.g.alchemy.com/v2/${alchemyApiKey}`;
+    // Determine RPC URL based on chain ID
+    const ALCHEMY_RPC = CHAIN_ID === 84532
+      ? `https://base-sepolia.g.alchemy.com/v2/${alchemyApiKey}`
+      : `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
+    
+    const networkName = CHAIN_ID === 84532 ? "base-sepolia" : "base";
+    
     const provider = new ethers.JsonRpcProvider(
       ALCHEMY_RPC,
-      { name: "base-sepolia", chainId: 84532 },
+      { name: networkName, chainId: CHAIN_ID },
       { staticNetwork: true, polling: false }
     );
 
     console.log("🔌 Warming up RPC connection...");
-    const block = await provider.getBlockNumber();
-    console.log("✅ RPC connected. Latest block:", block);
+    const latestBlock = await provider.getBlockNumber();
+    console.log("✅ RPC connected. Latest block:", latestBlock);
+
+    // Use provided block or latest block
+    if (!TARGET_BLOCK) {
+      TARGET_BLOCK = latestBlock;
+      console.log(`📍 Using latest block: ${TARGET_BLOCK}`);
+    }
+
+    console.log(`🌳 Generating Merkle Tree @ block ${TARGET_BLOCK}`);
 
     const weekly = new ethers.Contract(WEEKLY, WEEKLY_ABI, provider);
     const btc1 = new ethers.Contract(BTC1USD, ERC20_ABI, provider);
@@ -249,7 +285,7 @@ export async function POST() {
     /* ---------- STEP 1: Get ALL BTC1USD HOLDERS ---------- */
     console.log('\n📊 STEP 1: Fetching all BTC1USD holders (EOAs + Contracts)...');
     const allHolders = new Set<string>();
-    const transfers = await alchemyTransfers(BTC1USD);
+    const transfers = await alchemyTransfers(BTC1USD, TARGET_BLOCK, alchemyApiKey, CHAIN_ID);
     
     for (const t of transfers) {
       if (t.from) allHolders.add(t.from.toLowerCase());
@@ -266,9 +302,9 @@ export async function POST() {
     for (const addr of allHolders) {
       if (addr === ZERO || addr === ONE || excluded.has(addr) || EXCLUDED_POOLS.includes(addr)) continue;
       
-      if (await isContract(provider, addr)) {
-        if (await isLPPool(provider, addr)) {
-          const poolType = await detectPoolType(provider, addr);
+      if (await isContract(provider, addr, TARGET_BLOCK)) {
+        if (await isLPPool(provider, addr, TARGET_BLOCK, MANUALLY_APPROVED_POOLS)) {
+          const poolType = await detectPoolType(provider, addr, TARGET_BLOCK);
           detectedPools.push({ address: addr, type: poolType });
           console.log(`   🏊 LP Pool detected: ${addr} (${poolType})`);
           // DON'T add pools to eoas - we'll only distribute to their LP holders
@@ -343,7 +379,7 @@ export async function POST() {
         console.log(`   Fetching LP holders...`);
         
         // Get all LP token transfers to find holders
-        const lpTransfers = await alchemyTransfers(pool);
+        const lpTransfers = await alchemyTransfers(pool, TARGET_BLOCK, alchemyApiKey, CHAIN_ID);
         
         if (lpTransfers.length === 0) {
           console.log(`   ⚠️ No LP transfers found`);
@@ -499,7 +535,8 @@ export async function POST() {
     return NextResponse.json({
       success: true,
       merkleRoot,
-      totalRewards: ethers.formatUnits(totalRewards, BTC1_DECIMALS),
+      totalRewards: totalRewards.toString(), // Raw value for contract calls
+      totalRewardsFormatted: ethers.formatUnits(totalRewards, BTC1_DECIMALS), // Formatted for display
       activeHolders: claims.length,
       distributionId: nextId.toString(),
       claims: claims.length,
