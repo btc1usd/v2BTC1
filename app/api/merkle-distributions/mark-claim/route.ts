@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
       
       // First, get the current distribution data from Supabase
       const selectResult = await sb
-        .from('merkle_distributions')
+        .from('merkle_distributions_dev')
         .select('claims, metadata')
         .eq('id', Number(distributionId))
         .single();
