@@ -8,9 +8,9 @@ import { createClient } from '@supabase/supabase-js';
 const TARGET_BLOCK = 36427136; // Base Sepolia block
 const BTC1_DECIMALS = 8;
 
-// Base Sepolia addresses (checksummed)
-const BTC1USD = "0x4Fd271e3970482E7ce098E46B57ba83Be999087E".toLowerCase();
-const WEEKLY = "0x3E93ed8862E20f9BF4abc67bDbD79c14D5026f4c".toLowerCase();
+// Base Sepolia addresses (checksummed) - from deployment-base-sepolia.json
+const BTC1USD = "0x43Cd5E8A5bdaEa790a23C4a5DcCc0c11E70C9daB".toLowerCase();
+const WEEKLY = "0xc03a2eB3191999AF651B11DCD81293aBf6e0307c";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 const ONE = "0x0000000000000000000000000000000000000001";
@@ -458,7 +458,7 @@ export async function POST() {
       console.warn('⚠️ This may fail due to Row-Level Security policies');
     }
 
-    const TABLE_NAME = 'merkle_distributions_prod';
+    const TABLE_NAME = 'merkle_distributions_dev';
     console.log(`   💾 Using Supabase table: ${TABLE_NAME}`);
     
     const { data: existing, error: fetchError } = await supabase

@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
 
         // Get current distribution ID
         return await merkleDistributor.currentDistributionId();
-      }, 8453, { // Base Mainnet chain ID
+      }, 84532, { // Base Sepolia chain ID
         timeout: 15000, // Increased timeout
         maxRetries: 3,
         retryDelay: 2000,
@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
 
     try {
       const { data, error } = await supabase
-        .from("merkle_distributions")
+        .from("merkle_distributions_dev")
         .select("id, merkle_root, claims, total_rewards, metadata")
         .gte("id", startDistributionId)
         .lte("id", endDistributionId)
@@ -240,7 +240,7 @@ export async function GET(request: NextRequest) {
             );
             
             return await merkleDistributor.getDistributionInfo(i);
-          }, 8453, { // Base Mainnet chain ID
+          }, 84532, { // Base Sepolia chain ID
             timeout: 15000, // Increased timeout
             maxRetries: 3,
             retryDelay: 2000,
@@ -336,7 +336,7 @@ export async function GET(request: NextRequest) {
     if (isSupabaseConfigured() && supabase) {
       try {
         const { data, error: supabaseError } = await supabase
-          .from("merkle_distributions")
+          .from("merkle_distributions_dev")
           .select("id, merkle_root, claims, total_rewards, metadata")
           .order("id", { ascending: false });
 
