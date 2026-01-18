@@ -34,9 +34,6 @@ interface TokenInfo {
 const BASE_CHAIN_ID = 8453;
 const WETH_ADDRESS = "0x4200000000000000000000000000000000000006"; // WETH on Base
 
-// 0x Protocol API endpoint for Base network
-const ZEROX_API_URL = "https://base.api.0x.org";
-
 // Popular tokens on Base network
 const BASE_TOKENS: TokenInfo[] = [
   {
@@ -128,7 +125,7 @@ export function KrystalSwapWidget() {
     }
   };
 
-  // Fetch quote from 0x Protocol API (aggregates ALL DEXes on Base)
+  // Fetch quote from 0x Protocol via our API proxy (avoids CORS)
   useEffect(() => {
     if (!fromAmount || parseFloat(fromAmount) <= 0 || !address) {
       setToAmount("");
@@ -147,7 +144,7 @@ export function KrystalSwapWidget() {
         const sellToken = fromToken.isNative ? WETH_ADDRESS : fromToken.address;
         const buyToken = BTC1_TOKEN.address;
         
-        // Build 0x API request
+        // Build request params
         const params = new URLSearchParams({
           sellToken,
           buyToken,
@@ -156,16 +153,12 @@ export function KrystalSwapWidget() {
           slippagePercentage: '0.01', // 1% slippage
         });
 
-        // Call 0x /swap/v1/price endpoint to get quote
-        const response = await fetch(`${ZEROX_API_URL}/swap/v1/price?${params}`, {
-          headers: {
-            '0x-api-key': process.env.NEXT_PUBLIC_0X_API_KEY || '',
-          },
-        });
+        // Call our API proxy instead of 0x directly
+        const response = await fetch(`/api/swap-quote?${params}`);
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.reason || `0x API error: ${response.status}`);
+          throw new Error(errorData.error || `API error: ${response.status}`);
         }
 
         const quote = await response.json();
@@ -192,9 +185,6 @@ export function KrystalSwapWidget() {
             estimatedPriceImpact: quote.estimatedPriceImpact,
             gas: quote.gas,
             gasPrice: quote.gasPrice,
-            to: quote.to,
-            data: quote.data,
-            value: quote.value,
           });
         } else {
           throw new Error('No liquidity found');
@@ -224,7 +214,7 @@ export function KrystalSwapWidget() {
     return () => clearTimeout(debounce);
   }, [fromAmount, fromToken, address]);
 
-  // Execute swap using 0x Protocol transaction
+  // Execute swap using 0x Protocol via our API proxy
   const handleSwap = async () => {
     if (!routeData || !walletClient || !address) return;
 
@@ -234,28 +224,29 @@ export function KrystalSwapWidget() {
       setSuccess(false);
 
       // Handle 0x Protocol swap
-      if (!routeData.isEstimate && routeData.to && routeData.data) {
-        // For getting swap transaction, we need to call /swap/v1/quote with full params
+      if (!routeData.isEstimate) {
         const sellToken = fromToken.isNative ? WETH_ADDRESS : fromToken.address;
         const buyToken = BTC1_TOKEN.address;
         const sellAmount = routeData.sellAmount;
         
-        const params = new URLSearchParams({
-          sellToken,
-          buyToken,
-          sellAmount,
-          takerAddress: address,
-          slippagePercentage: '0.01',
-        });
-
-        const response = await fetch(`${ZEROX_API_URL}/swap/v1/quote?${params}`, {
+        // Get executable swap transaction from our API proxy
+        const response = await fetch('/api/swap-quote', {
+          method: 'POST',
           headers: {
-            '0x-api-key': process.env.NEXT_PUBLIC_0X_API_KEY || '',
+            'Content-Type': 'application/json',
           },
+          body: JSON.stringify({
+            sellToken,
+            buyToken,
+            sellAmount,
+            takerAddress: address,
+            slippagePercentage: '0.01',
+          }),
         });
 
         if (!response.ok) {
-          throw new Error('Failed to get swap transaction');
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to get swap transaction');
         }
 
         const swapQuote = await response.json();
