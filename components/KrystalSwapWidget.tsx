@@ -36,8 +36,8 @@ export default function KrystalSwapWidget({ provider, signer, chainId }: Props) 
   const [tokenOut, setTokenOut] = useState<Token>({
     address: '0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5', // BTC1
     symbol: 'BTC1',
-    name: 'BTC1 Token',
-    decimals: 18,
+    name: 'BTC1USD',
+    decimals: 8,
   });
   
   const [amountIn, setAmountIn] = useState<string>('');
