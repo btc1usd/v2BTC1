@@ -104,7 +104,7 @@ export default function KrystalSwapWidget() {
       // Get actual quote from 0x API v2
       const amountInWei = ethers.parseUnits(amountIn, tokenIn.decimals);
       
-      // Build query parameters for 0x API v2
+      // Build query parameters for 0x API v2 Permit2
       const params = new URLSearchParams({
         chainId: '8453', // Base Mainnet
         sellToken: tokenIn.address.toLowerCase(),
@@ -114,7 +114,7 @@ export default function KrystalSwapWidget() {
         slippagePercentage: (slippageTolerance / 100).toString(),
       });
       
-      console.log('Fetching quote from 0x API:', `https://api.0x.org/swap/permit2/quote?${params}`);
+      console.log('Fetching quote from 0x API:', `https://api.0x.org/swap/permit2/price?${params}`);
       
       // Note: 0x API v2 requires API key
       // Do NOT include '0x-version' header in browser requests (causes CORS issues)
@@ -127,7 +127,8 @@ export default function KrystalSwapWidget() {
         throw new Error('0x API key required. Please set NEXT_PUBLIC_0X_API_KEY in your .env.local file. Get a free key at https://dashboard.0x.org/');
       }
       
-      const response = await fetch(`https://api.0x.org/swap/permit2/quote?${params}`, {
+      // Use /price endpoint for quotes (not /quote)
+      const response = await fetch(`https://api.0x.org/swap/permit2/price?${params}`, {
         headers,
       });
       

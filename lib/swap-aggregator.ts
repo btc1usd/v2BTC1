@@ -33,7 +33,7 @@ interface TokenAllowanceCheck {
  * Implements a Krystal-style non-custodial swap flow
  */
 export class SwapAggregator {
-  private static readonly BASE_API_URL = 'https://api.0x.org/swap/permit2/quote';
+  private static readonly BASE_API_URL = 'https://api.0x.org/swap/permit2/price';
   public static readonly BASE_CHAIN_ID = BigInt(8453);
   
   /**
