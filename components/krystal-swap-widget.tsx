@@ -129,7 +129,7 @@ export function KrystalSwapWidget() {
     }
   };
 
-  // Fetch quote using Uniswap V3 Quoter contract
+  // Fetch quote using Uniswap V3 Quoter contract (same strategy as Uniswap interface)
   useEffect(() => {
     if (!fromAmount || parseFloat(fromAmount) <= 0 || !address) {
       setToAmount("");
@@ -148,23 +148,28 @@ export function KrystalSwapWidget() {
         const tokenIn = fromToken.isNative ? WETH_ADDRESS : fromToken.address;
         const tokenOut = BTC1_TOKEN.address;
         
-        // Try to get quote from Uniswap V3 Quoter
-        // Fee tier: 3000 = 0.3% (most common)
+        // Use Uniswap's QuoterV2 with correct ABI
         const quoterABI = [
           {
             inputs: [
-              { name: 'tokenIn', type: 'address' },
-              { name: 'tokenOut', type: 'address' },
-              { name: 'amountIn', type: 'uint256' },
-              { name: 'fee', type: 'uint24' },
-              { name: 'sqrtPriceLimitX96', type: 'uint160' }
+              {
+                components: [
+                  { name: 'tokenIn', type: 'address' },
+                  { name: 'tokenOut', type: 'address' },
+                  { name: 'amountIn', type: 'uint256' },
+                  { name: 'fee', type: 'uint24' },
+                  { name: 'sqrtPriceLimitX96', type: 'uint160' },
+                ],
+                name: 'params',
+                type: 'tuple',
+              },
             ],
             name: 'quoteExactInputSingle',
             outputs: [
               { name: 'amountOut', type: 'uint256' },
               { name: 'sqrtPriceX96After', type: 'uint160' },
               { name: 'initializedTicksCrossed', type: 'uint32' },
-              { name: 'gasEstimate', type: 'uint256' }
+              { name: 'gasEstimate', type: 'uint256' },
             ],
             stateMutability: 'nonpayable',
             type: 'function',
@@ -180,31 +185,37 @@ export function KrystalSwapWidget() {
           transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://mainnet.base.org'),
         });
 
-        // Try different fee tiers
+        // Try different fee tiers (same as Uniswap interface)
         let bestQuote = null;
         let bestFee = 0;
         
-        for (const fee of [500, 3000, 10000]) {
+        for (const fee of [100, 500, 3000, 10000]) {
           try {
             const result = await publicClient.readContract({
               address: UNISWAP_V3_QUOTER as `0x${string}`,
               abi: quoterABI,
               functionName: 'quoteExactInputSingle',
-              args: [tokenIn, tokenOut, amountIn, fee, 0],
+              args: [{
+                tokenIn,
+                tokenOut,
+                amountIn,
+                fee,
+                sqrtPriceLimitX96: 0,
+              }],
             }) as any;
             
             const amountOut = result[0];
-            if (!bestQuote || amountOut > bestQuote) {
+            if (amountOut > 0 && (!bestQuote || amountOut > bestQuote)) {
               bestQuote = amountOut;
               bestFee = fee;
             }
-          } catch (e) {
+          } catch (e: any) {
             // Pool doesn't exist for this fee tier, continue
-            console.log(`No pool for fee tier ${fee}`);
+            console.log(`No pool for fee tier ${fee / 10000}%:`, e.message);
           }
         }
 
-        if (bestQuote) {
+        if (bestQuote && bestQuote > 0) {
           const outputAmount = formatUnits(bestQuote, BTC1_TOKEN.decimals);
           setToAmount(parseFloat(outputAmount).toFixed(6));
           setRouteData({
@@ -233,7 +244,7 @@ export function KrystalSwapWidget() {
           provider: 'estimate',
           isEstimate: true,
         });
-        setError('No liquidity pool found on Uniswap V3. Showing estimate.');
+        setError('No BTC1 liquidity pool exists yet on Uniswap V3. Showing estimate based on market rates.');
       } finally {
         setLoading(false);
       }
@@ -441,16 +452,20 @@ export function KrystalSwapWidget() {
         </div>
       </div>
 
-      {/* Error Display */}
+      {/* Error Display with helpful info */}
       {error && (
         <Alert variant="destructive" className="bg-yellow-500/10 border-yellow-500/50">
           <AlertCircle className="h-4 w-4 text-yellow-400" />
           <AlertDescription className="text-yellow-400">
             {error}
             {routeData?.isEstimate && (
-              <span className="block mt-2 text-xs">
-                💡 Use the buttons below to swap on Uniswap or Aerodrome directly
-              </span>
+              <div className="mt-3 space-y-2 text-xs">
+                <div className="font-semibold text-yellow-300">💡 How to enable swaps:</div>
+                <div className="space-y-1 text-yellow-200/90">
+                  <div>• <strong>Add Liquidity</strong> on Uniswap to create a BTC1 pool</div>
+                  <div>• <strong>Or swap manually</strong> by clicking the button below</div>
+                </div>
+              </div>
             )}
           </AlertDescription>
         </Alert>
@@ -477,7 +492,7 @@ export function KrystalSwapWidget() {
         ) : !routeData ? (
           "Enter Amount"
         ) : routeData.isEstimate ? (
-          "Open Uniswap (No Route Found)"
+          "Swap on Uniswap (Manual)"
         ) : (
           "Swap Now"
         )}
