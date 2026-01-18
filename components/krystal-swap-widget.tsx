@@ -77,11 +77,13 @@ export function KrystalSwapWidget() {
   const [txHash, setTxHash] = useState<string>("");
   const [needsApproval, setNeedsApproval] = useState(false);
 
+  // Get token balance
   const { data: balance } = useBalance({
     address: address as `0x${string}`,
     token: fromToken.isNative ? undefined : fromToken.address as `0x${string}`,
   });
 
+  // Handle token selection
   const handleTokenChange = (tokenAddress: string) => {
     const selected = BASE_TOKENS.find(t => t.address === tokenAddress);
     if (selected) {
@@ -94,6 +96,7 @@ export function KrystalSwapWidget() {
     }
   };
 
+  // Set max amount
   const handleMaxClick = () => {
     if (balance) {
       const maxAmount = parseFloat(balance.formatted);
@@ -104,7 +107,7 @@ export function KrystalSwapWidget() {
     }
   };
 
-  // Fetch quote from 0x Protocol
+  // Fetch quote from 0x Protocol API directly
   useEffect(() => {
     if (!fromAmount || parseFloat(fromAmount) <= 0 || !address) {
       setToAmount("");
@@ -119,18 +122,27 @@ export function KrystalSwapWidget() {
         setError(null);
 
         const sellAmount = parseUnits(fromAmount, fromToken.decimals).toString();
+        // Use 'ETH' for native ETH, not the wrapped address
+        const sellTokenParam = fromToken.isNative ? 'ETH' : fromToken.address;
+        
         const params = new URLSearchParams({
-          sellToken: fromToken.address,
+          sellToken: sellTokenParam,
           buyToken: BTC1_TOKEN.address,
           sellAmount,
           takerAddress: address,
           slippagePercentage: '0.01',
         });
 
-        const response = await fetch(`/api/swap-quote?${params}`);
+        // Call 0x API directly from frontend
+        const response = await fetch(`https://base.api.0x.org/swap/v1/quote?${params}`, {
+          headers: {
+            '0x-api-key': process.env.zerox_API_KEY || '',
+          },
+        });
+
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || 'Failed to fetch quote');
+          throw new Error(errorData.reason || `0x API error: ${response.status}`);
         }
 
         const quoteData: ZeroXQuote = await response.json();
