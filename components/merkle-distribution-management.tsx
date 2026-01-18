@@ -254,6 +254,7 @@ const safeDecimalToBigInt = (value: string): bigint => {
 
   const [merkleRootInput, setMerkleRootInput] = useState('');
   const [totalTokens, setTotalTokens] = useState('');
+  const [blockNumberInput, setBlockNumberInput] = useState('');
   const [distributionHistory, setDistributionHistory] = useState<DistributionHistory[]>([]);
   const [loading, setLoading] = useState(false);
   const [showPrerequisites, setShowPrerequisites] = useState(false);
@@ -406,7 +407,7 @@ const safeDecimalToBigInt = (value: string): bigint => {
   const { writeContract: reclaimWriteContract, isPending: isReclaiming, data: reclaimHash, error: reclaimError } = useWriteContract();
 
   // Wait for transaction confirmation
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+  const { isLoading: isConfirming, isSuccess: isConfirmed, data: executionReceipt } = useWaitForTransactionReceipt({
     hash: executionHash,
   });
 
@@ -414,24 +415,25 @@ const safeDecimalToBigInt = (value: string): bigint => {
     hash: reclaimHash,
   });
 
-  // Add effect to handle transaction success
+  // Add effect to handle transaction success and capture block number
   useEffect(() => {
-    if (isConfirmed) {
-      console.log('Distribution executed successfully!');
+    if (isConfirmed && executionReceipt) {
+      const blockNumber = executionReceipt.blockNumber;
+      console.log('✅ Distribution executed successfully at block:', blockNumber);
       
-      // Show success message and offer to auto-generate merkle tree
-      const shouldAutoGenerate = window.confirm(
-        '🎉 Distribution executed successfully!\n\nWould you like to automatically generate the merkle tree and set the merkle root now?\n\nClick OK to continue with the full automated process, or Cancel to do it manually later.'
-      );
+      // Store block number in state for merkle tree generation
+      setBlockNumberInput(blockNumber.toString());
       
-      if (shouldAutoGenerate) {
-        // Auto-generate merkle tree and set merkle root
-        handleAutomatedProcess();
-      } else {
-        alert('Distribution completed! Please generate the merkle tree in the "Merkle Tree" tab when ready.');
-      }
+      // Show success message with block number
+      alert(`🎉 Distribution executed successfully!
+
+Block Number: ${blockNumber}
+Transaction: ${executionReceipt.transactionHash}
+
+The block number has been automatically filled in the Merkle Tree section.
+You can now generate the merkle tree at this block.`);
     }
-  }, [isConfirmed]);
+  }, [isConfirmed, executionReceipt]);
 
   // Add effect to handle transaction errors
   useEffect(() => {
@@ -918,32 +920,50 @@ Check console for more details.`);
       console.log('🌳 Generating merkle tree...');
       console.log('API endpoint: /api/generate-merkle-tree');
       
+      // Prepare request body with block number if provided
+      const requestBody: any = {};
+      if (blockNumberInput && blockNumberInput.trim() !== '') {
+        requestBody.blockNumber = parseInt(blockNumberInput.trim());
+        console.log('📍 Using block number:', requestBody.blockNumber);
+      }
+      
       const response = await fetch('/api/generate-merkle-tree', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify(requestBody),
       });
       
       console.log('Response status:', response.status);
       console.log('Response ok:', response.ok);
       
       if (response.ok) {
-        const result = await response.json();
-        console.log('✅ Merkle tree generated successfully:', result);
-        
-        setMerkleRootInput(result.merkleRoot);
-        setTotalTokens(formatUnits(result.totalRewards, 8));
-        
-        // Show success message with details
-        alert(`✅ Merkle tree generated successfully!
+        try {
+          const result = await response.json();
+          console.log('✅ Merkle tree generated successfully:', result);
+          
+          // Validate result has required fields
+          if (!result.merkleRoot || !result.totalRewardsFormatted) {
+            throw new Error('Invalid response from API: missing required fields');
+          }
+          
+          setMerkleRootInput(result.merkleRoot);
+          setTotalTokens(result.totalRewardsFormatted);
+          
+          // Show success message with details
+          alert(`✅ Merkle tree generated successfully!
 
 🌳 Merkle Root: ${result.merkleRoot.slice(0, 20)}...
-💰 Total Rewards: ${formatUnits(result.totalRewards, 8)} BTC1
-👥 Active Holders: ${result.activeHolders}
-📋 Claims: ${result.claims}
+💰 Total Rewards: ${result.totalRewardsFormatted} BTC1USD
+👥 Active Holders: ${result.activeHolders || 0}
+📋 Claims: ${result.claims || 0}
 
 The merkle root has been automatically filled. Click "Set Merkle Root" to complete the distribution setup.`);
+        } catch (parseError) {
+          console.error('Error parsing response:', parseError);
+          throw new Error(`Failed to process response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+        }
         
       } else {
         // Try to get error details
@@ -1894,7 +1914,26 @@ This action cannot be undone. Continue?`;
                 <p className="text-sm text-muted-foreground ml-4 sm:ml-10">
                   Calculate rewards for all holders and create merkle proof
                 </p>
-                <div className="ml-4 sm:ml-10">
+                <div className="ml-4 sm:ml-10 space-y-3">
+                  {/* Block Number Input */}
+                  <div className="space-y-2">
+                    <Label htmlFor="blockNumber" className="flex items-center gap-2 text-sm">
+                      <Clock className="h-4 w-4" />
+                      Block Number (Optional)
+                    </Label>
+                    <Input
+                      id="blockNumber"
+                      value={blockNumberInput}
+                      onChange={(e) => setBlockNumberInput(e.target.value)}
+                      placeholder="Auto-filled from Execute Distribution or leave empty for latest"
+                      type="number"
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      ✨ Automatically filled when you execute distribution. Leave empty to use the latest block.
+                    </p>
+                  </div>
+                  
                   <Button
                     onClick={handleGenerateMerkleTree}
                     disabled={loading}
