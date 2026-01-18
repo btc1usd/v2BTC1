@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * Krystal Swap Widget
- * Direct token swap to BTC1 using Krystal's aggregator API
+ * Universal Swap Widget
+ * Direct token swap to BTC1 using 0x Protocol DEX Aggregator
+ * Supports any ERC20 token on Base network
  */
 
 import { useState, useEffect } from "react";
@@ -19,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, ArrowDownUp, AlertCircle, CheckCircle2, Wallet } from "lucide-react";
 import { useWeb3 } from "@/lib/web3-provider";
-import { formatUnits, parseUnits } from "viem";
+import { formatUnits, parseUnits, encodeFunctionData } from "viem";
 
 interface Token {
   address: string;
@@ -29,7 +30,7 @@ interface Token {
   isNative?: boolean;
 }
 
-// Common tokens on Base network
+// Popular tokens on Base network
 const BASE_TOKENS: Token[] = [
   {
     address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
@@ -61,6 +62,12 @@ const BASE_TOKENS: Token[] = [
     symbol: "USDbC",
     decimals: 6,
     name: "USD Base Coin",
+  },
+  {
+    address: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+    symbol: "cbBTC",
+    decimals: 8,
+    name: "Coinbase Wrapped BTC",
   },
 ];
 
@@ -114,7 +121,7 @@ export function KrystalSwapWidget() {
     }
   };
 
-  // Fetch quote from Krystal API
+  // Fetch quote from 0x Protocol API
   useEffect(() => {
     if (!fromAmount || parseFloat(fromAmount) <= 0 || !address) {
       setToAmount("");
@@ -129,25 +136,38 @@ export function KrystalSwapWidget() {
 
         const amountWei = parseUnits(fromAmount, fromToken.decimals).toString();
         
-        // Krystal Aggregator API
-        const url = `https://aggregator-api.krystal.app/base/route/encode?` +
-          `tokenIn=${fromToken.address}&` +
-          `tokenOut=${BTC1_TOKEN.address}&` +
-          `amountIn=${amountWei}&` +
-          `to=${address}&` +
-          `saveGas=0&` +
-          `slippageTolerance=50`;
+        // Use native token address for ETH
+        const sellToken = fromToken.isNative 
+          ? "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" 
+          : fromToken.address;
         
-        const response = await fetch(url);
+        // 0x Protocol API for Base network
+        const params = new URLSearchParams({
+          chainId: "8453",
+          sellToken: sellToken,
+          buyToken: BTC1_TOKEN.address,
+          sellAmount: amountWei,
+          taker: address,
+          slippagePercentage: "0.01", // 1% slippage
+        });
+        
+        const url = `https://api.0x.org/swap/v1/quote?${params}`;
+        
+        const response = await fetch(url, {
+          headers: {
+            '0x-api-key': process.env.NEXT_PUBLIC_0X_API_KEY || 'demo-api-key',
+          },
+        });
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch route: ${response.statusText}`);
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.reason || `Failed to fetch quote: ${response.statusText}`);
         }
 
         const data = await response.json();
         
-        if (data.outputAmount) {
-          const outputAmount = formatUnits(BigInt(data.outputAmount), BTC1_TOKEN.decimals);
+        if (data.buyAmount) {
+          const outputAmount = formatUnits(BigInt(data.buyAmount), BTC1_TOKEN.decimals);
           setToAmount(parseFloat(outputAmount).toFixed(6));
           setRouteData(data);
         } else {
@@ -155,7 +175,7 @@ export function KrystalSwapWidget() {
         }
       } catch (err: any) {
         console.error("Quote error:", err);
-        setError(err.message || "Failed to get quote");
+        setError(err.message || "Failed to get quote. Try adjusting amount or selecting another token.");
         setToAmount("");
         setRouteData(null);
       } finally {
@@ -163,11 +183,11 @@ export function KrystalSwapWidget() {
       }
     };
 
-    const debounce = setTimeout(fetchQuote, 500);
+    const debounce = setTimeout(fetchQuote, 800);
     return () => clearTimeout(debounce);
   }, [fromAmount, fromToken, address]);
 
-  // Execute swap
+  // Execute swap using 0x Protocol
   const handleSwap = async () => {
     if (!routeData || !walletClient || !address) return;
 
@@ -176,14 +196,18 @@ export function KrystalSwapWidget() {
       setError(null);
       setSuccess(false);
 
-      const value = fromToken.isNative ? BigInt(routeData.amountIn || 0) : BigInt(0);
+      // For native ETH, send value; for ERC20 tokens, value is 0
+      const value = fromToken.isNative ? BigInt(routeData.sellAmount || 0) : BigInt(0);
 
+      // Send transaction using 0x Protocol data
       const hash = await walletClient.sendTransaction({
-        to: routeData.routerAddress as `0x${string}`,
-        data: routeData.encodedSwapData as `0x${string}`,
+        to: routeData.to as `0x${string}`,
+        data: routeData.data as `0x${string}`,
         value: value,
         account: address as `0x${string}`,
         chain: walletClient.chain,
+        gas: routeData.gas ? BigInt(routeData.gas) : undefined,
+        gasPrice: routeData.gasPrice ? BigInt(routeData.gasPrice) : undefined,
       });
 
       setTxHash(hash);
@@ -333,7 +357,7 @@ export function KrystalSwapWidget() {
       </Button>
 
       {/* Route Details */}
-      {routeData && !error && (
+      {routeData && !error && toAmount && fromAmount && (
         <div className="text-xs text-gray-400 space-y-1 p-3 rounded-lg bg-gray-800/30 border border-gray-700">
           <div className="flex justify-between">
             <span>Rate:</span>
@@ -341,14 +365,26 @@ export function KrystalSwapWidget() {
               1 {fromToken.symbol} ≈ {(parseFloat(toAmount) / parseFloat(fromAmount)).toFixed(4)} BTC1
             </span>
           </div>
-          {routeData.priceImpact && (
+          {routeData.estimatedPriceImpact && (
             <div className="flex justify-between">
               <span>Price Impact:</span>
-              <span className={parseFloat(routeData.priceImpact) > 2 ? "text-yellow-400" : "text-green-400"}>
-                {parseFloat(routeData.priceImpact).toFixed(2)}%
+              <span className={parseFloat(routeData.estimatedPriceImpact) > 2 ? "text-yellow-400" : "text-green-400"}>
+                {parseFloat(routeData.estimatedPriceImpact).toFixed(2)}%
               </span>
             </div>
           )}
+          {routeData.estimatedGas && (
+            <div className="flex justify-between">
+              <span>Est. Gas:</span>
+              <span className="text-gray-300">
+                {parseInt(routeData.estimatedGas).toLocaleString()}
+              </span>
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-2 border-t border-gray-700 mt-2">
+            <span className="text-gray-500">Powered by:</span>
+            <span className="text-orange-400 font-semibold">0x Protocol</span>
+          </div>
         </div>
       )}
     </div>
