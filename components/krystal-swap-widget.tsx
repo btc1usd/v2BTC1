@@ -2,8 +2,8 @@
 
 /**
  * Universal Swap Widget
- * In-app token swap to BTC1 using Uniswap V3 SDK
- * Provides best routing and pricing for Base network
+ * In-app token swap to BTC1 using direct Uniswap V3 quoter and router
+ * Compatible with ethers v6 on Base network
  */
 
 import { useState, useEffect } from "react";
@@ -21,9 +21,6 @@ import {
 import { Loader2, ArrowDownUp, AlertCircle, CheckCircle2, Wallet } from "lucide-react";
 import { useWeb3 } from "@/lib/web3-provider";
 import { formatUnits, parseUnits, encodeFunctionData } from "viem";
-import { Token as SDKToken, CurrencyAmount, TradeType, Percent } from '@uniswap/sdk-core';
-import { AlphaRouter } from '@uniswap/smart-order-router';
-import { ethers } from 'ethers';
 
 interface TokenInfo {
   address: string;
@@ -35,6 +32,11 @@ interface TokenInfo {
 
 // Base Chain ID
 const BASE_CHAIN_ID = 8453;
+
+// Uniswap V3 Contracts on Base
+const UNISWAP_V3_ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481"; // SwapRouter02
+const UNISWAP_V3_QUOTER = "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a"; // QuoterV2
+const WETH_ADDRESS = "0x4200000000000000000000000000000000000006"; // WETH on Base
 
 // Popular tokens on Base network
 const BASE_TOKENS: TokenInfo[] = [
@@ -84,17 +86,6 @@ const BTC1_TOKEN: TokenInfo = {
   name: "BTC1 Token",
 };
 
-// Helper function to create SDK tokens
-function createSDKToken(tokenInfo: TokenInfo): SDKToken {
-  return new SDKToken(
-    BASE_CHAIN_ID,
-    tokenInfo.address,
-    tokenInfo.decimals,
-    tokenInfo.symbol,
-    tokenInfo.name
-  );
-}
-
 export function KrystalSwapWidget() {
   const { address } = useWeb3();
   const { data: walletClient } = useWalletClient();
@@ -138,7 +129,7 @@ export function KrystalSwapWidget() {
     }
   };
 
-  // Fetch quote using Uniswap V3 SDK with AlphaRouter
+  // Fetch quote using Uniswap V3 Quoter contract
   useEffect(() => {
     if (!fromAmount || parseFloat(fromAmount) <= 0 || !address) {
       setToAmount("");
@@ -151,71 +142,84 @@ export function KrystalSwapWidget() {
         setLoading(true);
         setError(null);
 
-        // Create ethers provider for Base network
-        const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://mainnet.base.org';
-        const provider = new ethers.JsonRpcProvider(rpcUrl) as any;
+        const amountIn = parseUnits(fromAmount, fromToken.decimals);
         
-        // Initialize AlphaRouter
-        const router = new AlphaRouter({
-          chainId: BASE_CHAIN_ID,
-          provider: provider,
+        // Use WETH for native ETH
+        const tokenIn = fromToken.isNative ? WETH_ADDRESS : fromToken.address;
+        const tokenOut = BTC1_TOKEN.address;
+        
+        // Try to get quote from Uniswap V3 Quoter
+        // Fee tier: 3000 = 0.3% (most common)
+        const quoterABI = [
+          {
+            inputs: [
+              { name: 'tokenIn', type: 'address' },
+              { name: 'tokenOut', type: 'address' },
+              { name: 'amountIn', type: 'uint256' },
+              { name: 'fee', type: 'uint24' },
+              { name: 'sqrtPriceLimitX96', type: 'uint160' }
+            ],
+            name: 'quoteExactInputSingle',
+            outputs: [
+              { name: 'amountOut', type: 'uint256' },
+              { name: 'sqrtPriceX96After', type: 'uint160' },
+              { name: 'initializedTicksCrossed', type: 'uint32' },
+              { name: 'gasEstimate', type: 'uint256' }
+            ],
+            stateMutability: 'nonpayable',
+            type: 'function',
+          },
+        ];
+
+        // Call quoter using viem
+        const { createPublicClient, http } = await import('viem');
+        const { base } = await import('viem/chains');
+        
+        const publicClient = createPublicClient({
+          chain: base,
+          transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://mainnet.base.org'),
         });
 
-        // Use WETH for native ETH
-        const sellTokenAddress = fromToken.isNative 
-          ? "0x4200000000000000000000000000000000000006" 
-          : fromToken.address;
-
-        // Create SDK tokens
-        const tokenIn = new SDKToken(
-          BASE_CHAIN_ID,
-          sellTokenAddress,
-          fromToken.decimals,
-          fromToken.symbol,
-          fromToken.name
-        );
+        // Try different fee tiers
+        let bestQuote = null;
+        let bestFee = 0;
         
-        const tokenOut = createSDKToken(BTC1_TOKEN);
-
-        // Create currency amount
-        const amountIn = CurrencyAmount.fromRawAmount(
-          tokenIn,
-          parseUnits(fromAmount, fromToken.decimals).toString()
-        );
-
-        // Get route from Uniswap
-        const route = await router.route(
-          amountIn,
-          tokenOut,
-          TradeType.EXACT_INPUT,
-          {
-            type: 1, // SwapRouter02
-            recipient: address,
-            slippageTolerance: new Percent(50, 10_000), // 0.5%
-            deadline: Math.floor(Date.now() / 1000) + 60 * 20, // 20 minutes
+        for (const fee of [500, 3000, 10000]) {
+          try {
+            const result = await publicClient.readContract({
+              address: UNISWAP_V3_QUOTER as `0x${string}`,
+              abi: quoterABI,
+              functionName: 'quoteExactInputSingle',
+              args: [tokenIn, tokenOut, amountIn, fee, 0],
+            }) as any;
+            
+            const amountOut = result[0];
+            if (!bestQuote || amountOut > bestQuote) {
+              bestQuote = amountOut;
+              bestFee = fee;
+            }
+          } catch (e) {
+            // Pool doesn't exist for this fee tier, continue
+            console.log(`No pool for fee tier ${fee}`);
           }
-        );
+        }
 
-        if (route && route.quote) {
-          const outputAmount = formatUnits(
-            BigInt(route.quote.toExact().split('.')[0] || route.quote.quotient.toString()),
-            BTC1_TOKEN.decimals
-          );
-          
+        if (bestQuote) {
+          const outputAmount = formatUnits(bestQuote, BTC1_TOKEN.decimals);
           setToAmount(parseFloat(outputAmount).toFixed(6));
           setRouteData({
             provider: 'uniswap',
-            route: route,
-            methodParameters: route.methodParameters,
-            gasEstimate: route.estimatedGasUsed?.toString(),
-            gasEstimateUSD: route.estimatedGasUsedUSD?.toFixed(2),
-            priceImpact: route.trade?.priceImpact?.toFixed(2),
+            tokenIn,
+            tokenOut,
+            amountIn: amountIn.toString(),
+            amountOut: bestQuote.toString(),
+            fee: bestFee,
           });
         } else {
-          throw new Error('No route found');
+          throw new Error('No liquidity pool found');
         }
       } catch (err: any) {
-        console.error("Uniswap route error:", err);
+        console.error("Uniswap quote error:", err);
         
         // Fallback to estimate
         const estimatedRate = fromToken.symbol === 'USDC' || fromToken.symbol === 'USDbC' ? 1 :
@@ -229,7 +233,7 @@ export function KrystalSwapWidget() {
           provider: 'estimate',
           isEstimate: true,
         });
-        setError('No liquidity route found. Showing estimate. You may need to add liquidity or use a different token.');
+        setError('No liquidity pool found on Uniswap V3. Showing estimate.');
       } finally {
         setLoading(false);
       }
@@ -239,7 +243,7 @@ export function KrystalSwapWidget() {
     return () => clearTimeout(debounce);
   }, [fromAmount, fromToken, address]);
 
-  // Execute swap using Uniswap V3 route
+  // Execute swap using Uniswap V3 Router
   const handleSwap = async () => {
     if (!routeData || !walletClient || !address) return;
 
@@ -249,13 +253,58 @@ export function KrystalSwapWidget() {
       setSuccess(false);
 
       // Handle Uniswap V3 swap
-      if (routeData.provider === 'uniswap' && routeData.methodParameters) {
-        const { calldata, value, to } = routeData.methodParameters;
-        
+      if (routeData.provider === 'uniswap' && !routeData.isEstimate) {
+        const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
+        const amountOutMinimum = (BigInt(routeData.amountOut) * BigInt(99)) / BigInt(100); // 1% slippage
+
+        // exactInputSingle function parameters
+        const swapParams = {
+          tokenIn: routeData.tokenIn,
+          tokenOut: routeData.tokenOut,
+          fee: routeData.fee,
+          recipient: address,
+          deadline: deadline,
+          amountIn: BigInt(routeData.amountIn),
+          amountOutMinimum: amountOutMinimum,
+          sqrtPriceLimitX96: 0,
+        };
+
+        // Router ABI for exactInputSingle
+        const routerABI = [
+          {
+            inputs: [
+              {
+                components: [
+                  { name: 'tokenIn', type: 'address' },
+                  { name: 'tokenOut', type: 'address' },
+                  { name: 'fee', type: 'uint24' },
+                  { name: 'recipient', type: 'address' },
+                  { name: 'deadline', type: 'uint256' },
+                  { name: 'amountIn', type: 'uint256' },
+                  { name: 'amountOutMinimum', type: 'uint256' },
+                  { name: 'sqrtPriceLimitX96', type: 'uint160' },
+                ],
+                name: 'params',
+                type: 'tuple',
+              },
+            ],
+            name: 'exactInputSingle',
+            outputs: [{ name: 'amountOut', type: 'uint256' }],
+            stateMutability: 'payable',
+            type: 'function',
+          },
+        ];
+
+        const calldata = encodeFunctionData({
+          abi: routerABI,
+          functionName: 'exactInputSingle',
+          args: [swapParams],
+        });
+
         const hash = await walletClient.sendTransaction({
-          to: to as `0x${string}`,
-          data: calldata as `0x${string}`,
-          value: BigInt(value),
+          to: UNISWAP_V3_ROUTER as `0x${string}`,
+          data: calldata,
+          value: fromToken.isNative ? BigInt(routeData.amountIn) : BigInt(0),
           account: address as `0x${string}`,
           chain: walletClient.chain,
         });
