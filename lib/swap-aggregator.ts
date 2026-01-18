@@ -114,10 +114,9 @@ export class SwapAggregator {
         slippagePercentage: request.slippagePercentage?.toString() || '0.005',
       });
 
-      // Add API key and version headers (required for 0x API v2)
-      const headers: HeadersInit = {
-        '0x-version': 'v2',
-      };
+      // Add API key header (required for 0x API v2)
+      // Note: Do NOT include '0x-version' header (causes CORS issues in browser)
+      const headers: HeadersInit = {};
       
       if (process.env.NEXT_PUBLIC_0X_API_KEY) {
         headers['0x-api-key'] = process.env.NEXT_PUBLIC_0X_API_KEY;

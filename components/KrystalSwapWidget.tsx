@@ -116,12 +116,11 @@ export default function KrystalSwapWidget() {
       
       console.log('Fetching quote from 0x API:', `https://api.0x.org/swap/permit2/quote?${params}`);
       
-      // Note: 0x API v2 requires both API key and version headers
-      const headers: HeadersInit = {
-        '0x-version': 'v2',
-      };
+      // Note: 0x API v2 requires API key
+      // Do NOT include '0x-version' header in browser requests (causes CORS issues)
+      const headers: HeadersInit = {};
       
-      // Add API key if available
+      // Add API key (required)
       if (process.env.NEXT_PUBLIC_0X_API_KEY) {
         headers['0x-api-key'] = process.env.NEXT_PUBLIC_0X_API_KEY;
       } else {
