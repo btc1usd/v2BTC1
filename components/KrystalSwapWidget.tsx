@@ -29,7 +29,7 @@ export default function KrystalSwapWidget() {
   const publicClient = usePublicClient();
   
   const [tokenIn, setTokenIn] = useState<Token>({
-    address: '0x0000000000000000000000000000000000000000', // ETH
+    address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', // ETH
     symbol: 'ETH',
     name: 'Ether',
     decimals: 18,
@@ -203,7 +203,7 @@ export default function KrystalSwapWidget() {
   };
 
   const handleMaxClick = () => {
-    if (tokenIn.address === '0x0000000000000000000000000000000000000000' && balance) {
+    if (tokenIn.address === '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' && balance) {
       // Leave small amount for gas
       const maxAmount = parseFloat(balance) - 0.001;
       if (maxAmount > 0) {
@@ -241,7 +241,7 @@ export default function KrystalSwapWidget() {
         <div>
           <div className="flex justify-between items-center mb-1">
             <label className="text-sm text-gray-400">From</label>
-            {balance && tokenIn.address === '0x0000000000000000000000000000000000000000' && (
+            {balance && tokenIn.address === '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' && (
               <button
                 onClick={handleMaxClick}
                 className="text-xs text-orange-400 hover:text-orange-300"
@@ -255,7 +255,7 @@ export default function KrystalSwapWidget() {
               value={tokenIn.address}
               onChange={(e) => {
                 const tokens: Token[] = [
-                  { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', name: 'Ether', decimals: 18 },
+                  { address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', symbol: 'ETH', name: 'Ether', decimals: 18 },
                   { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
                   { address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
                   { address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', symbol: 'cbBTC', name: 'Coinbase Wrapped BTC', decimals: 8 },
@@ -265,13 +265,13 @@ export default function KrystalSwapWidget() {
                 setTokenIn(selectedToken);
                 
                 // Reset balance if switching from ETH
-                if (e.target.value !== '0x0000000000000000000000000000000000000000') {
+                if (e.target.value !== '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE') {
                   setBalance('0');
                 }
               }}
               className="bg-transparent text-white border-none focus:outline-none"
             >
-              <option value={'0x0000000000000000000000000000000000000000'}>ETH</option>
+              <option value={'0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'}>ETH</option>
               <option value="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913">USDC</option>
               <option value="0x4200000000000000000000000000000000000006">WETH</option>
               <option value="0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf">cbBTC</option>
@@ -330,7 +330,7 @@ export default function KrystalSwapWidget() {
               value={tokenOut.address}
               onChange={(e) => {
                 const tokens: Token[] = [
-                  { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', name: 'Ether', decimals: 18 },
+                  { address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', symbol: 'ETH', name: 'Ether', decimals: 18 },
                   { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
                   { address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
                   { address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', symbol: 'cbBTC', name: 'Coinbase Wrapped BTC', decimals: 8 },
@@ -341,7 +341,7 @@ export default function KrystalSwapWidget() {
               }}
               className="bg-transparent text-white border-none focus:outline-none"
             >
-              <option value={'0x0000000000000000000000000000000000000000'}>ETH</option>
+              <option value={'0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'}>ETH</option>
               <option value="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913">USDC</option>
               <option value="0x4200000000000000000000000000000000000006">WETH</option>
               <option value="0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf">cbBTC</option>
