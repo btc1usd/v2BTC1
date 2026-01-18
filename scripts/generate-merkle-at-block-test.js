@@ -11,7 +11,7 @@ require("dotenv").config({ path: ".env.production" });
 
 /* ================= CONFIG ================= */
 
-const TARGET_BLOCK = 40596432;
+let TARGET_BLOCK; // Will be set to latest block at runtime
 const BTC1_DECIMALS = 8;
 const BTC1USD = "0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5".toLowerCase();
 const WEEKLY = "0x1FEf2533641cA69B9E30fA734944BB219b2152B6";
@@ -24,8 +24,13 @@ const EXCLUDED_ADDRESSES = [
     "0x000000000000000000000000000000000000dead"
 ];
 
+// BaseScan API configuration (Etherscan V2 format)
+const BASESCAN_API_KEY = process.env.BASESCAN_API_KEY || process.env.ETHERSCAN_API_KEY;
+const BASESCAN_V2_API_URL = "https://api.etherscan.io/v2/api"; // Etherscan V2 unified endpoint
+const BASE_CHAIN_ID = 8453;
+
 const ALCHEMY_RPC = `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`;
-const provider = new ethers.JsonRpcProvider(ALCHEMY_RPC, { name: "base", chainId: 8453 }, { staticNetwork: true });
+const provider = new ethers.JsonRpcProvider(ALCHEMY_RPC, { name: "base", chainId: BASE_CHAIN_ID }, { staticNetwork: true });
 
 /* ================= BIGINT JSON SERIALIZER ================= */
 
@@ -82,219 +87,122 @@ class RateLimitAwareEventQuerier {
     }
 }
 
-/* ================= MULTI-API HOLDER FETCHER ================= */
+/* ================= ALCHEMY TOKEN HOLDERS FETCHER ================= */
 
-class MultiAPIHolderFetcher {
+class AlchemyHolderFetcher {
     constructor(config) {
         this.config = config;
-        this.provider = new ethers.JsonRpcProvider(config.rpcUrl, { name: "base", chainId: 8453 }, { staticNetwork: true });
+        this.provider = new ethers.JsonRpcProvider(config.rpcUrl, { name: "base", chainId: BASE_CHAIN_ID }, { staticNetwork: true });
     }
 
-    async fetchFromCovalent() {
-        console.log("📡 Attempting Covalent API (GoldRush)...");
+    async fetchFromAlchemy() {
+        console.log("📡 Fetching token holders from Alchemy Transfers API...");
         try {
-            const apiKey = process.env.COVALENT_API_KEY;
-            if (!apiKey) {
-                console.log("   ⚠️  Covalent API key not found");
+            if (!process.env.ALCHEMY_API_KEY) {
+                console.log("   ⚠️  Alchemy API key not found");
                 return null;
             }
 
-            const url = `https://api.covalenthq.com/v1/base-mainnet/tokens/${this.config.tokenAddress}/token_holders_v2/?key=${apiKey}&page-size=1000`;
-            const response = await fetch(url);
-            const data = await response.json();
-
-            if (data.error || data.error_code) {
-                console.log(`   ⚠️  Covalent Error: ${data.error_message || data.error}`);
-                return null;
-            }
-
-            if (!data.data || !data.data.items) {
-                console.log("   ⚠️  No holders found in Covalent response");
-                return null;
-            }
-
-            const holders = [];
-            let pageNumber = 0;
-            let hasMore = true;
-
-            while (hasMore) {
-                const pageUrl = `https://api.covalenthq.com/v1/base-mainnet/tokens/${this.config.tokenAddress}/token_holders_v2/?key=${apiKey}&page-size=1000&page-number=${pageNumber}`;
-                const pageResponse = await fetch(pageUrl);
-                const pageData = await pageResponse.json();
-
-                if (!pageData.data || !pageData.data.items) break;
-
-                for (const item of pageData.data.items) {
-                    if (item.address && item.balance) {
-                        holders.push({
-                            address: item.address.toLowerCase(),
-                            balance: item.balance
-                        });
+            console.log(`   Querying asset transfers for token ${this.config.tokenAddress}...`);
+            
+            const url = `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`;
+            const payload = {
+                jsonrpc: "2.0",
+                id: 1,
+                method: "alchemy_getAssetTransfers",
+                params: [
+                    {
+                        fromBlock: "0x0",
+                        toBlock: "latest",
+                        contractAddresses: [this.config.tokenAddress],
+                        category: ["erc20"],
+                        withMetadata: false,
+                        excludeZeroValue: true,
+                        maxCount: "0x3e8" // 1000 in hex
                     }
-                }
+                ]
+            };
 
-                hasMore = pageData.data.pagination.has_more;
-                pageNumber++;
-            }
-
-            console.log(`   ✅ Fetched ${holders.length} holders from Covalent`);
-            return holders;
-        } catch (error) {
-            console.log(`   ❌ Covalent fetch failed: ${error.message}`);
-            return null;
-        }
-    }
-
-    async fetchFromMoralis() {
-        console.log("📡 Attempting Moralis API...");
-        try {
-            const apiKey = process.env.MORALIS_API_KEY;
-            if (!apiKey) {
-                console.log("   ⚠️  Moralis API key not found");
-                return null;
-            }
-
-            const url = `https://deep-index.moralis.io/api/v2.2/erc20/${this.config.tokenAddress}/owners?chain=base&limit=1000`;
             const response = await fetch(url, {
-                headers: {
-                    "X-API-Key": apiKey
-                }
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
             });
 
-            if (!response.ok) {
-                console.log(`   ⚠️  Moralis Error: ${response.status} ${response.statusText}`);
-                return null;
-            }
-
             const data = await response.json();
 
-            if (!data.result || !Array.isArray(data.result)) {
-                console.log("   ⚠️  No holders found in Moralis response");
+            if (data.error) {
+                console.log(`   ⚠️  Alchemy API Error: ${data.error.message}`);
                 return null;
             }
 
-            const holders = [];
-            for (const item of data.result) {
-                if (item.owner_of && item.balance) {
-                    holders.push({
-                        address: item.owner_of.toLowerCase(),
-                        balance: item.balance
-                    });
+            if (!data.result || !data.result.transfers) {
+                console.log("   ⚠️  Invalid response format from Alchemy");
+                return null;
+            }
+
+            // Collect unique addresses from transfers
+            const addressSet = new Set();
+            for (const transfer of data.result.transfers) {
+                if (transfer.from && transfer.from !== ZERO) {
+                    addressSet.add(transfer.from.toLowerCase());
+                }
+                if (transfer.to && transfer.to !== ZERO) {
+                    addressSet.add(transfer.to.toLowerCase());
                 }
             }
 
-            console.log(`   ✅ Fetched ${holders.length} holders from Moralis`);
-            return holders;
-        } catch (error) {
-            console.log(`   ❌ Moralis fetch failed: ${error.message}`);
-            return null;
-        }
-    }
+            console.log(`   ✅ Found ${addressSet.size} unique addresses from ${data.result.transfers.length} transfers`);
 
-    async fetchFromBlockScout() {
-        console.log("📡 Attempting BlockScout API...");
-        try {
-            const url = `https://api.basescan.org/api?module=token&action=tokenholderlist&contractaddress=${this.config.tokenAddress}&page=1&offset=10000&apikey=${process.env.BASESCAN_API_KEY || ""}`;
-            const response = await fetch(url);
-            const data = await response.json();
-
-            if (data.status !== "1") {
-                console.log(`   ⚠️  BlockScout Error: ${data.message}`);
-                return null;
-            }
-
-            const holders = [];
-            for (const item of data.result) {
-                if (item.TokenHolderAddress && item.TokenHolderQuantity) {
-                    holders.push({
-                        address: item.TokenHolderAddress.toLowerCase(),
-                        balance: item.TokenHolderQuantity
-                    });
-                }
-            }
-
-            console.log(`   ✅ Fetched ${holders.length} holders from BlockScout`);
-            return holders;
-        } catch (error) {
-            console.log(`   ❌ BlockScout fetch failed: ${error.message}`);
-            return null;
-        }
-    }
-
-    async fetchFromRPC() {
-        console.log("📡 Attempting RPC-based holder discovery...");
-        try {
+            // Get current balances for all addresses
+            console.log(`   Fetching current balances for ${addressSet.size} addresses...`);
             const btc1Contract = new ethers.Contract(this.config.tokenAddress, [
-                "event Transfer(address indexed from, address indexed to, uint256 value)"
-            ], this.provider);
-
-            // Use rate-limit aware querier with narrow 7-day window
-            const querier = new RateLimitAwareEventQuerier(this.provider, this.config.blockTag);
-            const BLOCKS_PER_DAY = 43200; // Base: ~2 second blocks
-            const fromBlock = Math.max(0, this.config.blockTag - (BLOCKS_PER_DAY * 7)); // 7 days
-            
-            console.log(`   Querying Transfer events from block ${fromBlock} to ${this.config.blockTag} (7 day window)...`);
-
-            const filter = btc1Contract.filters.Transfer();
-            const events = await querier.queryEventsInChunks(btc1Contract, filter, fromBlock, this.config.blockTag);
-
-            const holders = new Map();
-            for (const event of events) {
-                if (event.args.from && event.args.from !== ZERO) {
-                    holders.set(event.args.from.toLowerCase(), true);
-                }
-                if (event.args.to && event.args.to !== ZERO) {
-                    holders.set(event.args.to.toLowerCase(), true);
-                }
-            }
-
-            // Get balances for all holders
-            const btc1Contract2 = new ethers.Contract(this.config.tokenAddress, [
                 "function balanceOf(address) view returns (uint256)"
             ], this.provider);
 
-            const holdersList = [];
-            for (const addr of holders.keys()) {
+            const holders = [];
+            let processed = 0;
+            
+            for (const addr of addressSet) {
+                if (this.config.excluded.includes(addr)) continue;
+                
                 try {
-                    const balance = await btc1Contract2.balanceOf(addr, { blockTag: this.config.blockTag });
+                    const balance = await btc1Contract.balanceOf(addr);
                     if (balance > 0n) {
-                        holdersList.push({
+                        holders.push({
                             address: addr,
                             balance: balance.toString()
                         });
+                    }
+                    processed++;
+                    if (processed % 50 === 0) {
+                        console.log(`      Progress: ${processed}/${addressSet.size}...`);
                     }
                 } catch (error) {
                     // Skip individual balance fetch errors
                 }
             }
 
-            console.log(`   ✅ Found ${holdersList.length} holders from RPC events`);
-            return holdersList;
+            console.log(`   ✅ Total holders with balance: ${holders.length}`);
+            return holders;
         } catch (error) {
-            console.log(`   ❌ RPC fetch failed: ${error.message}`);
+            console.log(`   ❌ Alchemy fetch failed: ${error.message}`);
             return null;
         }
     }
 
     async fetch() {
         console.log("\n╔════════════════════════════════════════════════════════════╗");
-        console.log("║   FETCHING TOKEN HOLDERS FROM MULTIPLE SOURCES             ║");
+        console.log("║   FETCHING TOKEN HOLDERS FROM ALCHEMY API                  ║");
         console.log("╚════════════════════════════════════════════════════════════╝\n");
 
-        let holders = await this.fetchFromCovalent();
-        if (holders) return holders;
+        const holders = await this.fetchFromAlchemy();
+        
+        if (!holders) {
+            throw new Error("Failed to fetch holders from Alchemy API. Please check your API key.");
+        }
 
-        holders = await this.fetchFromMoralis();
-        if (holders) return holders;
-
-        holders = await this.fetchFromBlockScout();
-        if (holders) return holders;
-
-        console.log("\n🔄 All APIs failed, falling back to RPC-based discovery...\n");
-        holders = await this.fetchFromRPC();
-        if (holders) return holders;
-
-        throw new Error("Failed to fetch holders from all available sources");
+        return holders;
     }
 }
 
@@ -411,29 +319,40 @@ class SelfReconcilingEngineV11 {
         }
     }
 
-    async getLPHoldersFromCovalent(poolAddress) {
+    async getLPHoldersFromAlchemy(poolAddress) {
         try {
-            const apiKey = process.env.COVALENT_API_KEY;
-            if (!apiKey) return null;
+            if (!process.env.ALCHEMY_API_KEY) return null;
 
-            console.log(`      Fetching LP holders from Covalent...`);
-            const url = `https://api.covalenthq.com/v1/base-mainnet/tokens/${poolAddress}/token_holders_v2/?key=${apiKey}&page-size=1000`;
-            const response = await fetch(url);
+            console.log(`      Fetching LP holders from Alchemy...`);
+            const url = `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`;
+            const payload = {
+                jsonrpc: "2.0",
+                id: 1,
+                method: "alchemy_getTokenOwners",
+                params: [{ contractAddress: poolAddress }]
+            };
+
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
             const data = await response.json();
 
-            if (data.error || data.error_code || !data.data || !data.data.items) {
-                console.log(`      ⚠️  Covalent API failed`);
+            if (data.error || !data.result || !data.result.owners) {
+                console.log(`      ⚠️  Alchemy API failed`);
                 return null;
             }
 
-            const holders = data.data.items
-                .filter(item => item.address && item.balance && BigInt(item.balance) > 0n)
-                .map(item => item.address.toLowerCase());
+            const holders = data.result.owners
+                .filter(owner => owner.ownerAddress && owner.tokenBalance && BigInt(owner.tokenBalance) > 0n)
+                .map(owner => owner.ownerAddress.toLowerCase());
             
-            console.log(`      ✅ Got ${holders.length} LP holders from Covalent`);
+            console.log(`      ✅ Got ${holders.length} LP holders from Alchemy`);
             return holders;
         } catch (error) {
-            console.log(`      ⚠️  Covalent fetch failed: ${error.message}`);
+            console.log(`      ⚠️  Alchemy fetch failed: ${error.message}`);
             return null;
         }
     }
@@ -521,8 +440,8 @@ class SelfReconcilingEngineV11 {
             this.balances.delete(poolAddress);
         }
         
-        // Get LP holders from Covalent
-        const lpHolders = await this.getLPHoldersFromCovalent(poolAddress);
+        // Get LP holders from Alchemy
+        const lpHolders = await this.getLPHoldersFromAlchemy(poolAddress);
         
         if (!lpHolders || lpHolders.length === 0) {
             console.log(`      ⚠️  No LP holders found, restoring pool as direct holder\n`);
@@ -750,8 +669,8 @@ class SelfReconcilingEngineV11 {
 
         const btc1Contract = new ethers.Contract(this.config.tokenAddress, ERC20_ABI, this.provider);
         
-        // Fetch holders with multi-API fallback
-        const fetcher = new MultiAPIHolderFetcher(this.config);
+        // Fetch holders from Alchemy API
+        const fetcher = new AlchemyHolderFetcher(this.config);
         const holdersData = await fetcher.fetch();
 
         console.log(`\n📊 Processing ${holdersData.length} holders...\n`);
@@ -891,8 +810,41 @@ class SelfReconcilingEngineV11 {
 
 /* ================= MAIN EXECUTION ================= */
 
+async function warmUpProvider() {
+    console.log("🔌 Warming up RPC connection...");
+    
+    let retries = 3;
+    let block;
+    
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            console.log(`   Attempt ${attempt}/${retries}...`);
+            block = await provider.getBlockNumber();
+            console.log("✅ RPC connected. Latest block:", block);
+            break;
+        } catch (error) {
+            console.warn(`⚠️  Connection attempt ${attempt} failed: ${error.message}`);
+            
+            if (attempt === retries) {
+                console.error("❌ All connection attempts failed");
+                throw new Error(`Failed to connect to RPC after ${retries} attempts: ${error.message}`);
+            }
+            
+            const waitTime = 2000 * attempt;
+            console.log(`   Retrying in ${waitTime}ms...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+    }
+    
+    TARGET_BLOCK = block;
+    console.log(`📍 Using latest block as TARGET_BLOCK: ${TARGET_BLOCK}\n`);
+}
+
 async function main() {
-    console.log("\n🚀 Starting Self-Reconciling Merkle Generator (V11 - Fixed)...\n");
+    console.log("\n🚀 Starting Alchemy-Powered Merkle Generator (V12)...\n");
+
+    // Warm up provider and set TARGET_BLOCK
+    await warmUpProvider();
 
     const config = {
         blockTag: TARGET_BLOCK,

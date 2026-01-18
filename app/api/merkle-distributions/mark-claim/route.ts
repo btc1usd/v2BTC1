@@ -5,6 +5,18 @@ import { supabase, isSupabaseConfigured } from '../../../../lib/supabase';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0; // Disable caching
 
+// ------------------------------
+// 🗄️ TABLE SELECTION HELPER
+// ------------------------------
+function getSupabaseTableName(chainId: number): string {
+  // ALWAYS use merkle_distributions_prod on mainnet (Base = 8453)
+  if (chainId === 8453) {
+    return 'merkle_distributions_prod';
+  }
+  // Use _dev table for testnets (Base Sepolia = 84532)
+  return 'merkle_distributions_dev';
+}
+
 /**
  * API endpoint to mark an individual user claim in a distribution
  * POST /api/merkle-distributions/mark-claim
@@ -58,12 +70,17 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+      // Determine which table to use based on chain ID
+      const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+      const tableName = getSupabaseTableName(chainId);
+      console.log(`📊 Using Supabase table: ${tableName} for chain ${chainId}`);
+
       // Use a more generic approach to avoid typing issues
       const sb: any = supabase;
       
       // First, get the current distribution data from Supabase
       const selectResult = await sb
-        .from('merkle_distributions')
+        .from(tableName)
         .select('claims, metadata')
         .eq('id', Number(distributionId))
         .single();
@@ -127,7 +144,7 @@ export async function POST(request: NextRequest) {
 
       // Update Supabase
       const updateResult = await sb
-        .from('merkle_distributions')
+        .from(tableName)
         .update({
           claims: updatedClaims,
           metadata: updatedMetadata
@@ -244,11 +261,15 @@ export async function GET(request: NextRequest) {
     }
 
     try {
+      // Determine which table to use based on chain ID
+      const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+      const tableName = getSupabaseTableName(chainId);
+      
       // Use a more generic approach to avoid typing issues
       const sb: any = supabase;
       
       const selectResult = await sb
-        .from('merkle_distributions')
+        .from(tableName)
         .select('claims')
         .eq('id', Number(distributionId))
         .single();

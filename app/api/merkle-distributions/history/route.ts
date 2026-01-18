@@ -7,6 +7,18 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 export const dynamic = 'force-dynamic';
 export const revalidate = 0; // Disable caching
 
+// ------------------------------
+// 🗄️ TABLE SELECTION HELPER
+// ------------------------------
+function getSupabaseTableName(chainId: number): string {
+  // ALWAYS use merkle_distributions_prod on mainnet (Base = 8453)
+  if (chainId === 8453) {
+    return 'merkle_distributions_prod';
+  }
+  // Use _dev table for testnets (Base Sepolia = 84532)
+  return 'merkle_distributions_dev';
+}
+
 interface DistributionHistory {
   distributionId: string;
   merkleRoot: string;
@@ -112,7 +124,7 @@ export async function GET(request: NextRequest) {
 
         // Get current distribution ID
         return await merkleDistributor.currentDistributionId();
-      }, 8453, { // Base Mainnet chain ID
+      }, 84532, { // Base Sepolia chain ID
         timeout: 15000, // Increased timeout
         maxRetries: 3,
         retryDelay: 2000,
@@ -175,8 +187,13 @@ export async function GET(request: NextRequest) {
     let supabaseData: any[] = [];
 
     try {
+      // Determine which table to use based on chain ID
+      const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+      const tableName = getSupabaseTableName(chainId);
+      console.log(`📊 Using Supabase table: ${tableName} for chain ${chainId}`);
+
       const { data, error } = await supabase
-        .from("merkle_distributions")
+        .from(tableName)
         .select("id, merkle_root, claims, total_rewards, metadata")
         .gte("id", startDistributionId)
         .lte("id", endDistributionId)
@@ -240,7 +257,7 @@ export async function GET(request: NextRequest) {
             );
             
             return await merkleDistributor.getDistributionInfo(i);
-          }, 8453, { // Base Mainnet chain ID
+          }, Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453"), { // Use chain ID from environment
             timeout: 15000, // Increased timeout
             maxRetries: 3,
             retryDelay: 2000,
@@ -335,8 +352,12 @@ export async function GET(request: NextRequest) {
     // Fallback: Try to load all distributions from Supabase only
     if (isSupabaseConfigured() && supabase) {
       try {
+        // Determine which table to use based on chain ID
+        const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+        const tableName = getSupabaseTableName(chainId);
+        
         const { data, error: supabaseError } = await supabase
-          .from("merkle_distributions")
+          .from(tableName)
           .select("id, merkle_root, claims, total_rewards, metadata")
           .order("id", { ascending: false });
 

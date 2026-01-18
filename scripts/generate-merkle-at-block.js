@@ -7,11 +7,12 @@
 const { ethers } = require("ethers");
 const { MerkleTree } = require("merkletreejs");
 const { createClient } = require("@supabase/supabase-js");
+const fetch = require("node-fetch");
 require("dotenv").config({ path: ".env.production" });
 
 /* ================= CONFIG ================= */
 
-const TARGET_BLOCK = 	40596432 ;
+let TARGET_BLOCK; // Will be set to latest block at runtime
 const BTC1_DECIMALS = 8;
 
 const BTC1USD = "0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5".toLowerCase();
@@ -61,9 +62,12 @@ const POOL_SIGNATURES = {
 /* ---------- INDEXED OWNERS (REQUIRED) ---------- */
 // No longer needed - we'll discover owners dynamically
 
-/* ---------- UNISWAP V3 HELPERS ---------- */
-// Position Manager contract for V3/Slipstream
-const POSITION_MANAGER = "0x827922686190790b37229fd06084350E74485b72";
+/* ---------- SUBGRAPH ENDPOINTS ---------- */
+const BASE_SUBGRAPHS = {
+  PANCAKESWAP_V3: "https://api.studio.thegraph.com/query/45376/exchange-v3-base/version/latest",
+  AERODROME_FULL: "https://gateway-arbitrum.network.thegraph.com/api/[api-key]/subgraphs/id/GENunSHWLBXm59mBSgPzQ8metBEp9YDfdqwFr91Av1UM",
+  // Fallback: treat CL pools as direct holders if subgraph fails
+};
 
 // NOTE: UniswapV3 position tracking via events requires upgraded Alchemy plan
 // Free tier only allows 10-block ranges for eth_getLogs
@@ -73,40 +77,21 @@ const POSITION_MANAGER = "0x827922686190790b37229fd06084350E74485b72";
 //   3. Use The Graph Protocol subgraph for position queries
 //   4. Manually specify known V3 position token IDs in MANUALLY_APPROVED_V3_POSITIONS below
 
-// Manual V3 position override (if you know specific NFT token IDs for your pool)
-const MANUALLY_APPROVED_V3_POSITIONS = [
-  // Add known NFT token IDs here, e.g.: 12345, 67890
-  // These will be processed even if event scanning fails
-].map(id => id.toString());
-
-// Convert V3 liquidity to token amounts (industry-standard calculation)
-function getLiquidityAmounts(liquidity, sqrtPriceX96, tickLower, tickUpper) {
-  const Q96 = 2n ** 96n;
-  const sqrtRatioA = getSqrtRatioAtTick(tickLower);
-  const sqrtRatioB = getSqrtRatioAtTick(tickUpper);
-  
-  // Simplified calculation for in-range positions
-  // Full implementation would handle out-of-range positions
-  const amount0 = (liquidity * (sqrtRatioB - sqrtPriceX96)) / sqrtPriceX96;
-  const amount1 = liquidity * (sqrtPriceX96 - sqrtRatioA) / Q96;
-  
-  return { amount0, amount1 };
-}
-
-function getSqrtRatioAtTick(tick) {
-  // Simplified - in production use the full Uniswap V3 math
-  const Q96 = 2n ** 96n;
-  return Q96 * BigInt(Math.floor(Math.sqrt(1.0001 ** Number(tick))));
-}
-
 /* ================= PROVIDER ================= */
 
+if (!process.env.ALCHEMY_API_KEY) {
+  console.error("❌ ALCHEMY_API_KEY not found in environment variables");
+  console.error("   Make sure .env.production file exists with ALCHEMY_API_KEY set");
+  process.exit(1);
+}
+
 const ALCHEMY_RPC = `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`;
+console.log(`🌐 Using Alchemy RPC: ${ALCHEMY_RPC.replace(process.env.ALCHEMY_API_KEY, '***')}`);
 
 const provider = new ethers.JsonRpcProvider(
   ALCHEMY_RPC,
   { name: "base", chainId: 8453 },
-  { staticNetwork: true, polling: false, timeout: 60000 }
+  { staticNetwork: true, polling: false, timeout: 120000 } // Increased to 120 seconds
 );
 
 /* ================= ABIs ================= */
@@ -145,22 +130,6 @@ const CL_POOL_ABI = [
   "function token0() view returns (address)",
   "function token1() view returns (address)",
   "function slot0() view returns (uint160,int24,uint16,uint16,uint16,uint8,bool)"
-];
-
-const UNISWAP_V4_ABI = [
-  "function getCurrency0() view returns (address)",
-  "function getCurrency1() view returns (address)",
-  "function getLiquidity() view returns (uint128)"
-];
-
-const POSITION_MANAGER_ABI = [
-  "function balanceOf(address) view returns (uint256)",
-  "function tokenOfOwnerByIndex(address,uint256) view returns (uint256)",
-  "function positions(uint256) view returns (uint96,address,address,address,uint24,int24,int24,uint128,uint256,uint256)",
-  "function ownerOf(uint256) view returns (address)",
-  "event IncreaseLiquidity(uint256 indexed tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)",
-  "event DecreaseLiquidity(uint256 indexed tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)",
-  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
 ];
 
 /* ================= HELPERS ================= */
@@ -339,323 +308,147 @@ async function alchemyTransfers(token, retries = 3) {
   return [];
 }
 
-/* ================= UNISWAP V3 NFT POSITIONS ================= */
+/* ================= V3 LP EXPANSION (SUBGRAPH) ================= */
 
-// Safe event query helper with chunking and retry logic
-async function safeQueryFilter(contract, filter, from, to, step = 5000) {
-  const results = [];
-  for (let i = from; i <= to; i += step) {
-    const end = Math.min(i + step - 1, to);
-    try {
-      const logs = await contract.queryFilter(filter, i, end);
-      results.push(...logs);
-    } catch {
-      await new Promise(r => setTimeout(r, 500));
-    }
-  }
-  return results;
-}
-
-async function processUniswapV3Pool(pool, balances, excluded) {
+async function expandV3PoolViaSubgraph(pool, btc1, poolType) {
   try {
-    const poolContract = new ethers.Contract(pool, CL_POOL_ABI, provider);
-    const [token0, token1, slot0] = await Promise.all([
-      poolContract.token0({ blockTag: TARGET_BLOCK }),
-      poolContract.token1({ blockTag: TARGET_BLOCK }),
-      poolContract.slot0({ blockTag: TARGET_BLOCK })
-    ]);
-    
-    const t0 = token0.toLowerCase();
-    const t1 = token1.toLowerCase();
-    
-    // Check if pool contains BTC1USD
-    if (![t0, t1].includes(BTC1USD)) {
-      console.log(`   ⊘ Not a BTC1 pool`);
-      return;
+    // Determine which subgraph to use
+    let subgraphUrl;
+    if (poolType === POOL_TYPES.AERODROME_CL) {
+      // Aerodrome subgraphs are unreliable/deprecated, skip to fallback
+      throw new Error('Aerodrome CL subgraph not available, using direct balance');
+    } else {
+      // Try PancakeSwap for other CL pools
+      subgraphUrl = BASE_SUBGRAPHS.PANCAKESWAP_V3;
     }
     
-    const isBTC1Token0 = t0 === BTC1USD;
-    console.log(`   BTC1 is token${isBTC1Token0 ? '0' : '1'}`);
-    console.log(`   Current sqrtPriceX96: ${slot0[0].toString()}`);
+    console.log(`   🌐 Querying subgraph: ${subgraphUrl.split('/').pop()}`);
     
-    // Get Position Manager contract
-    const positionManager = new ethers.Contract(
-      POSITION_MANAGER,
-      POSITION_MANAGER_ABI,
-      provider
-    );
-    
-    // Discover all NFT positions through Transfer events
-    // Query in chunks to avoid timeout
-    console.log(`   Querying NFT positions in chunks...`);
-    
-    const allTokenIds = new Set();
-    const START_BLOCK = Math.max(0, TARGET_BLOCK - 500000); // Last ~500k blocks (~2 months on Base)
-    
-    try {
-      const filter = positionManager.filters.Transfer();
-      const events = await safeQueryFilter(
-        positionManager,
-        filter,
-        START_BLOCK,
-        TARGET_BLOCK
-      );
-      
-      console.log(`   Found ${events.length} Transfer events`);
-      
-      for (const event of events) {
-        const tokenId = event.args.tokenId;
-        if (tokenId) {
-          allTokenIds.add(tokenId.toString());
-        }
-      }
-      
-      console.log(`   ✅ Discovered ${allTokenIds.size} unique NFT positions`);
-    } catch (err) {
-      console.log(`   ⚠️ Event scanning failed: ${err.message}`);
-      console.log(`   Trying fallback: IncreaseLiquidity events...`);
-      
-      // Fallback: Use IncreaseLiquidity events (smaller dataset)
-      try {
-        const liquidityFilter = positionManager.filters.IncreaseLiquidity();
-        const liquidityEvents = await safeQueryFilter(
-          positionManager,
-          liquidityFilter,
-          START_BLOCK,
-          TARGET_BLOCK
-        );
-        
-        for (const event of liquidityEvents) {
-          allTokenIds.add(event.args.tokenId.toString());
-        }
-        
-        console.log(`   Found ${allTokenIds.size} positions via liquidity events`);
-      } catch (fallbackErr) {
-        console.log(`   ❌ Fallback also failed: ${fallbackErr.message}`);
-        console.log(`   ⚠️ UniswapV3 position tracking requires RPC with better event query support`);
-        return;
-      }
-    }
-    
-    if (allTokenIds.size === 0) {
-      console.log(`   ⚠️ No NFT positions discovered via events`);
-      
-      // Check if there are manually approved positions
-      if (MANUALLY_APPROVED_V3_POSITIONS.length > 0) {
-        console.log(`   💡 Using ${MANUALLY_APPROVED_V3_POSITIONS.length} manually approved V3 positions...`);
-        MANUALLY_APPROVED_V3_POSITIONS.forEach(id => allTokenIds.add(id));
-      } else {
-        console.log(`   💡 TIP: You can manually add known NFT token IDs to MANUALLY_APPROVED_V3_POSITIONS`);
-        console.log(`   💡 Or upgrade Alchemy plan for automatic event scanning\n`);
-        return;
-      }
-    }
-    
-    let validPositions = 0;
-    let totalBTC1Liquidity = 0n;
-    let processedCount = 0;
-    
-    console.log(`\n   Processing ${allTokenIds.size} NFT positions...`);
-    
-    // Process each NFT position
-    for (const tokenId of allTokenIds) {
-      processedCount++;
-      if (processedCount % 100 === 0) {
-        console.log(`   Progress: ${processedCount}/${allTokenIds.size} positions...`);
-      }
-      
-      try {
-        // Get position details
-        const position = await positionManager.positions(tokenId, { blockTag: TARGET_BLOCK });
-        const [
-          nonce,
-          operator,
-          posToken0,
-          posToken1,
-          fee,
-          tickLower,
-          tickUpper,
-          liquidity,
-          feeGrowthInside0LastX128,
-          feeGrowthInside1LastX128
-        ] = position;
-        
-        // Verify position is for this pool (matching tokens)
-        if (posToken0.toLowerCase() !== t0 || posToken1.toLowerCase() !== t1) {
-          continue;
-        }
-        
-        // Skip positions with no liquidity
-        if (liquidity === 0n) continue;
-        
-        // Get current owner of the NFT
-        const owner = await positionManager.ownerOf(tokenId, { blockTag: TARGET_BLOCK });
-        const ownerAddr = owner.toLowerCase();
-        
-        // Skip excluded addresses
-        if (excluded.has(ownerAddr)) continue;
-        
-        // Calculate token amounts from liquidity
-        const amounts = getLiquidityAmounts(
-          liquidity,
-          slot0[0], // sqrtPriceX96
-          Number(tickLower),
-          Number(tickUpper)
-        );
-        
-        // Get BTC1 amount based on which token it is
-        const btc1Amount = isBTC1Token0 ? amounts.amount0 : amounts.amount1;
-        
-        if (btc1Amount > 0n) {
-          // Check if owner is a contract we haven't seen
-          const isContractCheck = await isContract(ownerAddr);
-          const alreadyInBalances = balances.has(ownerAddr);
-          
-          if (isContractCheck && !alreadyInBalances) {
-            continue; // Skip new contracts
+    const query = `
+      query ($id: String!) {
+        pool(id: $id) {
+          id
+          token0 { id }
+          token1 { id }
+          sqrtPrice
+          tick
+          positions(first: 1000, where: { liquidity_gt: "0" }) {
+            owner
+            liquidity
+            tickLower { tickIdx }
+            tickUpper { tickIdx }
           }
-          
-          balances.set(ownerAddr, (balances.get(ownerAddr) || 0n) + btc1Amount);
-          totalBTC1Liquidity += btc1Amount;
-          validPositions++;
-          
-          console.log(`   └─ NFT #${tokenId} owner ${ownerAddr.slice(0,10)}... = ${ethers.formatUnits(btc1Amount, BTC1_DECIMALS)} BTC1 (total: ${ethers.formatUnits(balances.get(ownerAddr), BTC1_DECIMALS)})`);
         }
-      } catch (err) {
-        // Position might not exist at this block, NFT burned, or other error
-        continue;
       }
+    `;
+    
+    const res = await fetch(subgraphUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query,
+        variables: { id: pool.toLowerCase() },
+      }),
+    });
+    
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
     
-    console.log(`   ✅ Processed ${validPositions} valid positions with liquidity`);
-    console.log(`   💰 Total BTC1 in V3 positions: ${ethers.formatUnits(totalBTC1Liquidity, BTC1_DECIMALS)}\n`);
+    const json = await res.json();
     
-  } catch (err) {
-    console.log(`   ❌ Failed to process V3 pool: ${err.message}`);
-  }
-}
-
-/* ================= ERC20 LP ================= */
-
-async function processERC20LP(pool, balances, excluded) {
-  const poolType = await detectPoolType(pool);
-  
-  if (poolType === POOL_TYPES.UNKNOWN) {
-    console.log(`   ⊘ Unknown pool type - skipping`);
-    return;
-  }
-  
-  // UniswapV3 uses NFT positions, requires different handling
-  if (poolType === POOL_TYPES.UNISWAP_V3) {
-    console.log(`   ✅ UniswapV3 pool detected - processing NFT positions`);
-    await processUniswapV3Pool(pool, balances, excluded);
-    return;
-  }
-
-  try {
-    let p, t0, t1, ts, reserve;
-    
-    if (poolType === POOL_TYPES.UNISWAP_V2) {
-      p = new ethers.Contract(pool, UNIV2_ABI, provider);
-      [t0, t1, ts] = await Promise.all([
-        p.token0({ blockTag: TARGET_BLOCK }),
-        p.token1({ blockTag: TARGET_BLOCK }),
-        p.totalSupply({ blockTag: TARGET_BLOCK })
-      ]);
-      const r = await p.getReserves({ blockTag: TARGET_BLOCK });
-      
-      if (![t0, t1].map(a => a.toLowerCase()).includes(BTC1USD)) {
-        console.log(`   ⊘ Not a BTC1 pool`);
-        return;
-      }
-      
-      reserve = BigInt(t0.toLowerCase() === BTC1USD ? r[0] : r[1]);
-      console.log(`   ✅ UniswapV2 BTC1 pool detected`);
-      
-    } else if (poolType === POOL_TYPES.AERODROME) {
-      p = new ethers.Contract(pool, AERODROME_ABI, provider);
-      [t0, t1, ts] = await Promise.all([
-        p.token0({ blockTag: TARGET_BLOCK }),
-        p.token1({ blockTag: TARGET_BLOCK }),
-        p.totalSupply({ blockTag: TARGET_BLOCK })
-      ]);
-      const [r0, r1] = await Promise.all([
-        p.reserve0({ blockTag: TARGET_BLOCK }),
-        p.reserve1({ blockTag: TARGET_BLOCK })
-      ]);
-      
-      if (![t0, t1].map(a => a.toLowerCase()).includes(BTC1USD)) {
-        console.log(`   ⊘ Not a BTC1 pool`);
-        return;
-      }
-      
-      reserve = BigInt(t0.toLowerCase() === BTC1USD ? r0 : r1);
-      console.log(`   ✅ Aerodrome BTC1 pool detected`);
+    if (json.errors) {
+      throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);
     }
     
-    const info = { reserve, totalSupply: BigInt(ts) };
-
-    console.log(`   BTC1 Reserve: ${ethers.formatUnits(info.reserve, BTC1_DECIMALS)}`);
-    console.log(`   Fetching LP holders...`);
-
-    const lpBalances = new Map();
-    const transfers = await alchemyTransfers(pool);
-    
-    if (transfers.length === 0) {
-      console.log(`   ⚠️ No transfers found for this pool`);
-      return;
+    const p = json?.data?.pool;
+    if (!p) {
+      throw new Error('Pool not found in subgraph');
     }
     
-    console.log(`   Processing ${transfers.length} transfers...`);
+    console.log(`   ✅ Found ${p.positions.length} positions with liquidity`);
     
-    for (const t of transfers) {
-      const v = BigInt(t.rawContract?.value || 0);
-      if (t.from && t.from !== ZERO)
-        lpBalances.set(t.from.toLowerCase(), (lpBalances.get(t.from.toLowerCase()) || 0n) - v);
-      if (t.to)
-        lpBalances.set(t.to.toLowerCase(), (lpBalances.get(t.to.toLowerCase()) || 0n) + v);
+    const isBTC1Token0 = p.token0.id.toLowerCase() === btc1;
+    console.log(`   BTC1 is token${isBTC1Token0 ? '0' : '1'}`);
+    
+    const balances = new Map();
+    
+    // Use simple proportional calculation based on liquidity
+    const totalLiquidity = p.positions.reduce((sum, pos) => sum + BigInt(pos.liquidity), 0n);
+    
+    if (totalLiquidity === 0n) {
+      throw new Error('No liquidity in positions');
     }
-
-    let validHolders = 0;
-    for (const [addr, bal] of lpBalances) {
-      if (
-        bal <= 0n ||
-        addr === ZERO ||
-        addr === ONE ||
-        addr === pool ||
-        excluded.has(addr)
-      ) continue;
-
-      // Allow addresses that are already in balances (they can hold both direct tokens AND LP tokens)
-      // Only exclude if it's a NEW contract we haven't seen before
-      const isContractCheck = await isContract(addr);
-      const alreadyInBalances = balances.has(addr);
+    
+    console.log(`   📊 Total liquidity: ${totalLiquidity.toString()}`);
+    
+    // Get pool's total BTC1 balance to distribute
+    const btc1Contract = new ethers.Contract(BTC1USD, ERC20_ABI, provider);
+    const poolBTC1Balance = await btc1Contract.balanceOf(pool, { blockTag: TARGET_BLOCK });
+    
+    console.log(`   💰 Pool's BTC1 balance: ${ethers.formatUnits(poolBTC1Balance, BTC1_DECIMALS)}`);
+    
+    // Distribute proportionally to liquidity
+    let distributedCount = 0;
+    for (const pos of p.positions) {
+      const liquidity = BigInt(pos.liquidity);
+      const owner = pos.owner.toLowerCase();
       
-      if (isContractCheck && !alreadyInBalances) continue;
-
-      const share = (bal * info.reserve) / info.totalSupply;
+      // Calculate share: (position liquidity / total liquidity) * pool BTC1 balance
+      const share = (liquidity * poolBTC1Balance) / totalLiquidity;
+      
       if (share > 0n) {
-        balances.set(addr, (balances.get(addr) || 0n) + share);
-        validHolders++;
-        console.log(`   └─ LP holder ${addr.slice(0,10)}... = ${ethers.formatUnits(share, BTC1_DECIMALS)} BTC1 (total: ${ethers.formatUnits(balances.get(addr), BTC1_DECIMALS)})`);
+        const existing = balances.get(owner) || 0n;
+        balances.set(owner, existing + share);
+        distributedCount++;
+        
+        if (distributedCount <= 10) {
+          console.log(`   └─ ${owner.slice(0,10)}... = ${ethers.formatUnits(share, BTC1_DECIMALS)} BTC1 (liquidity: ${liquidity.toString()})`);
+        }
       }
     }
     
-    console.log(`   ✅ Found ${validHolders} valid LP holders\n`);
+    console.log(`   ✅ Distributed to ${distributedCount} position holders`);
+    
+    return balances;
+    
   } catch (err) {
-    console.log(`   ❌ Failed to read pool: ${err.message}`);
-    return;
+    console.log(`   ⚠️  Subgraph expansion not available: ${err.message}`);
+    throw err;
   }
 }
 
-
-
-/* ================= MAIN ================= */
+/* ================= ERC20 LP (V2-STYLE POOLS) ================= */
 
 async function warmUpProvider() {
   console.log("🔌 Warming up RPC connection...");
-  const block = await provider.getBlockNumber();
-  console.log("✅ RPC connected. Latest block:", block);
+  
+  let retries = 3;
+  let block;
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`   Attempt ${attempt}/${retries}...`);
+      block = await provider.getBlockNumber();
+      console.log("✅ RPC connected. Latest block:", block);
+      break;
+    } catch (error) {
+      console.warn(`⚠️  Connection attempt ${attempt} failed: ${error.message}`);
+      
+      if (attempt === retries) {
+        console.error("❌ All connection attempts failed");
+        throw new Error(`Failed to connect to RPC after ${retries} attempts: ${error.message}`);
+      }
+      
+      const waitTime = 2000 * attempt; // Progressive backoff: 2s, 4s, 6s
+      console.log(`   Retrying in ${waitTime}ms...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+  
+  // Set TARGET_BLOCK to latest block
+  TARGET_BLOCK = block;
+  console.log(`📍 Using latest block as TARGET_BLOCK: ${TARGET_BLOCK}`);
 }
 
 async function generateMerkleTree() {
@@ -698,7 +491,8 @@ async function generateMerkleTree() {
         const poolType = await detectPoolType(addr);
         detectedPools.push({ address: addr, type: poolType });
         console.log(`   🏊 LP Pool detected: ${addr} (${poolType})`);
-        // IMPORTANT: Also add pools to EOAs list so they get balances in Step 3
+        // Add pools to eoas - they get direct balance treatment
+        // CL pools (V3-style) are complex to expand, treat as direct holders
         eoas.push(addr);
       } else {
         // Non-pool contracts are treated as EOAs (smart wallets, etc.)
@@ -709,8 +503,8 @@ async function generateMerkleTree() {
     }
   }
   
-  console.log(`   ✅ EOAs (including smart wallets): ${eoas.length}`);
-  console.log(`   ✅ LP Pools (treated as direct holders): ${detectedPools.length}\n`);
+  console.log(`   ✅ EOAs (including smart wallets and pools): ${eoas.length}`);
+  console.log(`   ✅ LP Pools detected (will get direct balances): ${detectedPools.length}\n`);
 
   /* ---------- STEP 3: PROCESS DIRECT BTC1 BALANCES ---------- */
   console.log('📊 STEP 3: Processing direct BTC1 balances...');
@@ -728,18 +522,159 @@ async function generateMerkleTree() {
 
   /* ---------- STEP 4: PROCESS DETECTED LP POOLS ---------- */
   console.log('📊 STEP 4: Processing detected LP pools...');
-  console.log(`   Found ${detectedPools.length} LP pools to expand\n`);
+  console.log(`   Found ${detectedPools.length} LP pools\n`);
   
   for (const { address: pool, type: poolType } of detectedPools) {
     console.log(`\n🔍 Processing ${poolType} pool: ${pool}`);
     
-    // DON'T remove pool's direct balance - keep pools as direct holders
-    // This is the correct approach per project requirements
-    console.log(`   ℹ️  Pool treated as direct holder (not expanding LP providers)`);
+    // CL pools (V3-style) - try subgraph-based expansion
+    if (poolType === POOL_TYPES.AERODROME_CL || poolType === POOL_TYPES.UNISWAP_V3) {
+      console.log(`   🌐 Concentrated Liquidity pool - using subgraph expansion`);
+      
+      try {
+        // Try subgraph-based expansion
+        const clBalances = await expandV3PoolViaSubgraph(pool, BTC1USD, poolType);
+        
+        if (clBalances.size > 0) {
+          // Merge CL balances into main balances
+          for (const [addr, amount] of clBalances) {
+            if (!excluded.has(addr)) {
+              const existing = balances.get(addr) || 0n;
+              balances.set(addr, existing + amount);
+            }
+          }
+          
+          // Remove pool's direct balance (distributed to position holders)
+          const poolDirectBalance = balances.get(pool) || 0n;
+          if (poolDirectBalance > 0n) {
+            console.log(`   ⚠️  Removing pool's direct balance (distributed to position holders): ${ethers.formatUnits(poolDirectBalance, BTC1_DECIMALS)} BTC1`);
+            balances.delete(pool);
+          }
+        } else {
+          throw new Error('No positions found in subgraph');
+        }
+      } catch (err) {
+        // If expansion fails, keep pool's direct balance
+        console.log(`   ⚠️  Subgraph expansion failed: ${err.message}`);
+        if (balances.has(pool)) {
+          console.log(`   ℹ️  Fallback: Using pool's direct balance: ${ethers.formatUnits(balances.get(pool), BTC1_DECIMALS)} BTC1`);
+        } else {
+          console.log(`   ⚠️  Pool has no direct balance to fall back on`);
+        }
+      }
+      continue;
+    }
     
-    // If pool already has balance from Step 3, keep it
-    if (balances.has(pool)) {
-      console.log(`   ✅ Pool balance: ${ethers.formatUnits(balances.get(pool), BTC1_DECIMALS)} BTC1`);
+    try {
+      // V2-style pools (UniswapV2, Aerodrome V2) - expand to LP token holders
+      // Get pool info
+      const poolContract = new ethers.Contract(pool, UNIV2_ABI, provider);
+      const [token0, token1, totalSupply] = await Promise.all([
+        poolContract.token0({ blockTag: TARGET_BLOCK }),
+        poolContract.token1({ blockTag: TARGET_BLOCK }),
+        poolContract.totalSupply({ blockTag: TARGET_BLOCK })
+      ]);
+      
+      const t0 = token0.toLowerCase();
+      const t1 = token1.toLowerCase();
+      
+      // Check if pool contains BTC1USD
+      if (![t0, t1].includes(BTC1USD)) {
+        console.log(`   ⊘ Not a BTC1 pool`);
+        continue;
+      }
+      
+      const isBTC1Token0 = t0 === BTC1USD;
+      console.log(`   BTC1 is token${isBTC1Token0 ? '0' : '1'}`);
+      
+      // Get reserves based on pool type
+      let btc1Reserve;
+      if (poolType === POOL_TYPES.AERODROME) {
+        const aeroContract = new ethers.Contract(pool, AERODROME_ABI, provider);
+        const [r0, r1] = await Promise.all([
+          aeroContract.reserve0({ blockTag: TARGET_BLOCK }),
+          aeroContract.reserve1({ blockTag: TARGET_BLOCK })
+        ]);
+        btc1Reserve = isBTC1Token0 ? BigInt(r0) : BigInt(r1);
+      } else {
+        const reserves = await poolContract.getReserves({ blockTag: TARGET_BLOCK });
+        btc1Reserve = isBTC1Token0 ? BigInt(reserves[0]) : BigInt(reserves[1]);
+      }
+      
+      console.log(`   BTC1 Reserve: ${ethers.formatUnits(btc1Reserve, BTC1_DECIMALS)}`);
+      console.log(`   Total LP Supply: ${ethers.formatUnits(totalSupply, 18)}`);
+      console.log(`   Fetching LP holders...`);
+      
+      // Remove pool's direct balance - we'll distribute to LP holders instead
+      const poolDirectBalance = balances.get(pool) || 0n;
+      if (poolDirectBalance > 0n) {
+        console.log(`   ⚠️  Removing pool's direct balance: ${ethers.formatUnits(poolDirectBalance, BTC1_DECIMALS)} BTC1`);
+        balances.delete(pool);
+      }
+      
+      // Get all LP token transfers to find holders
+      const lpTransfers = await alchemyTransfers(pool);
+      
+      if (lpTransfers.length === 0) {
+        console.log(`   ⚠️ No LP transfers found`);
+        continue;
+      }
+      
+      console.log(`   Processing ${lpTransfers.length} LP transfers...`);
+      
+      // Calculate LP balances
+      const lpBalances = new Map();
+      for (const t of lpTransfers) {
+        const value = BigInt(t.rawContract?.value || 0);
+        if (t.from && t.from !== ZERO) {
+          const current = lpBalances.get(t.from.toLowerCase()) || 0n;
+          lpBalances.set(t.from.toLowerCase(), current - value);
+        }
+        if (t.to) {
+          const current = lpBalances.get(t.to.toLowerCase()) || 0n;
+          lpBalances.set(t.to.toLowerCase(), current + value);
+        }
+      }
+      
+      // Distribute BTC1 to LP providers based on their LP share
+      let validHolders = 0;
+      for (const [addr, lpBal] of lpBalances) {
+        if (
+          lpBal <= 0n ||
+          addr === ZERO ||
+          addr === ONE ||
+          addr === pool ||
+          excluded.has(addr)
+        ) continue;
+        
+        // Calculate BTC1 share: (lpBalance / totalSupply) * btc1Reserve
+        const btc1Share = (lpBal * btc1Reserve) / totalSupply;
+        
+        if (btc1Share > 0n) {
+          // Add to existing balance (if holder also has direct BTC1)
+          const existingBalance = balances.get(addr) || 0n;
+          balances.set(addr, existingBalance + btc1Share);
+          validHolders++;
+          
+          const hasDirectHolding = existingBalance > 0n;
+          if (hasDirectHolding) {
+            console.log(`   └─ LP holder ${addr.slice(0,10)}... = ${ethers.formatUnits(btc1Share, BTC1_DECIMALS)} BTC1 from pool + ${ethers.formatUnits(existingBalance, BTC1_DECIMALS)} direct = ${ethers.formatUnits(balances.get(addr), BTC1_DECIMALS)} total`);
+          } else {
+            console.log(`   └─ LP holder ${addr.slice(0,10)}... = ${ethers.formatUnits(btc1Share, BTC1_DECIMALS)} BTC1 from pool`);
+          }
+        }
+      }
+      
+      console.log(`   ✅ Distributed to ${validHolders} LP providers`);
+      
+    } catch (err) {
+      console.log(`   ❌ Failed to process pool: ${err.message}`);
+      // If expansion fails, restore pool's direct balance
+      const poolBalance = await btc1.balanceOf(pool, { blockTag: TARGET_BLOCK });
+      if (poolBalance > 0n) {
+        balances.set(pool, poolBalance);
+        console.log(`   ℹ️  Fallback: Using pool's direct balance: ${ethers.formatUnits(poolBalance, BTC1_DECIMALS)} BTC1`);
+      }
     }
   }
 
