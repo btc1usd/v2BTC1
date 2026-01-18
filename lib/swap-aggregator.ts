@@ -114,7 +114,15 @@ export class SwapAggregator {
         slippagePercentage: request.slippagePercentage?.toString() || '0.005',
       });
 
-      const response = await fetch(`${this.BASE_API_URL}?${params}`);
+      // Add API key if available
+      const headers: HeadersInit = {};
+      if (process.env.NEXT_PUBLIC_0X_API_KEY) {
+        headers['0x-api-key'] = process.env.NEXT_PUBLIC_0X_API_KEY;
+      }
+
+      const response = await fetch(`${this.BASE_API_URL}?${params}`, {
+        headers,
+      });
       
       if (!response.ok) {
         const errorData = await response.text();
