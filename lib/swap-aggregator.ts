@@ -114,10 +114,15 @@ export class SwapAggregator {
         slippagePercentage: request.slippagePercentage?.toString() || '0.005',
       });
 
-      // Add API key if available
-      const headers: HeadersInit = {};
+      // Add API key and version headers (required for 0x API v2)
+      const headers: HeadersInit = {
+        '0x-version': 'v2',
+      };
+      
       if (process.env.NEXT_PUBLIC_0X_API_KEY) {
         headers['0x-api-key'] = process.env.NEXT_PUBLIC_0X_API_KEY;
+      } else {
+        throw new Error('0x API key required. Set NEXT_PUBLIC_0X_API_KEY environment variable. Get a free key at https://dashboard.0x.org/');
       }
 
       const response = await fetch(`${this.BASE_API_URL}?${params}`, {
