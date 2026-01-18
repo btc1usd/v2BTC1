@@ -32,17 +32,10 @@ interface TokenInfo {
 
 // Base Chain ID
 const BASE_CHAIN_ID = 8453;
-
-// Uniswap V3 Contracts on Base
-const UNISWAP_V3_ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481"; // SwapRouter02
-const UNISWAP_V3_QUOTER = "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a"; // QuoterV2
 const WETH_ADDRESS = "0x4200000000000000000000000000000000000006"; // WETH on Base
 
-// Aerodrome Contracts on Base (largest DEX on Base)
-const AERODROME_ROUTER = "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43"; // Aerodrome Router
-
-// BaseSwap Contracts on Base  
-const BASESWAP_ROUTER = "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86"; // BaseSwap Router
+// 0x Protocol API endpoint for Base network
+const ZEROX_API_URL = "https://base.api.0x.org";
 
 // Popular tokens on Base network
 const BASE_TOKENS: TokenInfo[] = [
@@ -135,7 +128,7 @@ export function KrystalSwapWidget() {
     }
   };
 
-  // Fetch quote from multiple DEXes and return best price
+  // Fetch quote from 0x Protocol API (aggregates ALL DEXes on Base)
   useEffect(() => {
     if (!fromAmount || parseFloat(fromAmount) <= 0 || !address) {
       setToAmount("");
@@ -150,175 +143,64 @@ export function KrystalSwapWidget() {
 
         const amountIn = parseUnits(fromAmount, fromToken.decimals);
         
-        // Use WETH for native ETH
-        const tokenIn = fromToken.isNative ? WETH_ADDRESS : fromToken.address;
-        const tokenOut = BTC1_TOKEN.address;
+        // Use WETH for native ETH, otherwise use actual token address
+        const sellToken = fromToken.isNative ? WETH_ADDRESS : fromToken.address;
+        const buyToken = BTC1_TOKEN.address;
         
-        // Call quoter using viem
-        const { createPublicClient, http } = await import('viem');
-        const { base } = await import('viem/chains');
-        
-        const publicClient = createPublicClient({
-          chain: base,
-          transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://mainnet.base.org'),
+        // Build 0x API request
+        const params = new URLSearchParams({
+          sellToken,
+          buyToken,
+          sellAmount: amountIn.toString(),
+          takerAddress: address,
+          slippagePercentage: '0.01', // 1% slippage
         });
 
-        let bestQuote = { amountOut: BigInt(0), dex: '', fee: 0, router: '' };
-
-        // 1. Try Uniswap V3 (multiple fee tiers)
-        const uniswapQuoterABI = [
-          {
-            inputs: [
-              {
-                components: [
-                  { name: 'tokenIn', type: 'address' },
-                  { name: 'tokenOut', type: 'address' },
-                  { name: 'amountIn', type: 'uint256' },
-                  { name: 'fee', type: 'uint24' },
-                  { name: 'sqrtPriceLimitX96', type: 'uint160' },
-                ],
-                name: 'params',
-                type: 'tuple',
-              },
-            ],
-            name: 'quoteExactInputSingle',
-            outputs: [
-              { name: 'amountOut', type: 'uint256' },
-              { name: 'sqrtPriceX96After', type: 'uint160' },
-              { name: 'initializedTicksCrossed', type: 'uint32' },
-              { name: 'gasEstimate', type: 'uint256' },
-            ],
-            stateMutability: 'nonpayable',
-            type: 'function',
+        // Call 0x /swap/v1/price endpoint to get quote
+        const response = await fetch(`${ZEROX_API_URL}/swap/v1/price?${params}`, {
+          headers: {
+            '0x-api-key': process.env.NEXT_PUBLIC_0X_API_KEY || '',
           },
-        ];
-        
-        for (const fee of [100, 500, 3000, 10000]) {
-          try {
-            const result = await publicClient.readContract({
-              address: UNISWAP_V3_QUOTER as `0x${string}`,
-              abi: uniswapQuoterABI,
-              functionName: 'quoteExactInputSingle',
-              args: [{
-                tokenIn,
-                tokenOut,
-                amountIn,
-                fee,
-                sqrtPriceLimitX96: 0,
-              }],
-            }) as any;
-            
-            const amountOut = result[0];
-            if (amountOut > bestQuote.amountOut) {
-              bestQuote = { 
-                amountOut, 
-                dex: 'Uniswap V3', 
-                fee, 
-                router: UNISWAP_V3_ROUTER 
-              };
-            }
-          } catch (e: any) {
-            console.log(`Uniswap V3 - No pool for fee ${fee / 10000}%`);
-          }
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.reason || `0x API error: ${response.status}`);
         }
 
-        // 2. Try Aerodrome (Uniswap V2 style)
-        const aerodromeRouterABI = [
-          {
-            inputs: [
-              { name: 'amountIn', type: 'uint256' },
-              { name: 'tokenIn', type: 'address' },
-              { name: 'tokenOut', type: 'address' },
-              { name: 'stable', type: 'bool' },
-            ],
-            name: 'getAmountOut',
-            outputs: [
-              { name: 'amount', type: 'uint256' },
-              { name: 'stable', type: 'bool' },
-            ],
-            stateMutability: 'view',
-            type: 'function',
-          },
-        ];
+        const quote = await response.json();
 
-        // Try both stable and volatile pools
-        for (const stable of [false, true]) {
-          try {
-            const result = await publicClient.readContract({
-              address: AERODROME_ROUTER as `0x${string}`,
-              abi: aerodromeRouterABI,
-              functionName: 'getAmountOut',
-              args: [amountIn, tokenIn, tokenOut, stable],
-            }) as any;
-            
-            const amountOut = result[0];
-            if (amountOut > bestQuote.amountOut) {
-              bestQuote = { 
-                amountOut, 
-                dex: `Aerodrome ${stable ? 'Stable' : 'Volatile'}`, 
-                fee: 0, 
-                router: AERODROME_ROUTER 
-              };
-            }
-          } catch (e: any) {
-            console.log(`Aerodrome ${stable ? 'Stable' : 'Volatile'} - No pool`);
-          }
-        }
-
-        // 3. Try BaseSwap (Uniswap V2 fork)
-        const baseswapRouterABI = [
-          {
-            inputs: [
-              { name: 'amountIn', type: 'uint256' },
-              { name: 'path', type: 'address[]' },
-            ],
-            name: 'getAmountsOut',
-            outputs: [{ name: 'amounts', type: 'uint256[]' }],
-            stateMutability: 'view',
-            type: 'function',
-          },
-        ];
-
-        try {
-          const result = await publicClient.readContract({
-            address: BASESWAP_ROUTER as `0x${string}`,
-            abi: baseswapRouterABI,
-            functionName: 'getAmountsOut',
-            args: [amountIn, [tokenIn, tokenOut]],
-          }) as any;
-          
-          const amountOut = result[result.length - 1];
-          if (amountOut > bestQuote.amountOut) {
-            bestQuote = { 
-              amountOut, 
-              dex: 'BaseSwap', 
-              fee: 0, 
-              router: BASESWAP_ROUTER 
-            };
-          }
-        } catch (e: any) {
-          console.log('BaseSwap - No pool');
-        }
-
-        // Return best quote across all DEXes
-        if (bestQuote.amountOut > 0) {
-          const outputAmount = formatUnits(bestQuote.amountOut, BTC1_TOKEN.decimals);
+        if (quote.buyAmount && BigInt(quote.buyAmount) > 0) {
+          const outputAmount = formatUnits(BigInt(quote.buyAmount), BTC1_TOKEN.decimals);
           setToAmount(parseFloat(outputAmount).toFixed(6));
+          
+          // Extract sources (DEXes used in the route)
+          const sources = quote.sources
+            ?.filter((s: any) => parseFloat(s.proportion) > 0)
+            .map((s: any) => s.name)
+            .join(', ') || 'Multiple DEXes';
+
           setRouteData({
-            provider: bestQuote.dex.toLowerCase().replace(/\s+/g, '-'),
-            dexName: bestQuote.dex,
-            tokenIn,
-            tokenOut,
-            amountIn: amountIn.toString(),
-            amountOut: bestQuote.amountOut.toString(),
-            fee: bestQuote.fee,
-            router: bestQuote.router,
+            provider: '0x-protocol',
+            dexName: sources,
+            sellToken,
+            buyToken,
+            sellAmount: amountIn.toString(),
+            buyAmount: quote.buyAmount,
+            price: quote.price,
+            guaranteedPrice: quote.guaranteedPrice,
+            estimatedPriceImpact: quote.estimatedPriceImpact,
+            gas: quote.gas,
+            gasPrice: quote.gasPrice,
+            to: quote.to,
+            data: quote.data,
+            value: quote.value,
           });
         } else {
-          throw new Error('No liquidity found on any DEX');
+          throw new Error('No liquidity found');
         }
       } catch (err: any) {
-        console.error("Multi-DEX quote error:", err);
+        console.error("0x Protocol quote error:", err);
         
         // Fallback to estimate
         const estimatedRate = fromToken.symbol === 'USDC' || fromToken.symbol === 'USDbC' ? 1 :
@@ -332,7 +214,7 @@ export function KrystalSwapWidget() {
           provider: 'estimate',
           isEstimate: true,
         });
-        setError('No BTC1 pool found on any DEX (Uniswap, Aerodrome, BaseSwap). Add liquidity first.');
+        setError('No BTC1 liquidity found. Add liquidity on any DEX (Uniswap, Aerodrome, etc.) to enable swaps.');
       } finally {
         setLoading(false);
       }
@@ -342,7 +224,7 @@ export function KrystalSwapWidget() {
     return () => clearTimeout(debounce);
   }, [fromAmount, fromToken, address]);
 
-  // Execute swap using the best route found
+  // Execute swap using 0x Protocol transaction
   const handleSwap = async () => {
     if (!routeData || !walletClient || !address) return;
 
@@ -351,106 +233,43 @@ export function KrystalSwapWidget() {
       setError(null);
       setSuccess(false);
 
-      // Handle swaps based on DEX type
-      if (!routeData.isEstimate && routeData.router) {
-        const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
-        const amountOutMinimum = (BigInt(routeData.amountOut) * BigInt(99)) / BigInt(100); // 1% slippage
+      // Handle 0x Protocol swap
+      if (!routeData.isEstimate && routeData.to && routeData.data) {
+        // For getting swap transaction, we need to call /swap/v1/quote with full params
+        const sellToken = fromToken.isNative ? WETH_ADDRESS : fromToken.address;
+        const buyToken = BTC1_TOKEN.address;
+        const sellAmount = routeData.sellAmount;
+        
+        const params = new URLSearchParams({
+          sellToken,
+          buyToken,
+          sellAmount,
+          takerAddress: address,
+          slippagePercentage: '0.01',
+        });
 
-        let hash;
+        const response = await fetch(`${ZEROX_API_URL}/swap/v1/quote?${params}`, {
+          headers: {
+            '0x-api-key': process.env.NEXT_PUBLIC_0X_API_KEY || '',
+          },
+        });
 
-        // Uniswap V3 swap
-        if (routeData.dexName?.includes('Uniswap')) {
-          const swapParams = {
-            tokenIn: routeData.tokenIn,
-            tokenOut: routeData.tokenOut,
-            fee: routeData.fee,
-            recipient: address,
-            deadline: deadline,
-            amountIn: BigInt(routeData.amountIn),
-            amountOutMinimum: amountOutMinimum,
-            sqrtPriceLimitX96: 0,
-          };
-
-          const routerABI = [
-            {
-              inputs: [
-                {
-                  components: [
-                    { name: 'tokenIn', type: 'address' },
-                    { name: 'tokenOut', type: 'address' },
-                    { name: 'fee', type: 'uint24' },
-                    { name: 'recipient', type: 'address' },
-                    { name: 'deadline', type: 'uint256' },
-                    { name: 'amountIn', type: 'uint256' },
-                    { name: 'amountOutMinimum', type: 'uint256' },
-                    { name: 'sqrtPriceLimitX96', type: 'uint160' },
-                  ],
-                  name: 'params',
-                  type: 'tuple',
-                },
-              ],
-              name: 'exactInputSingle',
-              outputs: [{ name: 'amountOut', type: 'uint256' }],
-              stateMutability: 'payable',
-              type: 'function',
-            },
-          ];
-
-          const calldata = encodeFunctionData({
-            abi: routerABI,
-            functionName: 'exactInputSingle',
-            args: [swapParams],
-          });
-
-          hash = await walletClient.sendTransaction({
-            to: routeData.router as `0x${string}`,
-            data: calldata,
-            value: fromToken.isNative ? BigInt(routeData.amountIn) : BigInt(0),
-            account: address as `0x${string}`,
-            chain: walletClient.chain,
-          });
+        if (!response.ok) {
+          throw new Error('Failed to get swap transaction');
         }
-        // Aerodrome or BaseSwap (Uniswap V2 style)
-        else {
-          const routerABI = [
-            {
-              inputs: [
-                { name: 'amountIn', type: 'uint256' },
-                { name: 'amountOutMin', type: 'uint256' },
-                { name: 'routes', type: 'tuple[]', components: [
-                  { name: 'from', type: 'address' },
-                  { name: 'to', type: 'address' },
-                  { name: 'stable', type: 'bool' },
-                ]},
-                { name: 'to', type: 'address' },
-                { name: 'deadline', type: 'uint256' },
-              ],
-              name: 'swapExactTokensForTokens',
-              outputs: [{ name: 'amounts', type: 'uint256[]' }],
-              stateMutability: 'nonpayable',
-              type: 'function',
-            },
-          ];
 
-          const routes = [{
-            from: routeData.tokenIn,
-            to: routeData.tokenOut,
-            stable: routeData.dexName?.includes('Stable') || false,
-          }];
+        const swapQuote = await response.json();
 
-          const calldata = encodeFunctionData({
-            abi: routerABI,
-            functionName: 'swapExactTokensForTokens',
-            args: [BigInt(routeData.amountIn), amountOutMinimum, routes, address, deadline],
-          });
-
-          hash = await walletClient.sendTransaction({
-            to: routeData.router as `0x${string}`,
-            data: calldata,
-            account: address as `0x${string}`,
-            chain: walletClient.chain,
-          });
-        }
+        // Execute the transaction
+        const hash = await walletClient.sendTransaction({
+          to: swapQuote.to as `0x${string}`,
+          data: swapQuote.data as `0x${string}`,
+          value: BigInt(swapQuote.value || '0'),
+          account: address as `0x${string}`,
+          chain: walletClient.chain,
+          gas: swapQuote.gas ? BigInt(swapQuote.gas) : undefined,
+          gasPrice: swapQuote.gasPrice ? BigInt(swapQuote.gasPrice) : undefined,
+        });
         
         setTxHash(hash);
         setSuccess(true);
@@ -464,7 +283,7 @@ export function KrystalSwapWidget() {
           `https://app.uniswap.org/swap?chain=base&inputCurrency=${sellTokenAddress}&outputCurrency=${BTC1_TOKEN.address}`, 
           '_blank'
         );
-        setError('Opening Uniswap. Complete your swap there.');
+        setError('Opening Uniswap. Add liquidity there to enable in-app swaps.');
         return;
       }
       
