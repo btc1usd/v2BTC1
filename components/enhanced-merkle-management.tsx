@@ -509,22 +509,32 @@ Check console for more details.`);
       });
       
       if (response.ok) {
-        const result = await response.json();
-        console.log('Merkle tree generated successfully:', result);
-        
-        setMerkleRootInput(result.merkleRoot);
-        // Use the formatted value directly from API
-        setTotalTokens(result.totalRewardsFormatted);
-        
-        // Show success message with details
-        alert(`✅ Merkle tree generated successfully!
+        try {
+          const result = await response.json();
+          console.log('Merkle tree generated successfully:', result);
+          
+          // Validate result has required fields
+          if (!result.merkleRoot || !result.totalRewardsFormatted) {
+            throw new Error('Invalid response from API: missing required fields');
+          }
+          
+          setMerkleRootInput(result.merkleRoot);
+          // Use the formatted value directly from API
+          setTotalTokens(result.totalRewardsFormatted);
+          
+          // Show success message with details
+          alert(`✅ Merkle tree generated successfully!
 
 🌳 Merkle Root: ${result.merkleRoot.slice(0, 20)}...
 💰 Total Rewards: ${result.totalRewardsFormatted} BTC1USD
-👥 Active Holders: ${result.activeHolders}
-📋 Claims: ${result.claims}
+👥 Active Holders: ${result.activeHolders || 0}
+📋 Claims: ${result.claims || 0}
 
 The merkle root has been automatically filled. Click "Set Merkle Root" to complete the distribution setup.`);
+        } catch (parseError) {
+          console.error('Error parsing response:', parseError);
+          throw new Error(`Failed to process response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+        }
         
       } else {
         const errorData = await response.json();
@@ -570,6 +580,11 @@ Please check the console for more details and try again.`);
       const result = await response.json();
       console.log('Merkle tree generated successfully:', result);
       
+      // Validate result has required fields
+      if (!result.merkleRoot || !result.totalRewardsFormatted || !result.totalRewards) {
+        throw new Error('Invalid response from API: missing required fields');
+      }
+      
       // Step 2: Automatically set the merkle root
       console.log('Step 2: Setting merkle root...');
       setMerkleRootInput(result.merkleRoot);
@@ -600,7 +615,7 @@ Users can now claim their rewards!
 
 Merkle Root: ${result.merkleRoot.slice(0, 20)}...
 Total Rewards: ${result.totalRewardsFormatted} BTC1USD
-Active Holders: ${result.activeHolders}`);
+Active Holders: ${result.activeHolders || 0}`);
           }, 2000);
         }
       }, 500);
