@@ -248,7 +248,7 @@ export async function GET(request: NextRequest) {
                 provider
               );
               return await contract.getDistributionInfo(BigInt(dist.id));
-            }, 84532, { // Base Sepolia chain ID
+            }, chainId, { // Use detected chain ID from environment
               timeout: 15000, // Increased timeout
               maxRetries: 3,
               retryDelay: 2000,

@@ -257,7 +257,7 @@ export async function GET(request: NextRequest) {
             );
             
             return await merkleDistributor.getDistributionInfo(i);
-          }, 84532, { // Base Sepolia chain ID
+          }, Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453"), { // Use chain ID from environment
             timeout: 15000, // Increased timeout
             maxRetries: 3,
             retryDelay: 2000,
