@@ -21,6 +21,7 @@ interface SwapState {
   quoteLoading: boolean;
   quote: {
     amountOut: string;
+    quoteData?: any; // Full quote response from 0x API
   } | null;
 }
 
@@ -91,19 +92,24 @@ export default function KrystalSwapWidget() {
     setState(prev => ({ ...prev, quoteLoading: true, error: null }));
     
     try {
-      // Get actual quote from 0x API
+      // Get actual quote from 0x API v2
       const amountInWei = ethers.parseUnits(amountIn, tokenIn.decimals);
       
-      // Build query parameters for 0x API
+      // Build query parameters for 0x API v2
       const params = new URLSearchParams({
-        sellToken: tokenIn.address,
-        buyToken: tokenOut.address,
+        chainId: '8453', // Base Mainnet
+        sellToken: tokenIn.address.toLowerCase(),
+        buyToken: tokenOut.address.toLowerCase(),
         sellAmount: amountInWei.toString(),
-        takerAddress: walletClient.account.address,
+        taker: walletClient.account.address,
         slippagePercentage: (slippageTolerance / 100).toString(),
       });
       
-      const response = await fetch(`https://base.api.0x.org/swap/v1/quote?${params}`);
+      const response = await fetch(`https://api.0x.org/swap/permit2/quote?${params}`, {
+        headers: {
+          '0x-version': 'v2',
+        }
+      });
       
       if (!response.ok) {
         const errorData = await response.text();
@@ -120,6 +126,7 @@ export default function KrystalSwapWidget() {
         quoteLoading: false,
         quote: {
           amountOut: amountOutFormatted,
+          quoteData, // Store the full quote data for swap execution
         }
       }));
     } catch (err: any) {

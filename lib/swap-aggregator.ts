@@ -33,7 +33,7 @@ interface TokenAllowanceCheck {
  * Implements a Krystal-style non-custodial swap flow
  */
 export class SwapAggregator {
-  private static readonly BASE_API_URL = 'https://base.api.0x.org/swap/v1/quote';
+  private static readonly BASE_API_URL = 'https://api.0x.org/swap/permit2/quote';
   public static readonly BASE_CHAIN_ID = BigInt(8453);
   
   /**
@@ -46,6 +46,8 @@ export class SwapAggregator {
     request: SwapQuoteRequest,
     signer: ethers.Signer
   ): Promise<string> {
+    const ETH_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+    
     try {
       // Verify wallet is connected to Base Mainnet
       const network = await signer.provider?.getNetwork();
@@ -66,15 +68,18 @@ export class SwapAggregator {
       });
 
       // Handle allowance if required (for ERC20 tokens)
-      if (request.sellToken.toLowerCase() !== ethers.ZeroAddress.toLowerCase()) {
+      if (request.sellToken.toLowerCase() !== ethers.ZeroAddress.toLowerCase() && 
+          request.sellToken.toLowerCase() !== ETH_ADDRESS.toLowerCase()) {
         await this.handleTokenAllowance(signer, request.sellToken, quote.allowanceTarget, request.sellAmount);
       }
 
       // Prepare transaction
+      const isNativeETH = request.sellToken.toLowerCase() === ethers.ZeroAddress.toLowerCase() || 
+                          request.sellToken.toLowerCase() === ETH_ADDRESS.toLowerCase();
       const transaction = {
         to: quote.to,
         data: quote.data,
-        value: request.sellToken.toLowerCase() === ethers.ZeroAddress.toLowerCase() ? request.sellAmount : '0',
+        value: isNativeETH ? request.sellAmount : '0',
         gasLimit: BigInt(quote.gas),
       };
 
@@ -96,21 +101,24 @@ export class SwapAggregator {
   }
 
   /**
-   * Get swap quote from 0x API
+   * Get swap quote from 0x API v2
    */
   private static async getSwapQuote(request: SwapQuoteRequest): Promise<SwapQuoteResponse> {
     try {
       const params = new URLSearchParams({
-        sellToken: request.sellToken,
-        buyToken: request.buyToken,
+        chainId: '8453', // Base Mainnet
+        sellToken: request.sellToken.toLowerCase(),
+        buyToken: request.buyToken.toLowerCase(),
         sellAmount: request.sellAmount,
-        takerAddress: request.takerAddress,
+        taker: request.takerAddress,
         slippagePercentage: request.slippagePercentage?.toString() || '0.005',
-        // Add deadline parameter (30 minutes from now)
-        excludedSources: 'UniswapV2,UniswapV3,SushiSwap', // Optional: exclude certain sources
       });
 
-      const response = await fetch(`${this.BASE_API_URL}?${params}`);
+      const response = await fetch(`${this.BASE_API_URL}?${params}`, {
+        headers: {
+          '0x-version': 'v2',
+        }
+      });
       
       if (!response.ok) {
         const errorData = await response.text();
@@ -134,8 +142,10 @@ export class SwapAggregator {
     sellAmount: string
   ): Promise<void> {
     let balance: bigint;
+    const ETH_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 
-    if (tokenAddress.toLowerCase() === ethers.ZeroAddress.toLowerCase()) {
+    if (tokenAddress.toLowerCase() === ethers.ZeroAddress.toLowerCase() || 
+        tokenAddress.toLowerCase() === ETH_ADDRESS.toLowerCase()) {
       // Native ETH balance
       balance = await signer.provider!.getBalance(await signer.getAddress());
     } else {
@@ -218,7 +228,8 @@ export class SwapAggregator {
    * Get token decimals from contract
    */
   static async getTokenDecimals(tokenAddress: string, provider: ethers.Provider): Promise<number> {
-    if (tokenAddress.toLowerCase() === ethers.ZeroAddress.toLowerCase()) {
+    const ETH_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+    if (tokenAddress.toLowerCase() === ETH_ADDRESS.toLowerCase() || tokenAddress.toLowerCase() === ethers.ZeroAddress.toLowerCase()) {
       return 18; // ETH has 18 decimals
     }
 
@@ -251,15 +262,18 @@ export class SwapAggregator {
  * Utility function to execute a swap with simplified parameters
  */
 export const executeBaseSwap = async (
-  sellToken: string, // Token address or 'ETH' for native ETH
-  buyToken: string,  // Token address or 'ETH' for native ETH
+  sellToken: string, // Token address (use 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE for native ETH)
+  buyToken: string,  // Token address (use 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE for native ETH)
   sellAmount: number, // Human-readable amount
   slippagePercentage: number = 0.5, // 0.5% by default
   signer: ethers.Signer
 ): Promise<string> => {
-  // Convert 'ETH' to ZeroAddress if needed
-  const actualSellToken = sellToken.toUpperCase() === 'ETH' ? ethers.ZeroAddress : sellToken;
-  const actualBuyToken = buyToken.toUpperCase() === 'ETH' ? ethers.ZeroAddress : buyToken;
+  // Handle the special 0x ETH address
+  const ETH_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+  
+  // Convert special ETH address to format expected by 0x API
+  const actualSellToken = sellToken;
+  const actualBuyToken = buyToken;
 
   // Get token decimals
   const provider = signer.provider!;
