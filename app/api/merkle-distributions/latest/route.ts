@@ -8,6 +8,18 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0; // Disable caching
 
 // ------------------------------
+// 🗄️ TABLE SELECTION HELPER
+// ------------------------------
+function getSupabaseTableName(chainId: number): string {
+  // ALWAYS use merkle_distributions_prod on mainnet (Base = 8453)
+  if (chainId === 8453) {
+    return 'merkle_distributions_prod';
+  }
+  // Use _dev table for testnets (Base Sepolia = 84532)
+  return 'merkle_distributions_dev';
+}
+
+// ------------------------------
 // 🔒 CACHE SETTINGS
 // ------------------------------
 const CLAIM_STATUS_CACHE = new Map<
@@ -95,13 +107,18 @@ export async function GET(request: NextRequest) {
     console.log("Supabase Admin configured:", isSupabaseAdminConfigured());
     console.log("Supabase Admin client:", supabaseAdmin ? "initialized" : "null");
 
+    // Determine which table to use based on chain ID
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+    const tableName = getSupabaseTableName(chainId);
+    console.log(`📊 Using Supabase table: ${tableName} for chain ${chainId}`);
+
     let data: any[] = [];
     let supabaseError: Error | null = null;
 
     try {
       console.log("Attempting Supabase query...");
       const { data: supabaseData, error } = await supabaseAdmin
-        .from("merkle_distributions_dev")
+        .from(tableName)
         .select("id, merkle_root, claims, total_rewards, metadata")
         .order("id", { ascending: false })
         .limit(10);
