@@ -1,28 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
 /**
- * API route to proxy 0x Protocol swap quotes
- * Avoids CORS issues by making requests from server-side
+ * 0x Swap Quote Proxy (Base Mainnet)
+ * - Returns executable swap transaction
+ * - Handles ETH normalization
+ * - Server-side only API key
  */
-export async function GET(request: NextRequest) {
+
+const ZEROX_BASE_URL = "https://base.api.0x.org/swap/v1/quote";
+const ETH_PLACEHOLDER = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+
+export async function GET(req: NextRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    
-    const sellToken = searchParams.get('sellToken');
-    const buyToken = searchParams.get('buyToken');
-    const sellAmount = searchParams.get('sellAmount');
-    const takerAddress = searchParams.get('takerAddress');
-    const slippagePercentage = searchParams.get('slippagePercentage') || '0.01';
-    
+    const params = req.nextUrl.searchParams;
+
+    let sellToken = params.get("sellToken");
+    const buyToken = params.get("buyToken");
+    const sellAmount = params.get("sellAmount");
+    const takerAddress = params.get("takerAddress");
+    const slippagePercentage = params.get("slippagePercentage") || "0.01";
+
     if (!sellToken || !buyToken || !sellAmount || !takerAddress) {
       return NextResponse.json(
-        { error: 'Missing required parameters' },
+        { error: "Missing required parameters" },
         { status: 400 }
       );
     }
 
-    // Build 0x API request
-    const params = new URLSearchParams({
+    // Normalize ETH for 0x
+    if (sellToken === ETH_PLACEHOLDER) {
+      sellToken = "ETH";
+    }
+
+    const apiKey = process.env.Zerox_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "0x API key not configured" },
+        { status: 500 }
+      );
+    }
+
+    const zeroxParams = new URLSearchParams({
       sellToken,
       buyToken,
       sellAmount,
@@ -30,84 +48,26 @@ export async function GET(request: NextRequest) {
       slippagePercentage,
     });
 
-    const zeroxUrl = `https://base.api.0x.org/swap/v1/price?${params}`;
-    
-    // Make request to 0x API from server
-    const response = await fetch(zeroxUrl, {
-      headers: {
-        '0x-api-key': process.env.ZEROX_API_KEY || process.env.NEXT_PUBLIC_0X_API_KEY || '',
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      return NextResponse.json(
-        { error: errorData.reason || `0x API error: ${response.status}`, details: errorData },
-        { status: response.status }
-      );
-    }
-
-    const data = await response.json();
-    
-    return NextResponse.json(data);
-  } catch (error: any) {
-    console.error('Swap quote proxy error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch quote', message: error.message },
-      { status: 500 }
+    const response = await fetch(
+      `${ZEROX_BASE_URL}?${zeroxParams.toString()}`,
+      {
+        headers: {
+          "0x-api-key": apiKey,
+        },
+      }
     );
-  }
-}
-
-/**
- * POST endpoint for getting executable swap transaction
- */
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    
-    const { sellToken, buyToken, sellAmount, takerAddress, slippagePercentage = '0.01' } = body;
-    
-    if (!sellToken || !buyToken || !sellAmount || !takerAddress) {
-      return NextResponse.json(
-        { error: 'Missing required parameters' },
-        { status: 400 }
-      );
-    }
-
-    // Build 0x API request for executable quote
-    const params = new URLSearchParams({
-      sellToken,
-      buyToken,
-      sellAmount,
-      takerAddress,
-      slippagePercentage,
-    });
-
-    const zeroxUrl = `https://base.api.0x.org/swap/v1/quote?${params}`;
-    
-    // Make request to 0x API from server
-    const response = await fetch(zeroxUrl, {
-      headers: {
-        '0x-api-key': process.env.ZEROX_API_KEY || process.env.NEXT_PUBLIC_0X_API_KEY || '',
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      return NextResponse.json(
-        { error: errorData.reason || `0x API error: ${response.status}`, details: errorData },
-        { status: response.status }
-      );
-    }
 
     const data = await response.json();
-    
-    return NextResponse.json(data);
-  } catch (error: any) {
-    console.error('Swap transaction proxy error:', error);
+
+    return NextResponse.json(data, { status: response.status });
+  } catch (err: any) {
+    console.error("0x proxy error:", err);
+
     return NextResponse.json(
-      { error: 'Failed to fetch swap transaction', message: error.message },
+      {
+        error: "Failed to fetch swap quote",
+        message: err?.message || "Unknown error",
+      },
       { status: 500 }
     );
   }
