@@ -95,6 +95,12 @@ export default function KrystalSwapWidget() {
     setState(prev => ({ ...prev, quoteLoading: true, error: null }));
     
     try {
+      // Validate minimum amount
+      const minAmount = tokenIn.address === '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' ? 0.001 : 0;
+      if (parseFloat(amountIn) < minAmount) {
+        throw new Error(`Minimum swap amount is ${minAmount} ${tokenIn.symbol}`);
+      }
+      
       // Get actual quote from 0x API v2
       const amountInWei = ethers.parseUnits(amountIn, tokenIn.decimals);
       
@@ -108,14 +114,33 @@ export default function KrystalSwapWidget() {
         slippagePercentage: (slippageTolerance / 100).toString(),
       });
       
+      console.log('Fetching quote from 0x API:', `https://api.0x.org/swap/permit2/quote?${params}`);
+      
       const response = await fetch(`https://api.0x.org/swap/permit2/quote?${params}`);
       
       if (!response.ok) {
         const errorData = await response.text();
-        throw new Error(`0x API Error: ${response.status} - ${errorData}`);
+        console.error('0x API Error:', errorData);
+        
+        // Parse error message
+        try {
+          const errorJson = JSON.parse(errorData);
+          if (errorJson.reason === 'INSUFFICIENT_ASSET_LIQUIDITY') {
+            throw new Error('No liquidity available for this trading pair. Try a different token or larger amount.');
+          }
+          throw new Error(errorJson.reason || errorJson.message || '0x API request failed');
+        } catch (parseErr) {
+          throw new Error(`0x API Error: ${response.status} - Unable to get quote. This pair may not have sufficient liquidity.`);
+        }
       }
       
       const quoteData = await response.json();
+      console.log('Quote received:', quoteData);
+      
+      // Validate quote data
+      if (!quoteData.buyAmount || quoteData.buyAmount === '0') {
+        throw new Error('No valid quote received. This trading pair may not be available.');
+      }
       
       // Format output amount
       const amountOutFormatted = ethers.formatUnits(quoteData.buyAmount, tokenOut.decimals);
@@ -133,7 +158,7 @@ export default function KrystalSwapWidget() {
       setState(prev => ({
         ...prev,
         quoteLoading: false,
-        error: err.message || 'Failed to fetch quote'
+        error: err.message || 'Failed to fetch quote. This trading pair may not have sufficient liquidity.'
       }));
     }
   };
@@ -221,7 +246,17 @@ export default function KrystalSwapWidget() {
   return (
     <div className="max-w-md mx-auto p-6 bg-gray-900 rounded-xl border border-gray-700">
       <h2 className="text-2xl font-bold text-white mb-2 text-center">Swap to BTC1</h2>
-      <p className="text-sm text-gray-400 text-center mb-6">Swap any token on Base to BTC1</p>
+      <p className="text-sm text-gray-400 text-center mb-4">Swap any token on Base to BTC1</p>
+      
+      {/* Liquidity Warning */}
+      <div className="mb-4 p-3 bg-blue-900/20 border border-blue-500/50 rounded-lg text-blue-300 text-xs">
+        <strong>Note:</strong> BTC1 may have limited liquidity on some DEXs. If you encounter errors, try:
+        <ul className="list-disc ml-4 mt-1">
+          <li>Using a larger swap amount (min 0.001 ETH)</li>
+          <li>Swapping from major tokens (ETH, USDC, WETH)</li>
+          <li>Adding liquidity to BTC1 pairs</li>
+        </ul>
+      </div>
       
       {state.error && (
         <div className="mb-4 p-3 bg-red-900/30 border border-red-500 rounded-lg text-red-300">
