@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * Universal Swap Widget
- * In-app token swap to BTC1 using direct Uniswap V3 quoter and router
- * Compatible with ethers v6 on Base network
+ * Professional In-App Swap Widget
+ * Powered by 0x Protocol API on Base Mainnet
+ * Supports any ERC-20 or ETH → BTC1 with automatic routing
  */
 
 import { useState, useEffect } from "react";
-import { useWalletClient, useBalance, useAccount } from 'wagmi';
+import { useWalletClient, useBalance, usePublicClient } from 'wagmi';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, ArrowDownUp, AlertCircle, CheckCircle2, Wallet } from "lucide-react";
 import { useWeb3 } from "@/lib/web3-provider";
-import { formatUnits, parseUnits, encodeFunctionData } from "viem";
+import { formatUnits, parseUnits, erc20Abi } from "viem";
 
 interface TokenInfo {
   address: string;
@@ -30,49 +30,27 @@ interface TokenInfo {
   isNative?: boolean;
 }
 
-// Base Chain ID
-const BASE_CHAIN_ID = 8453;
-const WETH_ADDRESS = "0x4200000000000000000000000000000000000006"; // WETH on Base
+interface ZeroXQuote {
+  buyAmount: string;
+  estimatedPriceImpact: string;
+  estimatedGas: string;
+  to: string;
+  data: string;
+  value: string;
+  allowanceTarget: string;
+  sources: Array<{ name: string; proportion: string }>;
+}
 
-// Popular tokens on Base network
+const BASE_CHAIN_ID = 8453;
+const ETH_ADDRESS = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+
 const BASE_TOKENS: TokenInfo[] = [
-  {
-    address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
-    symbol: "ETH",
-    decimals: 18,
-    name: "Ethereum",
-    isNative: true,
-  },
-  {
-    address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    symbol: "USDC",
-    decimals: 6,
-    name: "USD Coin",
-  },
-  {
-    address: "0x4200000000000000000000000000000000000006",
-    symbol: "WETH",
-    decimals: 18,
-    name: "Wrapped Ether",
-  },
-  {
-    address: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
-    symbol: "DAI",
-    decimals: 18,
-    name: "Dai Stablecoin",
-  },
-  {
-    address: "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
-    symbol: "USDbC",
-    decimals: 6,
-    name: "USD Base Coin",
-  },
-  {
-    address: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
-    symbol: "cbBTC",
-    decimals: 8,
-    name: "Coinbase Wrapped BTC",
-  },
+  { address: ETH_ADDRESS, symbol: "ETH", decimals: 18, name: "Ethereum", isNative: true },
+  { address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol: "USDC", decimals: 6, name: "USD Coin" },
+  { address: "0x4200000000000000000000000000000000000006", symbol: "WETH", decimals: 18, name: "Wrapped Ether" },
+  { address: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", symbol: "DAI", decimals: 18, name: "Dai Stablecoin" },
+  { address: "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA", symbol: "USDbC", decimals: 6, name: "USD Base Coin" },
+  { address: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf", symbol: "cbBTC", decimals: 8, name: "Coinbase Wrapped BTC" },
 ];
 
 const BTC1_TOKEN: TokenInfo = {
@@ -85,36 +63,37 @@ const BTC1_TOKEN: TokenInfo = {
 export function KrystalSwapWidget() {
   const { address } = useWeb3();
   const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
   
-  const [fromToken, setFromToken] = useState<TokenInfo>(BASE_TOKENS[1]); // Default USDC
+  const [fromToken, setFromToken] = useState<TokenInfo>(BASE_TOKENS[1]);
   const [fromAmount, setFromAmount] = useState<string>("");
   const [toAmount, setToAmount] = useState<string>("");
+  const [quote, setQuote] = useState<ZeroXQuote | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [swapping, setSwapping] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [txHash, setTxHash] = useState<string>("");
-  const [routeData, setRouteData] = useState<any>(null);
+  const [needsApproval, setNeedsApproval] = useState(false);
 
-  // Get token balance
   const { data: balance } = useBalance({
     address: address as `0x${string}`,
     token: fromToken.isNative ? undefined : fromToken.address as `0x${string}`,
   });
 
-  // Handle token selection
   const handleTokenChange = (tokenAddress: string) => {
     const selected = BASE_TOKENS.find(t => t.address === tokenAddress);
     if (selected) {
       setFromToken(selected);
       setFromAmount("");
       setToAmount("");
-      setRouteData(null);
+      setQuote(null);
       setError(null);
+      setNeedsApproval(false);
     }
   };
 
-  // Set max amount
   const handleMaxClick = () => {
     if (balance) {
       const maxAmount = parseFloat(balance.formatted);
@@ -125,11 +104,12 @@ export function KrystalSwapWidget() {
     }
   };
 
-  // Fetch quote from 0x Protocol via our API proxy (avoids CORS)
+  // Fetch quote from 0x Protocol
   useEffect(() => {
     if (!fromAmount || parseFloat(fromAmount) <= 0 || !address) {
       setToAmount("");
-      setRouteData(null);
+      setQuote(null);
+      setNeedsApproval(false);
       return;
     }
 
@@ -138,149 +118,103 @@ export function KrystalSwapWidget() {
         setLoading(true);
         setError(null);
 
-        const amountIn = parseUnits(fromAmount, fromToken.decimals);
-        
-        // Use WETH for native ETH, otherwise use actual token address
-        const sellToken = fromToken.isNative ? WETH_ADDRESS : fromToken.address;
-        const buyToken = BTC1_TOKEN.address;
-        
-        // Build request params
+        const sellAmount = parseUnits(fromAmount, fromToken.decimals).toString();
         const params = new URLSearchParams({
-          sellToken,
-          buyToken,
-          sellAmount: amountIn.toString(),
+          sellToken: fromToken.address,
+          buyToken: BTC1_TOKEN.address,
+          sellAmount,
           takerAddress: address,
-          slippagePercentage: '0.01', // 1% slippage
+          slippagePercentage: '0.01',
         });
 
-        // Call our API proxy instead of 0x directly
         const response = await fetch(`/api/swap-quote?${params}`);
-
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `API error: ${response.status}`);
+          throw new Error(errorData.error || 'Failed to fetch quote');
         }
 
-        const quote = await response.json();
+        const quoteData: ZeroXQuote = await response.json();
+        setQuote(quoteData);
+        setToAmount(formatUnits(BigInt(quoteData.buyAmount), BTC1_TOKEN.decimals));
 
-        if (quote.buyAmount && BigInt(quote.buyAmount) > 0) {
-          const outputAmount = formatUnits(BigInt(quote.buyAmount), BTC1_TOKEN.decimals);
-          setToAmount(parseFloat(outputAmount).toFixed(6));
-          
-          // Extract sources (DEXes used in the route)
-          const sources = quote.sources
-            ?.filter((s: any) => parseFloat(s.proportion) > 0)
-            .map((s: any) => s.name)
-            .join(', ') || 'Multiple DEXes';
-
-          setRouteData({
-            provider: '0x-protocol',
-            dexName: sources,
-            sellToken,
-            buyToken,
-            sellAmount: amountIn.toString(),
-            buyAmount: quote.buyAmount,
-            price: quote.price,
-            guaranteedPrice: quote.guaranteedPrice,
-            estimatedPriceImpact: quote.estimatedPriceImpact,
-            gas: quote.gas,
-            gasPrice: quote.gasPrice,
+        // Check if approval needed for ERC-20 tokens
+        if (!fromToken.isNative && publicClient) {
+          const allowance = await publicClient.readContract({
+            address: fromToken.address as `0x${string}`,
+            abi: erc20Abi,
+            functionName: 'allowance',
+            args: [address as `0x${string}`, quoteData.allowanceTarget as `0x${string}`],
           });
+          setNeedsApproval(allowance < BigInt(sellAmount));
         } else {
-          throw new Error('No liquidity found');
+          setNeedsApproval(false);
         }
       } catch (err: any) {
-        console.error("0x Protocol quote error:", err);
-        
-        // Fallback to estimate
-        const estimatedRate = fromToken.symbol === 'USDC' || fromToken.symbol === 'USDbC' ? 1 :
-                             fromToken.symbol === 'ETH' || fromToken.symbol === 'WETH' ? 3000 :
-                             fromToken.symbol === 'DAI' ? 1 :
-                             fromToken.symbol === 'cbBTC' ? 95000 : 1;
-        
-        const estimatedOutput = parseFloat(fromAmount) * estimatedRate;
-        setToAmount(estimatedOutput.toFixed(6));
-        setRouteData({
-          provider: 'estimate',
-          isEstimate: true,
-        });
-        setError('No BTC1 liquidity found. Add liquidity on any DEX (Uniswap, Aerodrome, etc.) to enable swaps.');
+        console.error("Quote error:", err);
+        setError(err.message || 'Failed to get quote');
+        setQuote(null);
+        setToAmount("");
       } finally {
         setLoading(false);
       }
     };
 
-    const debounce = setTimeout(fetchQuote, 1000);
+    const debounce = setTimeout(fetchQuote, 800);
     return () => clearTimeout(debounce);
-  }, [fromAmount, fromToken, address]);
+  }, [fromAmount, fromToken, address, publicClient]);
 
-  // Execute swap using 0x Protocol via our API proxy
+  // Approve token spending
+  const handleApprove = async () => {
+    if (!quote || !walletClient || !address || fromToken.isNative) return;
+
+    try {
+      setApproving(true);
+      setError(null);
+
+      const hash = await walletClient.writeContract({
+        address: fromToken.address as `0x${string}`,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [quote.allowanceTarget as `0x${string}`, BigInt(parseUnits(fromAmount, fromToken.decimals).toString())],
+        account: address as `0x${string}`,
+        chain: walletClient.chain,
+      });
+
+      await publicClient?.waitForTransactionReceipt({ hash });
+      setNeedsApproval(false);
+    } catch (err: any) {
+      console.error("Approval error:", err);
+      const isRejection = err?.message?.toLowerCase().includes('rejected') || 
+                         err?.message?.toLowerCase().includes('denied');
+      setError(isRejection ? 'Approval rejected' : 'Approval failed');
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  // Execute swap
   const handleSwap = async () => {
-    if (!routeData || !walletClient || !address) return;
+    if (!quote || !walletClient || !address) return;
 
     try {
       setSwapping(true);
       setError(null);
       setSuccess(false);
 
-      // Handle 0x Protocol swap
-      if (!routeData.isEstimate) {
-        const sellToken = fromToken.isNative ? WETH_ADDRESS : fromToken.address;
-        const buyToken = BTC1_TOKEN.address;
-        const sellAmount = routeData.sellAmount;
-        
-        // Get executable swap transaction from our API proxy
-        const response = await fetch('/api/swap-quote', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            sellToken,
-            buyToken,
-            sellAmount,
-            takerAddress: address,
-            slippagePercentage: '0.01',
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || 'Failed to get swap transaction');
-        }
-
-        const swapQuote = await response.json();
-
-        // Execute the transaction
-        const hash = await walletClient.sendTransaction({
-          to: swapQuote.to as `0x${string}`,
-          data: swapQuote.data as `0x${string}`,
-          value: BigInt(swapQuote.value || '0'),
-          account: address as `0x${string}`,
-          chain: walletClient.chain,
-          gas: swapQuote.gas ? BigInt(swapQuote.gas) : undefined,
-          gasPrice: swapQuote.gasPrice ? BigInt(swapQuote.gasPrice) : undefined,
-        });
-        
-        setTxHash(hash);
-        setSuccess(true);
-      } 
-      // For estimates, open Uniswap
-      else if (routeData.isEstimate) {
-        const sellTokenAddress = fromToken.isNative 
-          ? "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" 
-          : fromToken.address;
-        window.open(
-          `https://app.uniswap.org/swap?chain=base&inputCurrency=${sellTokenAddress}&outputCurrency=${BTC1_TOKEN.address}`, 
-          '_blank'
-        );
-        setError('Opening Uniswap. Add liquidity there to enable in-app swaps.');
-        return;
-      }
+      const hash = await walletClient.sendTransaction({
+        to: quote.to as `0x${string}`,
+        data: quote.data as `0x${string}`,
+        value: BigInt(quote.value),
+        account: address as `0x${string}`,
+        chain: walletClient.chain,
+        gas: BigInt(quote.estimatedGas),
+      });
       
+      setTxHash(hash);
+      setSuccess(true);
       setFromAmount("");
       setToAmount("");
-      setRouteData(null);
+      setQuote(null);
 
       setTimeout(() => setSuccess(false), 5000);
     } catch (err: any) {
@@ -376,7 +310,7 @@ export function KrystalSwapWidget() {
 
       {/* To Token (BTC1 - Fixed) */}
       <div className="space-y-2">
-        <label className="text-sm text-gray-400">To (estimated)</label>
+        <label className="text-sm text-gray-400">To</label>
         <div className="flex items-center gap-2 p-3 rounded-lg bg-gray-800/50 border border-gray-700">
           <div className="flex items-center gap-2 min-w-[130px]">
             <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white text-xs font-bold">
@@ -394,85 +328,59 @@ export function KrystalSwapWidget() {
         </div>
       </div>
 
-      {/* Error Display with helpful info */}
+      {quote && quote.sources && (
+        <div className="text-xs text-gray-400 flex justify-between">
+          <span>Route: {quote.sources.filter((s: any) => parseFloat(s.proportion) > 0).map((s: any) => s.name).join(', ')}</span>
+          {quote.estimatedPriceImpact && (
+            <span>Impact: {(parseFloat(quote.estimatedPriceImpact) * 100).toFixed(2)}%</span>
+          )}
+        </div>
+      )}
+
       {error && (
-        <Alert variant="destructive" className="bg-yellow-500/10 border-yellow-500/50">
-          <AlertCircle className="h-4 w-4 text-yellow-400" />
-          <AlertDescription className="text-yellow-400">
-            {error}
-            {routeData?.isEstimate && (
-              <div className="mt-3 space-y-2 text-xs">
-                <div className="font-semibold text-yellow-300">💡 How to enable swaps:</div>
-                <div className="space-y-1 text-yellow-200/90">
-                  <div>• <strong>Add Liquidity</strong> on Uniswap to create a BTC1 pool</div>
-                  <div>• <strong>Or swap manually</strong> by clicking the button below</div>
-                </div>
-              </div>
-            )}
-          </AlertDescription>
+        <Alert variant="destructive" className="bg-red-500/10 border-red-500/50">
+          <AlertCircle className="h-4 w-4 text-red-400" />
+          <AlertDescription className="text-red-400">{error}</AlertDescription>
         </Alert>
       )}
 
-      {/* Swap Button */}
-      <Button
-        onClick={handleSwap}
-        disabled={!routeData || swapping || !address || loading}
-        className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-6 text-base disabled:opacity-50"
-      >
-        {swapping ? (
-          <>
-            <Loader2 className="h-5 w-5 animate-spin mr-2" />
-            Swapping...
-          </>
-        ) : !address ? (
-          "Connect Wallet"
-        ) : loading ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            Finding best route...
-          </>
-        ) : !routeData ? (
-          "Enter Amount"
-        ) : routeData.isEstimate ? (
-          "Swap on Uniswap (Manual)"
-        ) : (
-          "Swap Now"
-        )}
-      </Button>
-
-      {/* Route Details */}
-      {routeData && !error && toAmount && fromAmount && (
-        <div className="text-xs text-gray-400 space-y-1 p-3 rounded-lg bg-gray-800/30 border border-gray-700">
-          <div className="flex justify-between">
-            <span>Rate:</span>
-            <span>
-              1 {fromToken.symbol} ≈ {(parseFloat(toAmount) / parseFloat(fromAmount)).toFixed(4)} BTC1
-            </span>
-          </div>
-          {routeData.estimatedPriceImpact && (
-            <div className="flex justify-between">
-              <span>Price Impact:</span>
-              <span className={parseFloat(routeData.estimatedPriceImpact) > 2 ? "text-yellow-400" : "text-green-400"}>
-                {parseFloat(routeData.estimatedPriceImpact).toFixed(2)}%
-              </span>
-            </div>
+      {needsApproval ? (
+        <Button
+          onClick={handleApprove}
+          disabled={approving || !address}
+          className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold"
+        >
+          {approving ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Approving...
+            </>
+          ) : (
+            `Approve ${fromToken.symbol}`
           )}
-          {routeData.estimatedGas && (
-            <div className="flex justify-between">
-              <span>Est. Gas:</span>
-              <span className="text-gray-300">
-                {parseInt(routeData.estimatedGas).toLocaleString()}
-              </span>
-            </div>
+        </Button>
+      ) : (
+        <Button
+          onClick={handleSwap}
+          disabled={!quote || swapping || loading || !address || parseFloat(fromAmount) <= 0}
+          className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold"
+        >
+          {swapping ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Swapping...
+            </>
+          ) : !address ? (
+            "Connect Wallet"
+          ) : (
+            "Swap Now"
           )}
-          <div className="flex justify-between items-center pt-2 border-t border-gray-700 mt-2">
-            <span className="text-gray-500">Best route:</span>
-            <span className="text-orange-400 font-semibold">
-              {routeData.dexName || 'Estimated'}
-            </span>
-          </div>
-        </div>
+        </Button>
       )}
+
+      <div className="text-xs text-center text-gray-500">
+        Powered by <span className="text-orange-400">0x Protocol</span>
+      </div>
     </div>
   );
 }
