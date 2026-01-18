@@ -2,8 +2,8 @@
 
 /**
  * Universal Swap Widget
- * Direct token swap to BTC1 using 0x Protocol DEX Aggregator
- * Supports any ERC20 token on Base network
+ * Shows price quotes and provides direct links to swap on Uniswap/Aerodrome
+ * Supports popular tokens on Base network
  */
 
 import { useState, useEffect } from "react";
@@ -464,9 +464,16 @@ export function KrystalSwapWidget() {
 
       {/* Error Display */}
       {error && (
-        <Alert variant="destructive" className="bg-red-500/10 border-red-500/50">
-          <AlertCircle className="h-4 w-4 text-red-400" />
-          <AlertDescription className="text-red-400">{error}</AlertDescription>
+        <Alert variant="destructive" className="bg-yellow-500/10 border-yellow-500/50">
+          <AlertCircle className="h-4 w-4 text-yellow-400" />
+          <AlertDescription className="text-yellow-400">
+            {error}
+            {routeData?.isEstimate && (
+              <span className="block mt-2 text-xs">
+                💡 Use the buttons below to swap on Uniswap or Aerodrome directly
+              </span>
+            )}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -485,10 +492,32 @@ export function KrystalSwapWidget() {
           "Connect Wallet"
         ) : !routeData ? (
           "Enter Amount"
+        ) : routeData.isEstimate ? (
+          "Open Uniswap to Swap"
         ) : (
           "Swap"
         )}
       </Button>
+
+      {/* Direct DEX Links */}
+      {address && routeData && (
+        <div className="flex gap-2">
+          <Button
+            onClick={() => window.open('https://app.uniswap.org/swap?chain=base&inputCurrency=' + fromToken.address + '&outputCurrency=' + BTC1_TOKEN.address, '_blank')}
+            variant="outline"
+            className="flex-1 border-gray-700 hover:bg-gray-800 text-gray-300"
+          >
+            Swap on Uniswap
+          </Button>
+          <Button
+            onClick={() => window.open('https://aerodrome.finance/swap?from=' + fromToken.address + '&to=' + BTC1_TOKEN.address, '_blank')}
+            variant="outline"
+            className="flex-1 border-gray-700 hover:bg-gray-800 text-gray-300"
+          >
+            Swap on Aerodrome
+          </Button>
+        </div>
+      )}
 
       {/* Route Details */}
       {routeData && !error && toAmount && fromAmount && (
