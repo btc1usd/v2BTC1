@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { formatUnits } from 'viem';
+import { ethers } from 'ethers';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -65,5 +66,29 @@ export function safeFormatValue(value: unknown, decimals: number = 8): string {
   } catch (error) {
     console.warn('Failed to format value:', value, error);
     return '0';
+  }
+}
+
+/**
+ * Get token decimals from contract
+ */
+export async function getTokenDecimals(tokenAddress: string, provider: ethers.Provider): Promise<number> {
+  // Handle native ETH case
+  if (tokenAddress.toLowerCase() === ethers.ZeroAddress.toLowerCase()) {
+    return 18; // ETH has 18 decimals
+  }
+
+  const tokenContract = new ethers.Contract(
+    tokenAddress,
+    ['function decimals() view returns (uint8)'],
+    provider
+  );
+
+  try {
+    const decimals = await tokenContract.decimals();
+    return Number(decimals);
+  } catch (error) {
+    console.warn(`Failed to get decimals for token ${tokenAddress}, defaulting to 18`, error);
+    return 18; // Default to 18 decimals if the call fails
   }
 }

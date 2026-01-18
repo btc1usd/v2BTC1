@@ -34,9 +34,9 @@ export const getProvider = async () => {
     console.error("Failed to create provider with fallback:", error);
     // Final fallback to default provider
     const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
-    const rpcUrl = chainId === 84532 
-      ? "https://sepolia.base.org" 
-      : "https://mainnet.base.org";
+    const rpcUrl = chainId === 8453 
+      ? "https://mainnet.base.org" 
+      : "https://sepolia.base.org";
     return new JsonRpcProvider(rpcUrl, chainId);
   }
 }
