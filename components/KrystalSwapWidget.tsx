@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { ethers, JsonRpcProvider } from 'ethers';
-import { PublicClient, WalletClient, Address, Hash } from 'viem';
-import { SwapAggregator, SwapParams, SwapRoute } from '@/lib/swap-aggregator';
+import { Address } from 'viem';
+import { useWalletClient, usePublicClient } from 'wagmi';
+import { executeBaseSwap } from '../lib/swap-aggregator';
 
 interface Token {
   address: Address;
@@ -16,22 +17,17 @@ interface SwapState {
   loading: boolean;
   error: string | null;
   success: boolean;
-  txHash: Hash | null;
-  route: SwapRoute | null;
+  txHash: Address | null;
   quoteLoading: boolean;
   quote: {
     amountOut: string;
-    route: SwapRoute | null;
   } | null;
 }
 
-interface Props {
-  provider: PublicClient | null;
-  signer: WalletClient | null;
-  chainId: number;
-}
-
-export default function KrystalSwapWidget({ provider, signer, chainId }: Props) {
+export default function KrystalSwapWidget() {
+  const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
+  
   const [tokenIn, setTokenIn] = useState<Token>({
     address: '0x0000000000000000000000000000000000000000', // ETH
     symbol: 'ETH',
@@ -42,8 +38,8 @@ export default function KrystalSwapWidget({ provider, signer, chainId }: Props) 
   const [tokenOut, setTokenOut] = useState<Token>({
     address: '0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5', // BTC1
     symbol: 'BTC1',
-    name: 'BTC1USD',
-    decimals: 8,
+    name: 'BTC1 Token',
+    decimals: 18,
   });
   
   const [amountIn, setAmountIn] = useState<string>('');
@@ -57,93 +53,73 @@ export default function KrystalSwapWidget({ provider, signer, chainId }: Props) 
     error: null,
     success: false,
     txHash: null,
-    route: null,
     quote: null,
   });
 
   // Auto-set recipient from signer
   useEffect(() => {
-    const getSignerAddress = async () => {
-      if (signer) {
+    if (walletClient?.account?.address && publicClient) {
+      setRecipient(walletClient.account.address);
+      
+      // Get ETH balance using PublicClient
+      const fetchBalance = async () => {
         try {
-          const [address] = await signer.getAddresses();
-          setRecipient(address as Address);
-          
-          // Get ETH balance using PublicClient
-          if (provider) {
-            const ethBalance = await provider.getBalance({ address: address as Address });
-            setBalance(ethers.formatEther(ethBalance));
-          }
+          const ethBalance = await publicClient.getBalance({ address: walletClient.account.address });
+          setBalance(ethers.formatEther(ethBalance));
         } catch (err) {
-          console.error('Error getting signer info:', err);
+          console.error('Error getting balance:', err);
+          setBalance('0');
         }
-      }
-    };
-    
-    getSignerAddress();
-  }, [signer, provider]);
+      };
+      
+      fetchBalance();
+    }
+  }, [walletClient, publicClient]);
 
   // Fetch quote when amount changes
   useEffect(() => {
-    if (amountIn && parseFloat(amountIn) > 0 && provider && signer) {
+    if (amountIn && parseFloat(amountIn) > 0 && walletClient) {
       fetchQuote();
     } else {
       setState(prev => ({ ...prev, quote: null }));
     }
-  }, [amountIn, tokenIn, tokenOut, provider, signer, chainId]);
+  }, [amountIn, tokenIn, tokenOut, walletClient]);
 
   const fetchQuote = async () => {
-    if (!provider || !signer || !amountIn || parseFloat(amountIn) <= 0) return;
+    if (!walletClient || !amountIn || parseFloat(amountIn) <= 0) return;
     
     setState(prev => ({ ...prev, quoteLoading: true, error: null }));
     
     try {
+      // Get actual quote from 0x API
       const amountInWei = ethers.parseUnits(amountIn, tokenIn.decimals);
       
-      const params: SwapParams = {
-        tokenIn: tokenIn.address,
-        tokenOut: tokenOut.address,
-        amountIn: amountInWei,
-        recipient: recipient || '0x0000000000000000000000000000000000000000',
-        slippageTolerance: slippageTolerance,
-        deadlineMinutes: 20,
-        chainId,
-      };
-
-      // Create a provider for the aggregator
-      let rpcUrl = '';
-      switch (chainId) {
-        case 1: rpcUrl = 'https://mainnet.infura.io/v3/'; break;
-        case 8453: rpcUrl = 'https://mainnet.base.org'; break;
-        case 137: rpcUrl = 'https://polygon-rpc.com'; break;
-        default: rpcUrl = 'https://mainnet.base.org';
+      // Build query parameters for 0x API
+      const params = new URLSearchParams({
+        sellToken: tokenIn.address,
+        buyToken: tokenOut.address,
+        sellAmount: amountInWei.toString(),
+        takerAddress: walletClient.account.address,
+        slippagePercentage: (slippageTolerance / 100).toString(),
+      });
+      
+      const response = await fetch(`https://base.api.0x.org/swap/v1/quote?${params}`);
+      
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`0x API Error: ${response.status} - ${errorData}`);
       }
       
-      const defaultProvider = new JsonRpcProvider(rpcUrl);
-      
-      // Initialize the swap aggregator
-      const aggregator = new SwapAggregator(defaultProvider);
-      
-      // Get all possible routes
-      const routes = await aggregator.getAllRoutesWithViem(provider, params);
-      
-      if (routes.length === 0) {
-        setState(prev => ({ ...prev, quoteLoading: false, error: 'No routes found for this swap' }));
-        return;
-      }
-
-      // Select the best route
-      const bestRoute = aggregator.selectBestRoute(routes);
+      const quoteData = await response.json();
       
       // Format output amount
-      const amountOutFormatted = ethers.formatUnits(bestRoute.amountOut, tokenOut.decimals);
+      const amountOutFormatted = ethers.formatUnits(quoteData.buyAmount, tokenOut.decimals);
       
       setState(prev => ({
         ...prev,
         quoteLoading: false,
         quote: {
           amountOut: amountOutFormatted,
-          route: bestRoute
         }
       }));
     } catch (err: any) {
@@ -157,7 +133,7 @@ export default function KrystalSwapWidget({ provider, signer, chainId }: Props) 
   };
 
   const handleSwap = async () => {
-    if (!signer || !provider) {
+    if (!walletClient || !walletClient.account) {
       setState(prev => ({ ...prev, error: 'Please connect your wallet first' }));
       return;
     }
@@ -178,56 +154,42 @@ export default function KrystalSwapWidget({ provider, signer, chainId }: Props) 
       error: null,
       success: false,
       txHash: null,
-      route: null,
     }));
 
     try {
-      const amountInWei = ethers.parseUnits(amountIn, tokenIn.decimals);
-      
-      const params: SwapParams = {
-        tokenIn: tokenIn.address,
-        tokenOut: tokenOut.address,
-        amountIn: amountInWei,
-        recipient,
-        slippageTolerance: slippageTolerance,
-        deadlineMinutes: 20,
-        chainId,
-      };
+      // Use window.ethereum for ethers provider
+      if (typeof window !== 'undefined' && window.ethereum) {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        
+        // Execute the swap using the 0x-based aggregator
+        const txHashString = await executeBaseSwap(
+          tokenIn.address,
+          tokenOut.address,
+          parseFloat(amountIn),
+          slippageTolerance,
+          signer
+        );
 
-      // Create a provider for the aggregator
-      let rpcUrl = '';
-      switch (chainId) {
-        case 1: rpcUrl = 'https://mainnet.infura.io/v3/'; break;
-        case 8453: rpcUrl = 'https://mainnet.base.org'; break;
-        case 137: rpcUrl = 'https://polygon-rpc.com'; break;
-        default: rpcUrl = 'https://mainnet.base.org';
+        setState({
+          loading: false,
+          quoteLoading: false,
+          error: null,
+          success: true,
+          txHash: txHashString as Address,
+          quote: state.quote,
+        });
+
+        // Reset form
+        setAmountIn('');
+
+        // Reset success state after 5 seconds
+        setTimeout(() => {
+          setState(prev => ({ ...prev, success: false }));
+        }, 5000);
+      } else {
+        throw new Error('Wallet not available');
       }
-      
-      const defaultProvider = new JsonRpcProvider(rpcUrl);
-      
-      // Initialize the swap aggregator
-      const aggregator = new SwapAggregator(defaultProvider);
-      
-      // Execute the swap using viem
-      const result = await aggregator.executeSwapWithViem(signer, provider, params);
-
-      setState({
-        loading: false,
-        quoteLoading: false,
-        error: null,
-        success: true,
-        txHash: result.hash,
-        route: result.route,
-        quote: state.quote,
-      });
-
-      // Reset form
-      setAmountIn('');
-
-      // Reset success state after 5 seconds
-      setTimeout(() => {
-        setState(prev => ({ ...prev, success: false }));
-      }, 5000);
     } catch (err: any) {
       console.error('Swap failed:', err);
       
@@ -264,7 +226,7 @@ export default function KrystalSwapWidget({ provider, signer, chainId }: Props) 
         <div className="mb-4 p-3 bg-green-900/30 border border-green-500 rounded-lg text-green-300 mb-4">
           Swap successful! 
           <a 
-            href={`https://${chainId === 1 ? 'etherscan.io' : chainId === 8453 ? 'basescan.org' : 'polygonscan.com'}/tx/${state.txHash}`} 
+            href={`https://basescan.org/tx/${state.txHash}`} 
             target="_blank" 
             rel="noopener noreferrer"
             className="block underline mt-1"
@@ -333,7 +295,7 @@ export default function KrystalSwapWidget({ provider, signer, chainId }: Props) 
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              Calculating best route...
+              Getting quote...
             </span>
           </div>
         )}
@@ -345,7 +307,7 @@ export default function KrystalSwapWidget({ provider, signer, chainId }: Props) 
               <span className="text-white font-medium">{state.quote.amountOut} {tokenOut.symbol}</span>
             </div>
             <div className="mt-1 text-xs text-gray-400">
-              Route: {state.quote.route?.routerType.toUpperCase()} • Est. gas: {Number(state.quote.route?.gasEstimate)/1e9} Gwei
+              Powered by 0x API
             </div>
           </div>
         )}
@@ -372,7 +334,7 @@ export default function KrystalSwapWidget({ provider, signer, chainId }: Props) 
                   { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
                   { address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
                   { address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', symbol: 'cbBTC', name: 'Coinbase Wrapped BTC', decimals: 8 },
-                  { address: '0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5', symbol: 'BTC1', name: 'BTC1USD', decimals: 8 },
+                  { address: '0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5', symbol: 'BTC1', name: 'BTC1USD', decimals: 18 },
                 ];
                 const selectedToken = tokens.find(t => t.address === e.target.value as Address) || tokenOut;
                 setTokenOut(selectedToken);
@@ -445,11 +407,11 @@ export default function KrystalSwapWidget({ provider, signer, chainId }: Props) 
         {/* Swap Button */}
         <button
           onClick={handleSwap}
-          disabled={state.loading || !signer || !provider || !amountIn || !recipient || state.quoteLoading}
+          disabled={state.loading || !walletClient || !amountIn || !recipient || state.quoteLoading}
           className={`w-full py-4 px-4 rounded-lg font-medium ${
             state.loading || state.quoteLoading
               ? 'bg-gray-600 cursor-not-allowed' 
-              : !signer || !provider 
+              : !walletClient
                 ? 'bg-gray-700 cursor-not-allowed' 
                 : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
           } text-white transition-colors text-lg`}
@@ -460,7 +422,7 @@ export default function KrystalSwapWidget({ provider, signer, chainId }: Props) 
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              {state.quoteLoading ? 'Calculating...' : 'Swapping...'}
+              {state.quoteLoading ? 'Getting quote...' : 'Swapping...'}
             </span>
           ) : (
             'Swap'
