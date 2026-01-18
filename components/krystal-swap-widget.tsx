@@ -38,6 +38,12 @@ const UNISWAP_V3_ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481"; // SwapR
 const UNISWAP_V3_QUOTER = "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a"; // QuoterV2
 const WETH_ADDRESS = "0x4200000000000000000000000000000000000006"; // WETH on Base
 
+// Aerodrome Contracts on Base (largest DEX on Base)
+const AERODROME_ROUTER = "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43"; // Aerodrome Router
+
+// BaseSwap Contracts on Base  
+const BASESWAP_ROUTER = "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86"; // BaseSwap Router
+
 // Popular tokens on Base network
 const BASE_TOKENS: TokenInfo[] = [
   {
@@ -129,7 +135,7 @@ export function KrystalSwapWidget() {
     }
   };
 
-  // Fetch quote using Uniswap V3 Quoter contract (same strategy as Uniswap interface)
+  // Fetch quote from multiple DEXes and return best price
   useEffect(() => {
     if (!fromAmount || parseFloat(fromAmount) <= 0 || !address) {
       setToAmount("");
@@ -148,8 +154,19 @@ export function KrystalSwapWidget() {
         const tokenIn = fromToken.isNative ? WETH_ADDRESS : fromToken.address;
         const tokenOut = BTC1_TOKEN.address;
         
-        // Use Uniswap's QuoterV2 with correct ABI
-        const quoterABI = [
+        // Call quoter using viem
+        const { createPublicClient, http } = await import('viem');
+        const { base } = await import('viem/chains');
+        
+        const publicClient = createPublicClient({
+          chain: base,
+          transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://mainnet.base.org'),
+        });
+
+        let bestQuote = { amountOut: BigInt(0), dex: '', fee: 0, router: '' };
+
+        // 1. Try Uniswap V3 (multiple fee tiers)
+        const uniswapQuoterABI = [
           {
             inputs: [
               {
@@ -175,25 +192,12 @@ export function KrystalSwapWidget() {
             type: 'function',
           },
         ];
-
-        // Call quoter using viem
-        const { createPublicClient, http } = await import('viem');
-        const { base } = await import('viem/chains');
-        
-        const publicClient = createPublicClient({
-          chain: base,
-          transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://mainnet.base.org'),
-        });
-
-        // Try different fee tiers (same as Uniswap interface)
-        let bestQuote = null;
-        let bestFee = 0;
         
         for (const fee of [100, 500, 3000, 10000]) {
           try {
             const result = await publicClient.readContract({
               address: UNISWAP_V3_QUOTER as `0x${string}`,
-              abi: quoterABI,
+              abi: uniswapQuoterABI,
               functionName: 'quoteExactInputSingle',
               args: [{
                 tokenIn,
@@ -205,32 +209,116 @@ export function KrystalSwapWidget() {
             }) as any;
             
             const amountOut = result[0];
-            if (amountOut > 0 && (!bestQuote || amountOut > bestQuote)) {
-              bestQuote = amountOut;
-              bestFee = fee;
+            if (amountOut > bestQuote.amountOut) {
+              bestQuote = { 
+                amountOut, 
+                dex: 'Uniswap V3', 
+                fee, 
+                router: UNISWAP_V3_ROUTER 
+              };
             }
           } catch (e: any) {
-            // Pool doesn't exist for this fee tier, continue
-            console.log(`No pool for fee tier ${fee / 10000}%:`, e.message);
+            console.log(`Uniswap V3 - No pool for fee ${fee / 10000}%`);
           }
         }
 
-        if (bestQuote && bestQuote > 0) {
-          const outputAmount = formatUnits(bestQuote, BTC1_TOKEN.decimals);
+        // 2. Try Aerodrome (Uniswap V2 style)
+        const aerodromeRouterABI = [
+          {
+            inputs: [
+              { name: 'amountIn', type: 'uint256' },
+              { name: 'tokenIn', type: 'address' },
+              { name: 'tokenOut', type: 'address' },
+              { name: 'stable', type: 'bool' },
+            ],
+            name: 'getAmountOut',
+            outputs: [
+              { name: 'amount', type: 'uint256' },
+              { name: 'stable', type: 'bool' },
+            ],
+            stateMutability: 'view',
+            type: 'function',
+          },
+        ];
+
+        // Try both stable and volatile pools
+        for (const stable of [false, true]) {
+          try {
+            const result = await publicClient.readContract({
+              address: AERODROME_ROUTER as `0x${string}`,
+              abi: aerodromeRouterABI,
+              functionName: 'getAmountOut',
+              args: [amountIn, tokenIn, tokenOut, stable],
+            }) as any;
+            
+            const amountOut = result[0];
+            if (amountOut > bestQuote.amountOut) {
+              bestQuote = { 
+                amountOut, 
+                dex: `Aerodrome ${stable ? 'Stable' : 'Volatile'}`, 
+                fee: 0, 
+                router: AERODROME_ROUTER 
+              };
+            }
+          } catch (e: any) {
+            console.log(`Aerodrome ${stable ? 'Stable' : 'Volatile'} - No pool`);
+          }
+        }
+
+        // 3. Try BaseSwap (Uniswap V2 fork)
+        const baseswapRouterABI = [
+          {
+            inputs: [
+              { name: 'amountIn', type: 'uint256' },
+              { name: 'path', type: 'address[]' },
+            ],
+            name: 'getAmountsOut',
+            outputs: [{ name: 'amounts', type: 'uint256[]' }],
+            stateMutability: 'view',
+            type: 'function',
+          },
+        ];
+
+        try {
+          const result = await publicClient.readContract({
+            address: BASESWAP_ROUTER as `0x${string}`,
+            abi: baseswapRouterABI,
+            functionName: 'getAmountsOut',
+            args: [amountIn, [tokenIn, tokenOut]],
+          }) as any;
+          
+          const amountOut = result[result.length - 1];
+          if (amountOut > bestQuote.amountOut) {
+            bestQuote = { 
+              amountOut, 
+              dex: 'BaseSwap', 
+              fee: 0, 
+              router: BASESWAP_ROUTER 
+            };
+          }
+        } catch (e: any) {
+          console.log('BaseSwap - No pool');
+        }
+
+        // Return best quote across all DEXes
+        if (bestQuote.amountOut > 0) {
+          const outputAmount = formatUnits(bestQuote.amountOut, BTC1_TOKEN.decimals);
           setToAmount(parseFloat(outputAmount).toFixed(6));
           setRouteData({
-            provider: 'uniswap',
+            provider: bestQuote.dex.toLowerCase().replace(/\s+/g, '-'),
+            dexName: bestQuote.dex,
             tokenIn,
             tokenOut,
             amountIn: amountIn.toString(),
-            amountOut: bestQuote.toString(),
-            fee: bestFee,
+            amountOut: bestQuote.amountOut.toString(),
+            fee: bestQuote.fee,
+            router: bestQuote.router,
           });
         } else {
-          throw new Error('No liquidity pool found');
+          throw new Error('No liquidity found on any DEX');
         }
       } catch (err: any) {
-        console.error("Uniswap quote error:", err);
+        console.error("Multi-DEX quote error:", err);
         
         // Fallback to estimate
         const estimatedRate = fromToken.symbol === 'USDC' || fromToken.symbol === 'USDbC' ? 1 :
@@ -244,7 +332,7 @@ export function KrystalSwapWidget() {
           provider: 'estimate',
           isEstimate: true,
         });
-        setError('No BTC1 liquidity pool exists yet on Uniswap V3. Showing estimate based on market rates.');
+        setError('No BTC1 pool found on any DEX (Uniswap, Aerodrome, BaseSwap). Add liquidity first.');
       } finally {
         setLoading(false);
       }
@@ -254,7 +342,7 @@ export function KrystalSwapWidget() {
     return () => clearTimeout(debounce);
   }, [fromAmount, fromToken, address]);
 
-  // Execute swap using Uniswap V3 Router
+  // Execute swap using the best route found
   const handleSwap = async () => {
     if (!routeData || !walletClient || !address) return;
 
@@ -263,62 +351,106 @@ export function KrystalSwapWidget() {
       setError(null);
       setSuccess(false);
 
-      // Handle Uniswap V3 swap
-      if (routeData.provider === 'uniswap' && !routeData.isEstimate) {
+      // Handle swaps based on DEX type
+      if (!routeData.isEstimate && routeData.router) {
         const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
         const amountOutMinimum = (BigInt(routeData.amountOut) * BigInt(99)) / BigInt(100); // 1% slippage
 
-        // exactInputSingle function parameters
-        const swapParams = {
-          tokenIn: routeData.tokenIn,
-          tokenOut: routeData.tokenOut,
-          fee: routeData.fee,
-          recipient: address,
-          deadline: deadline,
-          amountIn: BigInt(routeData.amountIn),
-          amountOutMinimum: amountOutMinimum,
-          sqrtPriceLimitX96: 0,
-        };
+        let hash;
 
-        // Router ABI for exactInputSingle
-        const routerABI = [
-          {
-            inputs: [
-              {
-                components: [
-                  { name: 'tokenIn', type: 'address' },
-                  { name: 'tokenOut', type: 'address' },
-                  { name: 'fee', type: 'uint24' },
-                  { name: 'recipient', type: 'address' },
-                  { name: 'deadline', type: 'uint256' },
-                  { name: 'amountIn', type: 'uint256' },
-                  { name: 'amountOutMinimum', type: 'uint256' },
-                  { name: 'sqrtPriceLimitX96', type: 'uint160' },
-                ],
-                name: 'params',
-                type: 'tuple',
-              },
-            ],
-            name: 'exactInputSingle',
-            outputs: [{ name: 'amountOut', type: 'uint256' }],
-            stateMutability: 'payable',
-            type: 'function',
-          },
-        ];
+        // Uniswap V3 swap
+        if (routeData.dexName?.includes('Uniswap')) {
+          const swapParams = {
+            tokenIn: routeData.tokenIn,
+            tokenOut: routeData.tokenOut,
+            fee: routeData.fee,
+            recipient: address,
+            deadline: deadline,
+            amountIn: BigInt(routeData.amountIn),
+            amountOutMinimum: amountOutMinimum,
+            sqrtPriceLimitX96: 0,
+          };
 
-        const calldata = encodeFunctionData({
-          abi: routerABI,
-          functionName: 'exactInputSingle',
-          args: [swapParams],
-        });
+          const routerABI = [
+            {
+              inputs: [
+                {
+                  components: [
+                    { name: 'tokenIn', type: 'address' },
+                    { name: 'tokenOut', type: 'address' },
+                    { name: 'fee', type: 'uint24' },
+                    { name: 'recipient', type: 'address' },
+                    { name: 'deadline', type: 'uint256' },
+                    { name: 'amountIn', type: 'uint256' },
+                    { name: 'amountOutMinimum', type: 'uint256' },
+                    { name: 'sqrtPriceLimitX96', type: 'uint160' },
+                  ],
+                  name: 'params',
+                  type: 'tuple',
+                },
+              ],
+              name: 'exactInputSingle',
+              outputs: [{ name: 'amountOut', type: 'uint256' }],
+              stateMutability: 'payable',
+              type: 'function',
+            },
+          ];
 
-        const hash = await walletClient.sendTransaction({
-          to: UNISWAP_V3_ROUTER as `0x${string}`,
-          data: calldata,
-          value: fromToken.isNative ? BigInt(routeData.amountIn) : BigInt(0),
-          account: address as `0x${string}`,
-          chain: walletClient.chain,
-        });
+          const calldata = encodeFunctionData({
+            abi: routerABI,
+            functionName: 'exactInputSingle',
+            args: [swapParams],
+          });
+
+          hash = await walletClient.sendTransaction({
+            to: routeData.router as `0x${string}`,
+            data: calldata,
+            value: fromToken.isNative ? BigInt(routeData.amountIn) : BigInt(0),
+            account: address as `0x${string}`,
+            chain: walletClient.chain,
+          });
+        }
+        // Aerodrome or BaseSwap (Uniswap V2 style)
+        else {
+          const routerABI = [
+            {
+              inputs: [
+                { name: 'amountIn', type: 'uint256' },
+                { name: 'amountOutMin', type: 'uint256' },
+                { name: 'routes', type: 'tuple[]', components: [
+                  { name: 'from', type: 'address' },
+                  { name: 'to', type: 'address' },
+                  { name: 'stable', type: 'bool' },
+                ]},
+                { name: 'to', type: 'address' },
+                { name: 'deadline', type: 'uint256' },
+              ],
+              name: 'swapExactTokensForTokens',
+              outputs: [{ name: 'amounts', type: 'uint256[]' }],
+              stateMutability: 'nonpayable',
+              type: 'function',
+            },
+          ];
+
+          const routes = [{
+            from: routeData.tokenIn,
+            to: routeData.tokenOut,
+            stable: routeData.dexName?.includes('Stable') || false,
+          }];
+
+          const calldata = encodeFunctionData({
+            abi: routerABI,
+            functionName: 'swapExactTokensForTokens',
+            args: [BigInt(routeData.amountIn), amountOutMinimum, routes, address, deadline],
+          });
+
+          hash = await walletClient.sendTransaction({
+            to: routeData.router as `0x${string}`,
+            data: calldata,
+            account: address as `0x${string}`,
+            chain: walletClient.chain,
+          });
+        }
         
         setTxHash(hash);
         setSuccess(true);
@@ -524,9 +656,9 @@ export function KrystalSwapWidget() {
             </div>
           )}
           <div className="flex justify-between items-center pt-2 border-t border-gray-700 mt-2">
-            <span className="text-gray-500">Powered by:</span>
+            <span className="text-gray-500">Best route:</span>
             <span className="text-orange-400 font-semibold">
-              {routeData.provider === 'uniswap' ? 'Uniswap V3' : 'Estimated'}
+              {routeData.dexName || 'Estimated'}
             </span>
           </div>
         </div>
