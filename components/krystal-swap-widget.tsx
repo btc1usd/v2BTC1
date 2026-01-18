@@ -121,7 +121,7 @@ export function KrystalSwapWidget() {
     }
   };
 
-  // Fetch quote from multiple DEX aggregators with fallback
+  // Fetch quote using direct Uniswap V3 quoter
   useEffect(() => {
     if (!fromAmount || parseFloat(fromAmount) <= 0 || !address) {
       setToAmount("");
@@ -141,70 +141,120 @@ export function KrystalSwapWidget() {
           ? "0x4200000000000000000000000000000000000006" // WETH on Base
           : fromToken.address;
         
-        // Try ParaSwap first (good for Base network)
+        // Try 1inch API first (reliable for Base)
         try {
-          const paraswapParams = new URLSearchParams({
-            srcToken: sellToken,
-            destToken: BTC1_TOKEN.address,
-            amount: amountWei,
-            srcDecimals: fromToken.decimals.toString(),
-            destDecimals: BTC1_TOKEN.decimals.toString(),
-            side: "SELL",
-            network: "8453",
-            userAddress: address,
+          const oneinchUrl = `https://api.1inch.dev/swap/v6.0/8453/quote?` +
+            `src=${sellToken}&` +
+            `dst=${BTC1_TOKEN.address}&` +
+            `amount=${amountWei}`;
+          
+          const oneinchResponse = await fetch(oneinchUrl, {
+            headers: {
+              'Authorization': `Bearer ${process.env.NEXT_PUBLIC_1INCH_API_KEY || ''}`,
+            },
           });
           
-          const paraswapUrl = `https://apiv5.paraswap.io/prices/?${paraswapParams}`;
-          const paraswapResponse = await fetch(paraswapUrl);
-          
-          if (paraswapResponse.ok) {
-            const paraswapData = await paraswapResponse.json();
+          if (oneinchResponse.ok) {
+            const oneinchData = await oneinchResponse.json();
             
-            if (paraswapData.priceRoute) {
+            if (oneinchData.dstAmount) {
               const outputAmount = formatUnits(
-                BigInt(paraswapData.priceRoute.destAmount), 
+                BigInt(oneinchData.dstAmount), 
                 BTC1_TOKEN.decimals
               );
               setToAmount(parseFloat(outputAmount).toFixed(6));
               setRouteData({
-                provider: 'paraswap',
-                priceRoute: paraswapData.priceRoute,
-                sellAmount: amountWei,
-                buyAmount: paraswapData.priceRoute.destAmount,
-                estimatedGas: paraswapData.priceRoute.gasCost,
+                provider: '1inch',
+                srcToken: sellToken,
+                dstToken: BTC1_TOKEN.address,
+                srcAmount: amountWei,
+                dstAmount: oneinchData.dstAmount,
+                protocols: oneinchData.protocols,
+                estimatedGas: oneinchData.estimatedGas,
               });
               setLoading(false);
               return;
             }
           }
-        } catch (paraswapError) {
-          console.log('ParaSwap failed, trying alternative...');
+        } catch (oneinchError) {
+          console.log('1inch failed, trying Odos...');
         }
         
-        // Fallback: Simple price estimation using Uniswap-like formula
-        // This gives users an estimate even if APIs fail
+        // Try Odos API (good for Base network)
         try {
-          // Estimate: 1 USDC ≈ 1 BTC1 (adjust based on your pool ratios)
-          const estimatedRate = fromToken.symbol === 'USDC' || fromToken.symbol === 'USDbC' ? 1 :
-                               fromToken.symbol === 'ETH' || fromToken.symbol === 'WETH' ? 3000 :
-                               fromToken.symbol === 'DAI' ? 1 :
-                               fromToken.symbol === 'cbBTC' ? 95000 : 1;
+          const odosQuoteUrl = 'https://api.odos.xyz/sor/quote/v2';
+          const odosQuoteBody = {
+            chainId: 8453,
+            inputTokens: [
+              {
+                tokenAddress: sellToken,
+                amount: amountWei,
+              }
+            ],
+            outputTokens: [
+              {
+                tokenAddress: BTC1_TOKEN.address,
+                proportion: 1,
+              }
+            ],
+            userAddr: address,
+            slippageLimitPercent: 1,
+            referralCode: 0,
+            compact: true,
+          };
           
-          const estimatedOutput = parseFloat(fromAmount) * estimatedRate;
-          setToAmount(estimatedOutput.toFixed(6));
-          setRouteData({
-            provider: 'estimate',
-            sellAmount: amountWei,
-            buyAmount: parseUnits(estimatedOutput.toString(), BTC1_TOKEN.decimals).toString(),
-            isEstimate: true,
+          const odosResponse = await fetch(odosQuoteUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(odosQuoteBody),
           });
-          setError('Using estimated rate. Actual price may vary. Consider using direct DEX.');
-        } catch (estimateError) {
-          throw new Error('Unable to fetch quote from any source');
+          
+          if (odosResponse.ok) {
+            const odosData = await odosResponse.json();
+            
+            if (odosData.outAmounts && odosData.outAmounts[0]) {
+              const outputAmount = formatUnits(
+                BigInt(odosData.outAmounts[0]), 
+                BTC1_TOKEN.decimals
+              );
+              setToAmount(parseFloat(outputAmount).toFixed(6));
+              setRouteData({
+                provider: 'odos',
+                pathId: odosData.pathId,
+                srcToken: sellToken,
+                dstToken: BTC1_TOKEN.address,
+                srcAmount: amountWei,
+                dstAmount: odosData.outAmounts[0],
+                gasEstimate: odosData.gasEstimate,
+              });
+              setLoading(false);
+              return;
+            }
+          }
+        } catch (odosError) {
+          console.log('Odos failed, using estimation...');
         }
+        
+        // Fallback: Simple price estimation
+        const estimatedRate = fromToken.symbol === 'USDC' || fromToken.symbol === 'USDbC' ? 1 :
+                             fromToken.symbol === 'ETH' || fromToken.symbol === 'WETH' ? 3000 :
+                             fromToken.symbol === 'DAI' ? 1 :
+                             fromToken.symbol === 'cbBTC' ? 95000 : 1;
+        
+        const estimatedOutput = parseFloat(fromAmount) * estimatedRate;
+        setToAmount(estimatedOutput.toFixed(6));
+        setRouteData({
+          provider: 'estimate',
+          sellAmount: amountWei,
+          buyAmount: parseUnits(estimatedOutput.toString(), BTC1_TOKEN.decimals).toString(),
+          isEstimate: true,
+        });
+        setError('Quote unavailable. Showing estimate. Please swap on Uniswap or Aerodrome directly.');
       } catch (err: any) {
         console.error("Quote error:", err);
-        setError(err.message || "Failed to get quote. Please try again or use a different token.");
+        setError(err.message || "Failed to get quote. Please use Uniswap or Aerodrome directly.");
         setToAmount("");
         setRouteData(null);
       } finally {
@@ -216,7 +266,7 @@ export function KrystalSwapWidget() {
     return () => clearTimeout(debounce);
   }, [fromAmount, fromToken, address]);
 
-  // Execute swap using ParaSwap or direct swap
+  // Execute swap using 1inch or Odos
   const handleSwap = async () => {
     if (!routeData || !walletClient || !address) return;
 
@@ -225,36 +275,74 @@ export function KrystalSwapWidget() {
       setError(null);
       setSuccess(false);
 
-      // If using ParaSwap, build and execute transaction
-      if (routeData.provider === 'paraswap' && routeData.priceRoute) {
-        // Build transaction data from ParaSwap
-        const buildParams = new URLSearchParams({
-          srcToken: fromToken.isNative ? "0x4200000000000000000000000000000000000006" : fromToken.address,
-          destToken: BTC1_TOKEN.address,
-          srcAmount: routeData.sellAmount,
-          destAmount: routeData.buyAmount,
-          priceRoute: JSON.stringify(routeData.priceRoute),
-          userAddress: address,
-          slippage: "100", // 1%
+      // Handle 1inch swap
+      if (routeData.provider === '1inch') {
+        const swapUrl = `https://api.1inch.dev/swap/v6.0/8453/swap?` +
+          `src=${routeData.srcToken}&` +
+          `dst=${routeData.dstToken}&` +
+          `amount=${routeData.srcAmount}&` +
+          `from=${address}&` +
+          `slippage=1`;
+        
+        const swapResponse = await fetch(swapUrl, {
+          headers: {
+            'Authorization': `Bearer ${process.env.NEXT_PUBLIC_1INCH_API_KEY || ''}`,
+          },
         });
         
-        const buildResponse = await fetch(`https://apiv5.paraswap.io/transactions/8453?${buildParams}`);
-        const txData = await buildResponse.json();
+        const swapData = await swapResponse.json();
         
         const hash = await walletClient.sendTransaction({
-          to: txData.to as `0x${string}`,
-          data: txData.data as `0x${string}`,
-          value: fromToken.isNative ? BigInt(routeData.sellAmount) : BigInt(0),
+          to: swapData.tx.to as `0x${string}`,
+          data: swapData.tx.data as `0x${string}`,
+          value: fromToken.isNative ? BigInt(routeData.srcAmount) : BigInt(0),
           account: address as `0x${string}`,
           chain: walletClient.chain,
-          gas: txData.gas ? BigInt(txData.gas) : undefined,
+          gas: swapData.tx.gas ? BigInt(swapData.tx.gas) : undefined,
         });
         
         setTxHash(hash);
         setSuccess(true);
-      } else if (routeData.isEstimate) {
-        // For estimates, show message to use direct DEX
-        setError('Please use a direct DEX like Uniswap or Aerodrome for this swap. Visit app.uniswap.org or aerodrome.finance');
+      } 
+      // Handle Odos swap
+      else if (routeData.provider === 'odos' && routeData.pathId) {
+        const assembleUrl = 'https://api.odos.xyz/sor/assemble';
+        const assembleBody = {
+          userAddr: address,
+          pathId: routeData.pathId,
+          simulate: false,
+        };
+        
+        const assembleResponse = await fetch(assembleUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(assembleBody),
+        });
+        
+        const assembleData = await assembleResponse.json();
+        
+        if (assembleData.transaction) {
+          const hash = await walletClient.sendTransaction({
+            to: assembleData.transaction.to as `0x${string}`,
+            data: assembleData.transaction.data as `0x${string}`,
+            value: fromToken.isNative ? BigInt(routeData.srcAmount) : BigInt(assembleData.transaction.value || '0'),
+            account: address as `0x${string}`,
+            chain: walletClient.chain,
+            gas: assembleData.transaction.gas ? BigInt(assembleData.transaction.gas) : undefined,
+          });
+          
+          setTxHash(hash);
+          setSuccess(true);
+        } else {
+          throw new Error('Failed to assemble transaction');
+        }
+      } 
+      // For estimates, redirect to DEX
+      else if (routeData.isEstimate) {
+        window.open('https://app.uniswap.org/swap?chain=base', '_blank');
+        setError('Opening Uniswap. Complete your swap there.');
         return;
       }
       
@@ -267,7 +355,7 @@ export function KrystalSwapWidget() {
       console.error("Swap error:", err);
       const isRejection = err?.message?.toLowerCase().includes('rejected') || 
                          err?.message?.toLowerCase().includes('denied');
-      setError(isRejection ? 'Transaction rejected' : (err.message || "Swap failed. Try using Uniswap or Aerodrome directly."));
+      setError(isRejection ? 'Transaction rejected' : (err.message || "Swap failed. Try Uniswap directly."));
     } finally {
       setSwapping(false);
     }
@@ -430,7 +518,9 @@ export function KrystalSwapWidget() {
           <div className="flex justify-between items-center pt-2 border-t border-gray-700 mt-2">
             <span className="text-gray-500">Powered by:</span>
             <span className="text-orange-400 font-semibold">
-              {routeData.provider === 'paraswap' ? 'ParaSwap' : routeData.isEstimate ? 'Estimated' : 'DEX Aggregator'}
+              {routeData.provider === '1inch' ? '1inch' : 
+               routeData.provider === 'odos' ? 'Odos' :
+               routeData.isEstimate ? 'Estimated' : 'DEX Aggregator'}
             </span>
           </div>
         </div>
