@@ -36,12 +36,15 @@ export default function KrystalSwapWidget() {
     decimals: 18,
   });
   
-  const [tokenOut, setTokenOut] = useState<Token>({
+  // BTC1 is always the output token - FIXED
+  const tokenOut: Token = {
     address: '0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5', // BTC1
     symbol: 'BTC1',
     name: 'BTC1 Token',
     decimals: 18,
-  });
+  };
+  
+  const [customTokenAddress, setCustomTokenAddress] = useState<string>('');
   
   const [amountIn, setAmountIn] = useState<string>('');
   const [recipient, setRecipient] = useState<Address>('0x0000000000000000000000000000000000000000');
@@ -105,11 +108,7 @@ export default function KrystalSwapWidget() {
         slippagePercentage: (slippageTolerance / 100).toString(),
       });
       
-      const response = await fetch(`https://api.0x.org/swap/permit2/quote?${params}`, {
-        headers: {
-          '0x-version': 'v2',
-        }
-      });
+      const response = await fetch(`https://api.0x.org/swap/permit2/quote?${params}`);
       
       if (!response.ok) {
         const errorData = await response.text();
@@ -221,7 +220,8 @@ export default function KrystalSwapWidget() {
 
   return (
     <div className="max-w-md mx-auto p-6 bg-gray-900 rounded-xl border border-gray-700">
-      <h2 className="text-2xl font-bold text-white mb-6 text-center">Krystal Swap</h2>
+      <h2 className="text-2xl font-bold text-white mb-2 text-center">Swap to BTC1</h2>
+      <p className="text-sm text-gray-400 text-center mb-6">Swap any token on Base to BTC1</p>
       
       {state.error && (
         <div className="mb-4 p-3 bg-red-900/30 border border-red-500 rounded-lg text-red-300">
@@ -247,7 +247,7 @@ export default function KrystalSwapWidget() {
         {/* Token In */}
         <div>
           <div className="flex justify-between items-center mb-1">
-            <label className="text-sm text-gray-400">From</label>
+            <label className="text-sm text-gray-400">From (Any Token)</label>
             {balance && tokenIn.address === '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' && (
               <button
                 onClick={handleMaxClick}
@@ -257,7 +257,7 @@ export default function KrystalSwapWidget() {
               </button>
             )}
           </div>
-          <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-3">
+          <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-3 mb-2">
             <select
               value={tokenIn.address}
               onChange={(e) => {
@@ -266,10 +266,10 @@ export default function KrystalSwapWidget() {
                   { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
                   { address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
                   { address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', symbol: 'cbBTC', name: 'Coinbase Wrapped BTC', decimals: 8 },
-                  { address: '0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5', symbol: 'BTC1', name: 'BTC1 Token', decimals: 18 },
                 ];
                 const selectedToken = tokens.find(t => t.address === e.target.value as Address) || tokenIn;
                 setTokenIn(selectedToken);
+                setCustomTokenAddress(''); // Clear custom token when selecting from dropdown
                 
                 // Reset balance if switching from ETH
                 if (e.target.value !== '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE') {
@@ -278,11 +278,10 @@ export default function KrystalSwapWidget() {
               }}
               className="bg-transparent text-white border-none focus:outline-none"
             >
-              <option value={'0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'}>ETH</option>
+              <option value="0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE">ETH</option>
               <option value="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913">USDC</option>
               <option value="0x4200000000000000000000000000000000000006">WETH</option>
               <option value="0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf">cbBTC</option>
-              <option value="0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5">BTC1</option>
             </select>
             <input
               type="number"
@@ -292,6 +291,48 @@ export default function KrystalSwapWidget() {
               className="flex-1 bg-transparent text-white border-none focus:outline-none text-right"
             />
           </div>
+          
+          {/* Custom Token Input */}
+          <div className="text-xs text-gray-400 mb-1">Or enter custom token address:</div>
+          <input
+            type="text"
+            value={customTokenAddress}
+            onChange={async (e) => {
+              const address = e.target.value;
+              setCustomTokenAddress(address);
+              
+              // If valid address, fetch token info
+              if (/^0x[a-fA-F0-9]{40}$/.test(address) && publicClient) {
+                try {
+                  const tokenContract = {
+                    address: address as Address,
+                    abi: [
+                      { name: 'symbol', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
+                      { name: 'decimals', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
+                      { name: 'name', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
+                    ],
+                  } as const;
+                  
+                  const [symbol, decimals, name] = await Promise.all([
+                    publicClient.readContract({ ...tokenContract, functionName: 'symbol' }),
+                    publicClient.readContract({ ...tokenContract, functionName: 'decimals' }),
+                    publicClient.readContract({ ...tokenContract, functionName: 'name' }),
+                  ]);
+                  
+                  setTokenIn({
+                    address: address as Address,
+                    symbol: symbol as string,
+                    decimals: Number(decimals),
+                    name: name as string,
+                  });
+                } catch (err) {
+                  console.error('Failed to fetch token info:', err);
+                }
+              }
+            }}
+            placeholder="0x..."
+            className="w-full p-2 bg-gray-800 text-white text-sm rounded-lg border border-gray-700 focus:border-orange-500 focus:outline-none"
+          />
         </div>
         
         {/* Quote Display */}
@@ -329,31 +370,14 @@ export default function KrystalSwapWidget() {
           </div>
         </div>
         
-        {/* Token Out */}
+        {/* Token Out - FIXED TO BTC1 */}
         <div>
-          <label className="block text-sm text-gray-400 mb-1">To</label>
-          <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-3">
-            <select
-              value={tokenOut.address}
-              onChange={(e) => {
-                const tokens: Token[] = [
-                  { address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', symbol: 'ETH', name: 'Ether', decimals: 18 },
-                  { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
-                  { address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
-                  { address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', symbol: 'cbBTC', name: 'Coinbase Wrapped BTC', decimals: 8 },
-                  { address: '0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5', symbol: 'BTC1', name: 'BTC1USD', decimals: 18 },
-                ];
-                const selectedToken = tokens.find(t => t.address === e.target.value as Address) || tokenOut;
-                setTokenOut(selectedToken);
-              }}
-              className="bg-transparent text-white border-none focus:outline-none"
-            >
-              <option value={'0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'}>ETH</option>
-              <option value="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913">USDC</option>
-              <option value="0x4200000000000000000000000000000000000006">WETH</option>
-              <option value="0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf">cbBTC</option>
-              <option value="0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5">BTC1</option>
-            </select>
+          <label className="block text-sm text-gray-400 mb-1">To (BTC1 Only)</label>
+          <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-3 opacity-75">
+            <div className="flex items-center gap-2">
+              <span className="text-white font-medium">BTC1</span>
+              <span className="text-xs text-gray-500">(Fixed)</span>
+            </div>
             <input
               type="text"
               value={state.quote ? state.quote.amountOut : '0.0'}

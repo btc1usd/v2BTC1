@@ -114,11 +114,7 @@ export class SwapAggregator {
         slippagePercentage: request.slippagePercentage?.toString() || '0.005',
       });
 
-      const response = await fetch(`${this.BASE_API_URL}?${params}`, {
-        headers: {
-          '0x-version': 'v2',
-        }
-      });
+      const response = await fetch(`${this.BASE_API_URL}?${params}`);
       
       if (!response.ok) {
         const errorData = await response.text();
