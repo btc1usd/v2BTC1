@@ -915,24 +915,30 @@ Check console for more details.`);
   };
 
   const handleGenerateMerkleTree = async () => {
+    // Validate block number is provided
+    if (!blockNumberInput || blockNumberInput.trim() === '') {
+      alert('❌ Block number is required!\n\nPlease provide a block number before generating the merkle tree.\n\nTip: Execute distribution first to auto-fill the block number.');
+      return;
+    }
+    
+    const blockNum = parseInt(blockNumberInput.trim());
+    if (isNaN(blockNum) || blockNum <= 0) {
+      alert('❌ Invalid block number!\n\nPlease provide a valid positive integer.');
+      return;
+    }
+    
     setLoading(true);
     try {
       console.log('🌳 Generating merkle tree...');
       console.log('API endpoint: /api/generate-merkle-tree');
-      
-      // Prepare request body with block number if provided
-      const requestBody: any = {};
-      if (blockNumberInput && blockNumberInput.trim() !== '') {
-        requestBody.blockNumber = parseInt(blockNumberInput.trim());
-        console.log('📍 Using block number:', requestBody.blockNumber);
-      }
+      console.log('📍 Using block number:', blockNum);
       
       const response = await fetch('/api/generate-merkle-tree', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({ blockNumber: blockNum }),
       });
       
       console.log('Response status:', response.status);
@@ -1919,18 +1925,19 @@ This action cannot be undone. Continue?`;
                   <div className="space-y-2">
                     <Label htmlFor="blockNumber" className="flex items-center gap-2 text-sm">
                       <Clock className="h-4 w-4" />
-                      Block Number (Optional)
+                      Block Number <span className="text-red-500">*</span>
                     </Label>
                     <Input
                       id="blockNumber"
                       value={blockNumberInput}
                       onChange={(e) => setBlockNumberInput(e.target.value)}
-                      placeholder="Auto-filled from Execute Distribution or leave empty for latest"
+                      placeholder="Required - Auto-filled from Execute Distribution"
                       type="number"
+                      required
                       className="font-mono text-sm"
                     />
                     <p className="text-xs text-muted-foreground">
-                      ✨ Automatically filled when you execute distribution. Leave empty to use the latest block.
+                      ✨ <span className="text-red-400">Required field.</span> Automatically filled when you execute distribution.
                     </p>
                   </div>
                   

@@ -214,16 +214,23 @@ export async function POST(request: NextRequest) {
     console.log(`📍 BTC1USD: ${BTC1USD}`);
     console.log(`📍 Weekly Distribution: ${WEEKLY}`);
 
-    // Parse request body to get optional block number
-    let TARGET_BLOCK: number | null = null;
+    // Parse request body to get MANDATORY block number
+    let TARGET_BLOCK: number;
     try {
       const body = await request.json();
-      if (body.blockNumber) {
-        TARGET_BLOCK = parseInt(body.blockNumber.toString());
-        console.log(`📍 Using provided block number: ${TARGET_BLOCK}`);
+      if (!body.blockNumber) {
+        throw new Error('Block number is required. Please provide blockNumber in the request body.');
       }
-    } catch {
-      // No body or invalid JSON - will use latest block
+      TARGET_BLOCK = parseInt(body.blockNumber.toString());
+      if (isNaN(TARGET_BLOCK) || TARGET_BLOCK <= 0) {
+        throw new Error('Invalid block number. Must be a positive integer.');
+      }
+      console.log(`📍 Using provided block number: ${TARGET_BLOCK}`);
+    } catch (error: any) {
+      if (error.message.includes('Block number is required') || error.message.includes('Invalid block number')) {
+        throw error;
+      }
+      throw new Error('Invalid request body. Please provide blockNumber in JSON format.');
     }
 
     const alchemyApiKey = process.env.ALCHEMY_API_KEY;
@@ -247,12 +254,7 @@ export async function POST(request: NextRequest) {
     console.log("🔌 Warming up RPC connection...");
     const latestBlock = await provider.getBlockNumber();
     console.log("✅ RPC connected. Latest block:", latestBlock);
-
-    // Use provided block or latest block
-    if (!TARGET_BLOCK) {
-      TARGET_BLOCK = latestBlock;
-      console.log(`📍 Using latest block: ${TARGET_BLOCK}`);
-    }
+    console.log(`📍 Target block for merkle generation: ${TARGET_BLOCK}`);
 
     console.log(`🌳 Generating Merkle Tree @ block ${TARGET_BLOCK}`);
 
@@ -551,6 +553,7 @@ export async function POST(request: NextRequest) {
         error: 'Failed to generate merkle tree', 
         details: error.message,
         suggestions: [
+          'Block number is REQUIRED - provide it in the request body as { "blockNumber": 12345 }',
           'Check if SUPABASE_SERVICE_ROLE_KEY is set in Netlify environment variables',
           'Ensure ALCHEMY_API_KEY is valid',
           'Check if contracts are deployed on the correct network',
