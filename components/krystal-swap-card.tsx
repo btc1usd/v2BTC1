@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeftRight, Loader2, X, CheckCircle2, XCircle, Droplets, ArrowRightLeft } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useWeb3 } from "@/lib/web3-provider";
-import { KrystalSwapWidget } from "./krystal-swap-widget";
+import KrystalSwapWidget from './KrystalSwapWidget';
 
 // Dynamically import KrystalZap with SSR disabled
 const KrystalZap = dynamic(() => import('@krystaldefi/zap'), {
