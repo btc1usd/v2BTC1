@@ -66,6 +66,16 @@ const UNISWAP_V4_ABI = [
 
 /* ================= HELPERS ================= */
 
+// Table selection helper - same logic as other API routes
+function getSupabaseTableName(chainId: number): string {
+  // ALWAYS use merkle_distributions_prod on mainnet (Base = 8453)
+  if (chainId === 8453) {
+    return 'merkle_distributions_prod';
+  }
+  // Use _dev table for testnets (Base Sepolia = 84532)
+  return 'merkle_distributions_dev';
+}
+
 async function isContract(provider: ethers.JsonRpcProvider, addr: string, blockTag: number): Promise<boolean> {
   const code = await provider.getCode(addr, blockTag);
   return code !== "0x" && code.length > 2;
@@ -496,8 +506,10 @@ export async function POST(request: NextRequest) {
       console.warn('⚠️ This may fail due to Row-Level Security policies');
     }
 
-    const TABLE_NAME = 'merkle_distributions_dev';
-    console.log(`   💾 Using Supabase table: ${TABLE_NAME}`);
+    // Determine which table to use based on chain ID
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "8453");
+    const TABLE_NAME = getSupabaseTableName(chainId);
+    console.log(`   💾 Using Supabase table: ${TABLE_NAME} for chain ${chainId}`);
     
     const { data: existing, error: fetchError } = await supabase
       .from(TABLE_NAME)
