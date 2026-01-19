@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeftRight, Loader2, X, CheckCircle2, XCircle, Droplets, ArrowRightLeft } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useWeb3 } from "@/lib/web3-provider";
-import KrystalSwapWidget from './KrystalSwapWidget';
+import OneInchSwapWidget from './OneInchSwapWidget';
 
 // Dynamically import KrystalZap with SSR disabled
 const KrystalZap = dynamic(() => import('@krystaldefi/zap'), {
@@ -126,48 +126,48 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
 
   return (
     <Card className={className}>
-      <CardHeader className="space-y-1">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center">
-              <ArrowLeftRight className="h-5 w-5 text-white" />
+      <CardHeader className="space-y-1 p-4 sm:p-6">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center flex-shrink-0">
+              <ArrowLeftRight className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
             </div>
-            <CardTitle className="text-2xl text-white">Get BTC1</CardTitle>
+            <CardTitle className="text-lg sm:text-2xl text-white truncate">Get BTC1</CardTitle>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="gap-1 border-orange-500/50 bg-orange-500/10 text-orange-400">
+          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+            <Badge variant="outline" className="gap-1 border-orange-500/50 bg-orange-500/10 text-orange-400 text-xs px-1.5 sm:px-2">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
               </span>
-              Live
+              <span className="hidden sm:inline">Live</span>
             </Badge>
             {onClose && (
               <button
                 onClick={onClose}
-                className="ml-2 p-1 rounded-full hover:bg-gray-800 transition-colors text-gray-400 hover:text-white"
+                className="p-1 rounded-full hover:bg-gray-800 transition-colors text-gray-400 hover:text-white"
                 aria-label="Close"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4 sm:h-5 sm:w-5" />
               </button>
             )}
           </div>
         </div>
-        <CardDescription className="text-gray-400">
+        <CardDescription className="text-gray-400 text-xs sm:text-sm">
           Swap tokens or add liquidity to earn fees
         </CardDescription>
       </CardHeader>
       
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
         {error && (
           <Alert variant="destructive" className="bg-red-500/10 border-red-500/50 text-red-400">
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription className="text-xs sm:text-sm break-words">{error}</AlertDescription>
           </Alert>
         )}
 
         {!address && (
           <Alert className="bg-orange-500/10 border-orange-500/50">
-            <AlertDescription className="text-orange-400">
+            <AlertDescription className="text-orange-400 text-xs sm:text-sm">
               Please connect your wallet to start
             </AlertDescription>
           </Alert>
@@ -175,7 +175,7 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
 
         {chainId && chainId !== 8453 && (
           <Alert variant="destructive" className="bg-red-500/10 border-red-500/50 text-red-400">
-            <AlertDescription>
+            <AlertDescription className="text-xs sm:text-sm">
               Please switch to Base network to use this feature
             </AlertDescription>
           </Alert>
@@ -187,49 +187,51 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
           </div>
         ) : config && address && chainId === 8453 ? (
           <Tabs defaultValue="swap" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-4">
-              <TabsTrigger value="swap" className="gap-2">
-                <ArrowRightLeft className="h-4 w-4" />
-                Swap
+            <TabsList className="grid w-full grid-cols-2 mb-3 sm:mb-4 h-auto">
+              <TabsTrigger value="swap" className="gap-1 sm:gap-2 text-xs sm:text-sm py-2">
+                <ArrowRightLeft className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Swap</span>
+                <span className="sm:hidden">Swap</span>
               </TabsTrigger>
-              <TabsTrigger value="liquidity" className="gap-2">
-                <Droplets className="h-4 w-4" />
-                Add Liquidity
+              <TabsTrigger value="liquidity" className="gap-1 sm:gap-2 text-xs sm:text-sm py-2">
+                <Droplets className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Add Liquidity</span>
+                <span className="sm:hidden">Liquidity</span>
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="swap" className="space-y-4">
-              <div className="rounded-lg border border-gray-700 bg-gray-900 p-4">
-                {/* Krystal Swap Widget - Any Token to BTC1 */}
-                <KrystalSwapWidget />
+            <TabsContent value="swap" className="space-y-3 sm:space-y-4 mt-0">
+              <div className="rounded-lg border border-gray-700 bg-gray-900 p-2 sm:p-4">
+                {/* 1inch Swap Widget - Any Token to BTC1 */}
+                <OneInchSwapWidget />
               </div>
             </TabsContent>
 
-            <TabsContent value="liquidity" className="space-y-4">
-            <div className="rounded-lg border border-gray-700 bg-gray-900 overflow-hidden p-4">
+            <TabsContent value="liquidity" className="space-y-3 sm:space-y-4 mt-0">
+            <div className="rounded-lg border border-gray-700 bg-gray-900 overflow-hidden p-2 sm:p-4">
               {/* Transaction Status Notification */}
               {txStatus.type && (
-                <div className={`mb-4 p-4 rounded-lg border flex items-start gap-3 ${
+                <div className={`mb-3 sm:mb-4 p-2 sm:p-4 rounded-lg border flex items-start gap-2 sm:gap-3 ${
                   txStatus.type === 'success' 
                     ? 'bg-green-500/10 border-green-500/50 text-green-400' 
                     : 'bg-red-500/10 border-red-500/50 text-red-400'
                 }`}>
                   {txStatus.type === 'success' ? (
-                    <CheckCircle2 className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                    <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 mt-0.5 flex-shrink-0" />
                   ) : (
-                    <XCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                    <XCircle className="h-4 w-4 sm:h-5 sm:w-5 mt-0.5 flex-shrink-0" />
                   )}
-                  <div className="flex-1">
-                    <p className="font-medium">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm sm:text-base">
                       {txStatus.type === 'success' ? 'Success!' : 'Error'}
                     </p>
-                    <p className="text-sm mt-1 break-all">{txStatus.message}</p>
+                    <p className="text-xs sm:text-sm mt-1 break-all">{txStatus.message}</p>
                   </div>
                   <button
                     onClick={() => setTxStatus({ type: null, message: '' })}
-                    className="text-current hover:opacity-70 transition-opacity"
+                    className="text-current hover:opacity-70 transition-opacity flex-shrink-0"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-3 w-3 sm:h-4 sm:w-4" />
                   </button>
                 </div>
               )}
@@ -311,8 +313,8 @@ export function KrystalSwapCard({ className, onClose }: SwapCardProps) {
             </TabsContent>
           </Tabs>
         ) : (
-          <div className="text-center py-8 text-gray-400">
-            <p>Connect wallet and switch to Base network to start</p>
+          <div className="text-center py-6 sm:py-8 text-gray-400 px-4">
+            <p className="text-xs sm:text-sm">Connect wallet and switch to Base network to start</p>
           </div>
         )}
       </CardContent>
