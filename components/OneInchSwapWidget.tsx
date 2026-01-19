@@ -5,12 +5,14 @@
  * 
  * Complete non-custodial swap implementation using 1inch Aggregation API
  * All transactions are signed and sent by the user's wallet
+ * Supports any token to any token swaps
  */
 
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { useWalletClient, usePublicClient } from 'wagmi';
 import { Address } from 'viem';
+import { ChevronDown, ChevronUp, ArrowDownUp } from 'lucide-react';
 import {
   executeOneInchSwap,
   getOneInchQuote,
@@ -71,22 +73,26 @@ const BASE_TOKENS: Token[] = [
     name: 'Coinbase Wrapped BTC',
     decimals: 8,
   },
+  {
+    address: BTC1_TOKEN,
+    symbol: 'BTC1',
+    name: 'BTC1 Token',
+    decimals: 18,
+  },
 ];
 
 export default function OneInchSwapWidget() {
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
 
+  // Collapsible state
+  const [isExpanded, setIsExpanded] = useState<boolean>(true);
+
   // Token In (any token)
   const [tokenIn, setTokenIn] = useState<Token>(BASE_TOKENS[0]);
   
-  // Token Out (fixed to BTC1)
-  const tokenOut: Token = {
-    address: BTC1_TOKEN,
-    symbol: 'BTC1',
-    name: 'BTC1 Token',
-    decimals: 18,
-  };
+  // Token Out (any token, default to BTC1)
+  const [tokenOut, setTokenOut] = useState<Token>(BASE_TOKENS[4]); // BTC1
 
   const [amountIn, setAmountIn] = useState<string>('');
   const [customTokenAddress, setCustomTokenAddress] = useState<string>('');
@@ -128,15 +134,25 @@ export default function OneInchSwapWidget() {
 
   // Fetch quote when amount changes
   useEffect(() => {
-    if (amountIn && parseFloat(amountIn) > 0 && walletClient) {
+    if (amountIn && parseFloat(amountIn) > 0 && walletClient && tokenIn.address !== tokenOut.address) {
       fetchQuote();
     } else {
       setState(prev => ({ ...prev, quote: null }));
     }
-  }, [amountIn, tokenIn, slippage, walletClient]);
+  }, [amountIn, tokenIn, tokenOut, slippage, walletClient]);
 
   const fetchQuote = async () => {
     if (!walletClient || !amountIn || parseFloat(amountIn) <= 0) return;
+
+    // Prevent same token swap
+    if (tokenIn.address.toLowerCase() === tokenOut.address.toLowerCase()) {
+      setState(prev => ({ 
+        ...prev, 
+        error: 'Cannot swap the same token',
+        quote: null 
+      }));
+      return;
+    }
 
     setState(prev => ({ ...prev, quoteLoading: true, error: null }));
 
@@ -179,7 +195,15 @@ export default function OneInchSwapWidget() {
       }));
     }
   };
-
+  
+  const handleSwapTokens = () => {
+    // Swap input and output tokens
+    const temp = tokenIn;
+    setTokenIn(tokenOut);
+    setTokenOut(temp);
+    setAmountIn(''); // Clear amount
+  };
+  
   const handleSwap = async () => {
     if (!walletClient || !walletClient.account) {
       setState(prev => ({ ...prev, error: 'Please connect your wallet first' }));
@@ -307,23 +331,39 @@ export default function OneInchSwapWidget() {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto p-4 sm:p-6 bg-gray-900 rounded-xl border border-gray-700">
-      <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 text-center">
-        Swap to BTC1 (1inch)
-      </h2>
-      <p className="text-xs sm:text-sm text-gray-400 text-center mb-3 sm:mb-4">
-        Powered by 1inch Aggregation Protocol on Base
-      </p>
+    <div className="w-full max-w-md mx-auto bg-gray-900 rounded-xl border border-gray-700">
+      {/* Collapsible Header */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full p-4 sm:p-6 flex items-center justify-between hover:bg-gray-800/50 transition-colors rounded-t-xl"
+      >
+        <div className="text-left">
+          <h2 className="text-xl sm:text-2xl font-bold text-white mb-1">
+            Token Swap (1inch)
+          </h2>
+          <p className="text-xs sm:text-sm text-gray-400">
+            {isExpanded ? 'Click to collapse' : 'Click to expand swap interface'}
+          </p>
+        </div>
+        {isExpanded ? (
+          <ChevronUp className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400" />
+        ) : (
+          <ChevronDown className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400" />
+        )}
+      </button>
 
-      {/* Info Banner */}
-      <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-blue-900/20 border border-blue-500/50 rounded-lg text-blue-300 text-xs">
-        <strong>1inch Aggregation:</strong> Best prices across all Base DEXs
-        <ul className="list-disc ml-4 mt-1 space-y-0.5">
-          <li>Automated routing through multiple liquidity sources</li>
-          <li>Gas-optimized transactions</li>
-          <li className="hidden sm:list-item">Minimum swap: 0.001 ETH or equivalent</li>
-        </ul>
-      </div>
+      {/* Collapsible Content */}
+      {isExpanded && (
+        <div className="p-4 sm:p-6 border-t border-gray-700">
+          {/* Info Banner */}
+          <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-blue-900/20 border border-blue-500/50 rounded-lg text-blue-300 text-xs">
+            <strong>1inch Aggregation:</strong> Best prices across all Base DEXs
+            <ul className="list-disc ml-4 mt-1 space-y-0.5">
+              <li>Swap any token to any token</li>
+              <li>Automated routing through multiple liquidity sources</li>
+              <li className="hidden sm:list-item">Gas-optimized transactions</li>
+            </ul>
+          </div>
 
       {/* Error Message */}
       {state.error && (
@@ -351,7 +391,7 @@ export default function OneInchSwapWidget() {
         {/* Token In */}
         <div>
           <div className="flex justify-between items-center mb-1">
-            <label className="text-xs sm:text-sm text-gray-400">From (Any Token)</label>
+            <label className="text-xs sm:text-sm text-gray-400">From</label>
             {balance && tokenIn.address === NATIVE_ETH && (
               <button
                 onClick={handleMaxClick}
@@ -373,7 +413,7 @@ export default function OneInchSwapWidget() {
               }}
               className="bg-transparent text-white text-sm border-none focus:outline-none min-w-[70px]"
             >
-              {BASE_TOKENS.map(token => (
+              {BASE_TOKENS.filter(t => t.address !== tokenOut.address).map(token => (
                 <option key={token.address} value={token.address}>
                   {token.symbol}
                 </option>
@@ -446,33 +486,35 @@ export default function OneInchSwapWidget() {
 
         {/* Swap Direction Arrow */}
         <div className="flex justify-center">
-          <div className="p-1.5 sm:p-2 rounded-full bg-gray-800 border border-gray-700">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-blue-400 sm:w-5 sm:h-5"
-            >
-              <path d="m17 14 3-3-3-3" />
-              <path d="M7 20v-9H4.5M20.5 11H13V4" />
-            </svg>
-          </div>
+          <button
+            onClick={handleSwapTokens}
+            className="p-1.5 sm:p-2 rounded-full bg-gray-800 border border-gray-700 hover:bg-gray-700 hover:border-blue-500 transition-all active:scale-95"
+            title="Swap token positions"
+          >
+            <ArrowDownUp className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400" />
+          </button>
         </div>
 
-        {/* Token Out (BTC1 - Fixed) */}
+        {/* Token Out (Any Token) */}
         <div>
-          <label className="block text-xs sm:text-sm text-gray-400 mb-1">To (BTC1 Only)</label>
-          <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-2 sm:p-3 opacity-75">
-            <div className="flex items-center gap-2">
-              <span className="text-white font-medium text-sm">BTC1</span>
-              <span className="text-xs text-gray-500">(Fixed)</span>
-            </div>
+          <label className="block text-xs sm:text-sm text-gray-400 mb-1">To</label>
+          <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-2 sm:p-3">
+            <select
+              value={tokenOut.address}
+              onChange={(e) => {
+                const selected = BASE_TOKENS.find(t => t.address === e.target.value);
+                if (selected) {
+                  setTokenOut(selected);
+                }
+              }}
+              className="bg-transparent text-white text-sm border-none focus:outline-none min-w-[70px]"
+            >
+              {BASE_TOKENS.filter(t => t.address !== tokenIn.address).map(token => (
+                <option key={token.address} value={token.address}>
+                  {token.symbol}
+                </option>
+              ))}
+            </select>
             <input
               type="text"
               value={state.quote ? state.quote.toAmount : '0.0'}
@@ -559,6 +601,8 @@ export default function OneInchSwapWidget() {
           )}
         </button>
       </div>
+      </div>
+      )}
     </div>
   );
 }
