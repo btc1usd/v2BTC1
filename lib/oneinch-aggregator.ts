@@ -15,7 +15,8 @@ import { ethers } from 'ethers';
 
 // Base Mainnet Configuration
 export const BASE_CHAIN_ID = 8453;
-const ONEINCH_API_BASE = 'https://api.1inch.dev/swap/v5.2/8453';
+// Use Next.js API proxy to avoid CORS issues
+const ONEINCH_PROXY_BASE = '/api/oneinch-proxy';
 
 // Native ETH address for Base (used by 1inch)
 const NATIVE_ETH_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
@@ -65,22 +66,6 @@ interface OneInchApprovalResponse {
 }
 
 /**
- * Get API headers with authorization
- */
-function getHeaders(): HeadersInit {
-  const apiKey = process.env.NEXT_PUBLIC_ONEINCH_API_KEY;
-  
-  if (!apiKey) {
-    throw new Error('1inch API key not found. Set NEXT_PUBLIC_ONEINCH_API_KEY in .env.local');
-  }
-
-  return {
-    'Authorization': `Bearer ${apiKey}`,
-    'Accept': 'application/json',
-  };
-}
-
-/**
  * Verify wallet is connected to Base Mainnet
  */
 export async function verifyBaseNetwork(signer: ethers.Signer): Promise<void> {
@@ -96,6 +81,7 @@ export async function verifyBaseNetwork(signer: ethers.Signer): Promise<void> {
  */
 export async function getOneInchQuote(params: OneInchQuoteParams): Promise<OneInchQuoteResponse> {
   const queryParams = new URLSearchParams({
+    endpoint: 'quote',
     src: params.src,
     dst: params.dst,
     amount: params.amount,
@@ -103,19 +89,18 @@ export async function getOneInchQuote(params: OneInchQuoteParams): Promise<OneIn
     slippage: params.slippage.toString(),
   });
 
-  const url = `${ONEINCH_API_BASE}/quote?${queryParams}`;
+  const url = `${ONEINCH_PROXY_BASE}?${queryParams}`;
   
-  console.log('Fetching 1inch quote:', url);
+  console.log('Fetching 1inch quote via proxy:', url);
 
   const response = await fetch(url, {
     method: 'GET',
-    headers: getHeaders(),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error('1inch quote error:', errorText);
-    throw new Error(`Failed to get quote: ${response.statusText}`);
+    const errorData = await response.json();
+    console.error('1inch quote error:', errorData);
+    throw new Error(errorData.error || `Failed to get quote: ${response.statusText}`);
   }
 
   const quote = await response.json();
@@ -134,16 +119,21 @@ export async function checkOneInchAllowance(
     return BigInt(ethers.MaxUint256);
   }
 
-  const url = `${ONEINCH_API_BASE}/approve/allowance?tokenAddress=${tokenAddress}&walletAddress=${walletAddress}`;
+  const queryParams = new URLSearchParams({
+    endpoint: 'approve/allowance',
+    tokenAddress,
+    walletAddress,
+  });
+
+  const url = `${ONEINCH_PROXY_BASE}?${queryParams}`;
   
   const response = await fetch(url, {
     method: 'GET',
-    headers: getHeaders(),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to check allowance: ${errorText}`);
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'Failed to check allowance');
   }
 
   const data: OneInchAllowanceResponse = await response.json();
@@ -158,6 +148,7 @@ export async function getOneInchApprovalTx(
   amount?: string
 ): Promise<OneInchApprovalResponse> {
   const queryParams = new URLSearchParams({
+    endpoint: 'approve/transaction',
     tokenAddress,
   });
 
@@ -165,16 +156,15 @@ export async function getOneInchApprovalTx(
     queryParams.append('amount', amount);
   }
 
-  const url = `${ONEINCH_API_BASE}/approve/transaction?${queryParams}`;
+  const url = `${ONEINCH_PROXY_BASE}?${queryParams}`;
   
   const response = await fetch(url, {
     method: 'GET',
-    headers: getHeaders(),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to get approval transaction: ${errorText}`);
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'Failed to get approval transaction');
   }
 
   return await response.json();
@@ -219,6 +209,7 @@ export async function approveOneInchRouter(
  */
 export async function getOneInchSwapTx(params: OneInchSwapParams): Promise<OneInchSwapResponse> {
   const queryParams = new URLSearchParams({
+    endpoint: 'swap',
     src: params.src,
     dst: params.dst,
     amount: params.amount,
@@ -238,19 +229,18 @@ export async function getOneInchSwapTx(params: OneInchSwapParams): Promise<OneIn
     queryParams.append('allowPartialFill', params.allowPartialFill.toString());
   }
 
-  const url = `${ONEINCH_API_BASE}/swap?${queryParams}`;
+  const url = `${ONEINCH_PROXY_BASE}?${queryParams}`;
   
-  console.log('Fetching 1inch swap transaction:', url);
+  console.log('Fetching 1inch swap transaction via proxy:', url);
 
   const response = await fetch(url, {
     method: 'GET',
-    headers: getHeaders(),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error('1inch swap error:', errorText);
-    throw new Error(`Failed to get swap transaction: ${response.statusText}`);
+    const errorData = await response.json();
+    console.error('1inch swap error:', errorData);
+    throw new Error(errorData.error || `Failed to get swap transaction: ${response.statusText}`);
   }
 
   return await response.json();
