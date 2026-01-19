@@ -12,7 +12,7 @@ import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { useWalletClient, usePublicClient } from 'wagmi';
 import { Address } from 'viem';
-import { ChevronDown, ChevronUp, ArrowDownUp, Search, Check, Wallet, Loader2 } from 'lucide-react';
+import { ChevronDown, ArrowDownUp, Check, Wallet, Loader2 } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -218,7 +218,6 @@ export default function OneInchSwapWidget() {
   const [tokenOut, setTokenOut] = useState<Token>(BASE_TOKENS[4]); // BTC1
 
   const [amountIn, setAmountIn] = useState<string>('');
-  const [customTokenAddress, setCustomTokenAddress] = useState<string>('');
   const [balances, setBalances] = useState<{ [address: string]: string }>({});
   const [slippage, setSlippage] = useState<number>(1); // 1% default
 
@@ -434,56 +433,6 @@ export default function OneInchSwapWidget() {
     }
   };
 
-  const handleCustomToken = async (address: string) => {
-    setCustomTokenAddress(address);
-
-    if (/^0x[a-fA-F0-9]{40}$/.test(address) && publicClient) {
-      try {
-        const tokenContract = {
-          address: address as Address,
-          abi: [
-            {
-              name: 'symbol',
-              type: 'function',
-              stateMutability: 'view',
-              inputs: [],
-              outputs: [{ type: 'string' }],
-            },
-            {
-              name: 'decimals',
-              type: 'function',
-              stateMutability: 'view',
-              inputs: [],
-              outputs: [{ type: 'uint8' }],
-            },
-            {
-              name: 'name',
-              type: 'function',
-              stateMutability: 'view',
-              inputs: [],
-              outputs: [{ type: 'string' }],
-            },
-          ],
-        } as const;
-
-        const [symbol, decimals, name] = await Promise.all([
-          publicClient.readContract({ ...tokenContract, functionName: 'symbol' }),
-          publicClient.readContract({ ...tokenContract, functionName: 'decimals' }),
-          publicClient.readContract({ ...tokenContract, functionName: 'name' }),
-        ]);
-
-        setTokenIn({
-          address: address,
-          symbol: symbol as string,
-          decimals: Number(decimals),
-          name: name as string,
-        });
-      } catch (err) {
-        console.error('Failed to fetch token info:', err);
-      }
-    }
-  };
-
   return (
     <div className="w-full mx-auto bg-transparent">
       {/* Collapsible Content */}
@@ -544,12 +493,11 @@ export default function OneInchSwapWidget() {
                 </button>
               )}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 px-1">
               <TokenSelector
                 selectedToken={tokenIn}
                 onSelect={(token) => {
                   setTokenIn(token);
-                  setCustomTokenAddress('');
                 }}
                 tokens={BASE_TOKENS.filter(t => t.address !== tokenOut.address)}
                 balances={balances}
@@ -560,22 +508,7 @@ export default function OneInchSwapWidget() {
                 value={amountIn}
                 onChange={(e) => setAmountIn(e.target.value)}
                 placeholder="0.00"
-                className="flex-1 bg-transparent text-white text-2xl font-bold border-none focus:outline-none text-right placeholder:text-gray-700"
-              />
-            </div>
-            
-            {/* Custom Token Option */}
-            <div className="mt-4 pt-4 border-t border-gray-700/30">
-              <div className="flex items-center gap-2 mb-2">
-                <Search className="h-3 w-3 text-gray-500" />
-                <span className="text-[10px] text-gray-500 font-medium uppercase tracking-tighter">Import Custom Asset</span>
-              </div>
-              <input
-                type="text"
-                value={customTokenAddress}
-                onChange={(e) => handleCustomToken(e.target.value)}
-                placeholder="Paste contract address (0x...)"
-                className="w-full px-3 py-2 bg-gray-900/50 text-white text-xs rounded-lg border border-gray-700/50 focus:border-blue-500/50 focus:bg-gray-900 focus:outline-none transition-all"
+                className="flex-1 bg-transparent text-white text-3xl font-bold border-none focus:outline-none text-right placeholder:text-gray-700 pr-2"
               />
             </div>
           </div>
@@ -602,7 +535,7 @@ export default function OneInchSwapWidget() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 px-1">
               <TokenSelector
                 selectedToken={tokenOut}
                 onSelect={setTokenOut}
@@ -610,7 +543,7 @@ export default function OneInchSwapWidget() {
                 balances={balances}
                 label="token"
               />
-              <div className="flex-1 text-right overflow-hidden">
+              <div className="flex-1 text-right overflow-hidden pr-2">
                 {state.quoteLoading ? (
                   <div className="flex justify-end gap-1">
                     {[1, 2, 3].map(i => (
@@ -619,7 +552,7 @@ export default function OneInchSwapWidget() {
                   </div>
                 ) : (
                   <span className={cn(
-                    "text-2xl font-bold transition-colors",
+                    "text-3xl font-bold transition-colors",
                     state.quote ? "text-white" : "text-gray-700"
                   )}>
                     {state.quote ? parseFloat(state.quote.toAmount).toLocaleString(undefined, { maximumFractionDigits: 6 }) : '0.00'}
