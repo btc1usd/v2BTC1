@@ -96,7 +96,7 @@ export default function OneInchSwapWidget() {
 
   const [amountIn, setAmountIn] = useState<string>('');
   const [customTokenAddress, setCustomTokenAddress] = useState<string>('');
-  const [balance, setBalance] = useState<string>('0');
+  const [balances, setBalances] = useState<{ [address: string]: string }>({});
   const [slippage, setSlippage] = useState<number>(1); // 1% default
 
   const [state, setState] = useState<SwapState>({
@@ -108,29 +108,54 @@ export default function OneInchSwapWidget() {
     quote: null,
   });
 
-  // Fetch user balance
+  // Fetch user balances for all tokens
   useEffect(() => {
     if (walletClient?.account?.address && publicClient) {
-      const fetchBalance = async () => {
+      const fetchAllBalances = async () => {
+        const newBalances: { [address: string]: string } = {};
+
         try {
-          if (tokenIn.address === NATIVE_ETH) {
-            const ethBalance = await publicClient.getBalance({
-              address: walletClient.account.address,
-            });
-            setBalance(ethers.formatEther(ethBalance));
-          } else {
-            // For ERC20 tokens, implement balance fetching if needed
-            setBalance('0');
+          // Fetch ETH balance
+          const ethBalance = await publicClient.getBalance({
+            address: walletClient.account.address,
+          });
+          newBalances[NATIVE_ETH] = ethers.formatEther(ethBalance);
+
+          // Fetch ERC20 token balances
+          for (const token of BASE_TOKENS) {
+            if (token.address !== NATIVE_ETH) {
+              try {
+                const balance = await publicClient.readContract({
+                  address: token.address as Address,
+                  abi: [
+                    {
+                      name: 'balanceOf',
+                      type: 'function',
+                      stateMutability: 'view',
+                      inputs: [{ type: 'address' }],
+                      outputs: [{ type: 'uint256' }],
+                    },
+                  ],
+                  functionName: 'balanceOf',
+                  args: [walletClient.account.address],
+                });
+                newBalances[token.address] = ethers.formatUnits(balance as bigint, token.decimals);
+              } catch (err) {
+                console.error(`Error fetching balance for ${token.symbol}:`, err);
+                newBalances[token.address] = '0';
+              }
+            }
           }
+
+          setBalances(newBalances);
         } catch (err) {
-          console.error('Error fetching balance:', err);
-          setBalance('0');
+          console.error('Error fetching balances:', err);
         }
       };
 
-      fetchBalance();
+      fetchAllBalances();
     }
-  }, [walletClient, publicClient, tokenIn]);
+  }, [walletClient, publicClient]);
 
   // Fetch quote when amount changes
   useEffect(() => {
@@ -271,11 +296,17 @@ export default function OneInchSwapWidget() {
   };
 
   const handleMaxClick = () => {
-    if (tokenIn.address === NATIVE_ETH && balance) {
-      // Leave small amount for gas
-      const maxAmount = parseFloat(balance) - 0.001;
-      if (maxAmount > 0) {
-        setAmountIn(maxAmount.toFixed(6));
+    const balance = balances[tokenIn.address];
+    if (balance && parseFloat(balance) > 0) {
+      if (tokenIn.address === NATIVE_ETH) {
+        // Leave small amount for gas
+        const maxAmount = parseFloat(balance) - 0.001;
+        if (maxAmount > 0) {
+          setAmountIn(maxAmount.toFixed(6));
+        }
+      } else {
+        // For ERC20, use full balance
+        setAmountIn(parseFloat(balance).toFixed(6));
       }
     }
   };
@@ -392,12 +423,12 @@ export default function OneInchSwapWidget() {
         <div>
           <div className="flex justify-between items-center mb-1">
             <label className="text-xs sm:text-sm text-gray-400">From</label>
-            {balance && tokenIn.address === NATIVE_ETH && (
+            {balances[tokenIn.address] && parseFloat(balances[tokenIn.address]) > 0 && (
               <button
                 onClick={handleMaxClick}
                 className="text-xs text-blue-400 hover:text-blue-300"
               >
-                Balance: {parseFloat(balance).toFixed(6)}
+                Balance: {parseFloat(balances[tokenIn.address]).toFixed(6)}
               </button>
             )}
           </div>
@@ -413,11 +444,15 @@ export default function OneInchSwapWidget() {
               }}
               className="bg-transparent text-white text-sm border-none focus:outline-none min-w-[70px]"
             >
-              {BASE_TOKENS.filter(t => t.address !== tokenOut.address).map(token => (
-                <option key={token.address} value={token.address}>
-                  {token.symbol}
-                </option>
-              ))}
+              {BASE_TOKENS.filter(t => t.address !== tokenOut.address).map(token => {
+                const balance = balances[token.address];
+                const hasBalance = balance && parseFloat(balance) > 0;
+                return (
+                  <option key={token.address} value={token.address}>
+                    {token.symbol} {hasBalance ? `(${parseFloat(balance).toFixed(4)})` : ''}
+                  </option>
+                );
+              })}
             </select>
             <input
               type="number"

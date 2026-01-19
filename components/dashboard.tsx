@@ -35,7 +35,8 @@ import BTC1USDTimelockManager from "@/components/btc1usd-timelock-manager";
 import FixedMerkleClaim from "@/components/fixed-merkle-claim";
 import EnhancedMerkleClaim from "@/components/enhanced-merkle-claim";
 import CollateralManagement from "@/components/collateral-management";
-import KrystalSwapCard from "@/components/krystal-swap-card";
+import SwapModal from "@/components/swap-modal";
+import LiquidityModal from "@/components/liquidity-modal";
 
 import { useTheme } from "next-themes";
 import { useWeb3 } from "@/lib/web3-provider";
@@ -228,6 +229,7 @@ function Dashboard() {
   const [userDistributions, setUserDistributions] = useState<any[]>([]);
   const [usePermit, setUsePermit] = useState(false); // Toggle for gasless permit transactions
   const [swapModalOpen, setSwapModalOpen] = useState(false); // Swap modal state
+  const [liquidityModalOpen, setLiquidityModalOpen] = useState(false); // Liquidity modal state
 
   // Safe Transaction Modal State
   const [safeModalOpen, setSafeModalOpen] = useState(false);
@@ -3089,11 +3091,11 @@ function Dashboard() {
                   </CardContent>
                 </Card>
 
-                {/* Swap Card - Krystal Integration */}
+                {/* Swap Card - 1inch Integration */}
                 <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-gray-300">
-                      Swap for BTC1
+                      Token Swap
                     </CardTitle>
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center">
                       <ArrowLeftRight className="h-4 w-4 text-white" />
@@ -3101,17 +3103,44 @@ function Dashboard() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="text-2xl font-bold text-white">
-                      Best Rates
+                      1inch DEX
                     </div>
                     <p className="text-xs text-gray-400 mt-1">
-                      DEX Aggregator
+                      Best rates aggregator
                     </p>
                     <Button
                       onClick={() => setSwapModalOpen(true)}
                       disabled={!isConnected || chainId !== 8453}
-                      className="w-full sm:w-auto sm:px-8 h-12 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold shadow-lg shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full sm:w-auto sm:px-8 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       SWAP
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Liquidity Card - Krystal Integration */}
+                <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-300">
+                      Add Liquidity
+                    </CardTitle>
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center">
+                      <Plus className="h-4 w-4 text-white" />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="text-2xl font-bold text-white">
+                      Earn Fees
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Provide liquidity
+                    </p>
+                    <Button
+                      onClick={() => setLiquidityModalOpen(true)}
+                      disabled={!isConnected || chainId !== 8453}
+                      className="w-full sm:w-auto sm:px-8 h-12 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold shadow-lg shadow-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      ADD LIQUIDITY
                     </Button>
                   </CardContent>
                 </Card>
@@ -4409,17 +4438,11 @@ function Dashboard() {
         </main>
       </div>
 
-      {/* Krystal Swap Modal */}
-      {swapModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="relative w-full max-w-2xl">
-            <KrystalSwapCard 
-              className="bg-gray-900 border-gray-700" 
-              onClose={() => setSwapModalOpen(false)}
-            />
-          </div>
-        </div>
-      )}
+      {/* Swap Modal */}
+      <SwapModal isOpen={swapModalOpen} onClose={() => setSwapModalOpen(false)} />
+
+      {/* Liquidity Modal */}
+      <LiquidityModal isOpen={liquidityModalOpen} onClose={() => setLiquidityModalOpen(false)} />
 
       {/* Safe Transaction Modal */}
       {safeModalConfig && (
