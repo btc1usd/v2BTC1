@@ -12,7 +12,24 @@ import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { useWalletClient, usePublicClient } from 'wagmi';
 import { Address } from 'viem';
-import { ChevronDown, ChevronUp, ArrowDownUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, ArrowDownUp, Search, Check, Wallet, Loader2 } from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import {
   executeOneInchSwap,
   getOneInchQuote,
@@ -33,6 +50,7 @@ interface Token {
   symbol: string;
   name: string;
   decimals: number;
+  logo?: string;
 }
 
 interface SwapState {
@@ -54,32 +72,137 @@ const BASE_TOKENS: Token[] = [
     symbol: 'ETH',
     name: 'Ethereum',
     decimals: 18,
+    logo: 'https://tokens.1inch.io/0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.png'
   },
   {
     address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
     symbol: 'USDC',
     name: 'USD Coin',
     decimals: 6,
+    logo: 'https://tokens.1inch.io/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.png'
   },
   {
     address: '0x4200000000000000000000000000000000000006',
     symbol: 'WETH',
     name: 'Wrapped Ether',
     decimals: 18,
+    logo: 'https://tokens.1inch.io/0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2.png'
   },
   {
     address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf',
     symbol: 'cbBTC',
     name: 'Coinbase Wrapped BTC',
     decimals: 8,
+    logo: 'https://tokens.1inch.io/0x2260fac5e5542a773aa44fbcfedf7c193bc2c599.png'
   },
   {
     address: BTC1_TOKEN,
     symbol: 'BTC1',
     name: 'BTC1 Token',
     decimals: 18,
+    logo: '/favicon.png'
   },
 ];
+
+interface TokenSelectorProps {
+  selectedToken: Token;
+  onSelect: (token: Token) => void;
+  tokens: Token[];
+  balances: { [address: string]: string };
+  label: string;
+  disabled?: boolean;
+}
+
+function TokenSelector({ selectedToken, onSelect, tokens, balances, label, disabled }: TokenSelectorProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-[140px] sm:w-[160px] justify-between bg-gray-800 border-gray-700 hover:bg-gray-700 text-white"
+          disabled={disabled}
+        >
+          <div className="flex items-center gap-2 overflow-hidden">
+            {selectedToken.logo ? (
+              <img src={selectedToken.logo} alt={selectedToken.symbol} className="w-5 h-5 rounded-full" />
+            ) : (
+              <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-[10px] font-bold">
+                {selectedToken.symbol.slice(0, 2)}
+              </div>
+            )}
+            <span className="truncate">{selectedToken.symbol}</span>
+          </div>
+          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[280px] p-0 bg-gray-900 border-gray-700" align="start">
+        <Command className="bg-gray-900 text-white">
+          <CommandInput placeholder={`Search ${label}...`} className="text-white" />
+          <CommandList>
+            <CommandEmpty>No token found.</CommandEmpty>
+            <CommandGroup heading="Available Tokens" className="text-gray-400">
+              <ScrollArea className="h-[300px]">
+                {tokens.map((token) => {
+                  const balance = balances[token.address];
+                  const hasBalance = balance && parseFloat(balance) > 0;
+                  
+                  return (
+                    <CommandItem
+                      key={token.address}
+                      value={token.symbol}
+                      onSelect={() => {
+                        onSelect(token);
+                        setOpen(false);
+                      }}
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-800 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        {token.logo ? (
+                          <img src={token.logo} alt={token.symbol} className="w-8 h-8 rounded-full" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold">
+                            {token.symbol.slice(0, 2)}
+                          </div>
+                        )}
+                        <div className="flex flex-col">
+                          <span className="font-bold text-white">{token.symbol}</span>
+                          <span className="text-[10px] text-gray-400 truncate max-w-[120px]">{token.name}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col items-end">
+                        {hasBalance ? (
+                          <>
+                            <span className="text-sm font-medium text-blue-400">
+                              {parseFloat(balance).toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                            </span>
+                            <Badge variant="outline" className="text-[9px] h-4 border-blue-500/50 text-blue-300">
+                              In Wallet
+                            </Badge>
+                          </>
+                        ) : (
+                          <span className="text-xs text-gray-500">0.00</span>
+                        )}
+                      </div>
+                      
+                      {selectedToken.address === token.address && (
+                        <Check className="ml-2 h-4 w-4 text-blue-500" />
+                      )}
+                    </CommandItem>
+                  );
+                })}
+              </ScrollArea>
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function OneInchSwapWidget() {
   const { data: walletClient } = useWalletClient();
@@ -362,282 +485,235 @@ export default function OneInchSwapWidget() {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto bg-gray-900 rounded-xl border border-gray-700">
-      {/* Collapsible Header */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full p-4 sm:p-6 flex items-center justify-between hover:bg-gray-800/50 transition-colors rounded-t-xl"
-      >
-        <div className="text-left">
-          <h2 className="text-xl sm:text-2xl font-bold text-white mb-1">
-            Token Swap (1inch)
-          </h2>
-          <p className="text-xs sm:text-sm text-gray-400">
-            {isExpanded ? 'Click to collapse' : 'Click to expand swap interface'}
+    <div className="w-full mx-auto bg-gray-900">
+      {/* Collapsible Content */}
+      <div className="p-4 sm:p-6">
+        {/* Info Banner */}
+        <div className="mb-6 p-4 bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border border-blue-500/30 rounded-xl flex items-start gap-3 shadow-inner">
+          <div className="p-2 bg-blue-500/20 rounded-lg">
+            <Wallet className="h-5 w-5 text-blue-400" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-white">1inch Aggregator</p>
+            <p className="text-xs text-blue-200/70 mt-0.5 leading-relaxed">
+              Scanning all Base DEXs to find you the best swap rates automatically.
+            </p>
+          </div>
+        </div>
+
+        {/* Error Message */}
+        {state.error && (
+          <div className="mb-4 p-4 bg-red-900/20 border border-red-500/50 rounded-xl text-red-200 text-sm flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <span className="flex-1">{state.error}</span>
+          </div>
+        )}
+
+        {/* Success Message */}
+        {state.success && state.txHash && (
+          <div className="mb-6 p-4 bg-green-900/20 border border-green-500/50 rounded-xl text-green-200 text-sm animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-2 mb-2">
+              <Check className="h-5 w-5 text-green-400" />
+              <span className="font-bold text-green-400">Swap Successful!</span>
+            </div>
+            <a
+              href={`https://basescan.org/tx/${state.txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-green-300 hover:text-white transition-colors underline underline-offset-4 decoration-green-500/50"
+            >
+              View transaction on BaseScan
+              <ChevronDown className="h-3 w-3 -rotate-90" />
+            </a>
+          </div>
+        )}
+
+        <div className="space-y-6">
+          {/* Token In */}
+          <div className="p-4 bg-gray-800/40 border border-gray-700/50 rounded-2xl transition-all hover:border-blue-500/30">
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">From</span>
+              {balances[tokenIn.address] && (
+                <button
+                  onClick={handleMaxClick}
+                  className="group flex items-center gap-2 text-xs text-gray-400 hover:text-blue-400 transition-colors"
+                >
+                  <Wallet className="h-3 w-3 opacity-50 group-hover:opacity-100" />
+                  <span>Balance: {parseFloat(balances[tokenIn.address]).toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                  <Badge variant="secondary" className="h-5 px-1 bg-blue-500/10 text-blue-400 border-none hover:bg-blue-500/20 cursor-pointer">MAX</Badge>
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <TokenSelector
+                selectedToken={tokenIn}
+                onSelect={(token) => {
+                  setTokenIn(token);
+                  setCustomTokenAddress('');
+                }}
+                tokens={BASE_TOKENS.filter(t => t.address !== tokenOut.address)}
+                balances={balances}
+                label="token"
+              />
+              <input
+                type="number"
+                value={amountIn}
+                onChange={(e) => setAmountIn(e.target.value)}
+                placeholder="0.00"
+                className="flex-1 bg-transparent text-white text-2xl font-bold border-none focus:outline-none text-right placeholder:text-gray-700"
+              />
+            </div>
+            
+            {/* Custom Token Option */}
+            <div className="mt-4 pt-4 border-t border-gray-700/30">
+              <div className="flex items-center gap-2 mb-2">
+                <Search className="h-3 w-3 text-gray-500" />
+                <span className="text-[10px] text-gray-500 font-medium uppercase tracking-tighter">Import Custom Asset</span>
+              </div>
+              <input
+                type="text"
+                value={customTokenAddress}
+                onChange={(e) => handleCustomToken(e.target.value)}
+                placeholder="Paste contract address (0x...)"
+                className="w-full px-3 py-2 bg-gray-900/50 text-white text-xs rounded-lg border border-gray-700/50 focus:border-blue-500/50 focus:bg-gray-900 focus:outline-none transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Swap Direction Arrow */}
+          <div className="flex justify-center -my-8 relative z-10">
+            <button
+              onClick={handleSwapTokens}
+              className="p-3 rounded-xl bg-gray-800 border-4 border-gray-900 text-blue-400 hover:text-white hover:bg-blue-600 hover:border-blue-700 transition-all shadow-xl active:scale-90 group"
+              title="Reverse tokens"
+            >
+              <ArrowDownUp className="h-5 w-5 transition-transform group-hover:rotate-180 duration-500" />
+            </button>
+          </div>
+
+          {/* Token Out */}
+          <div className="p-4 bg-gray-800/40 border border-gray-700/50 rounded-2xl transition-all hover:border-blue-500/30">
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">To (estimated)</span>
+              {balances[tokenOut.address] && (
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Wallet className="h-3 w-3 opacity-30" />
+                  <span>Balance: {parseFloat(balances[tokenOut.address]).toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <TokenSelector
+                selectedToken={tokenOut}
+                onSelect={setTokenOut}
+                tokens={BASE_TOKENS.filter(t => t.address !== tokenIn.address)}
+                balances={balances}
+                label="token"
+              />
+              <div className="flex-1 text-right overflow-hidden">
+                {state.quoteLoading ? (
+                  <div className="flex justify-end gap-1">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="w-2 h-8 bg-gray-700 animate-pulse rounded" style={{ animationDelay: `${i * 100}ms` }} />
+                    ))}
+                  </div>
+                ) : (
+                  <span className={cn(
+                    "text-2xl font-bold transition-colors",
+                    state.quote ? "text-white" : "text-gray-700"
+                  )}>
+                    {state.quote ? parseFloat(state.quote.toAmount).toLocaleString(undefined, { maximumFractionDigits: 6 }) : '0.00'}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Swap Details */}
+          {(state.quote || state.quoteLoading) && (
+            <div className="p-4 bg-gray-900/50 border border-gray-700/50 rounded-2xl space-y-3 animate-in fade-in zoom-in-95 duration-300">
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-400">Exchange Rate</span>
+                <span className="text-white font-medium">
+                  {state.quote ? `1 ${tokenIn.symbol} = ${(parseFloat(state.quote.toAmount) / (parseFloat(amountIn) || 1)).toFixed(6)} ${tokenOut.symbol}` : '---'}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-400">Price Impact</span>
+                <span className="text-green-400 font-medium">{'< 0.01%'}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-400">Network Fee</span>
+                <div className="flex items-center gap-1.5 text-white font-medium">
+                  <Badge variant="outline" className="h-4 px-1 text-[10px] border-gray-700 text-gray-400">~{state.quote?.estimatedGas || '0'} gas</Badge>
+                  <span>Base Network</span>
+                </div>
+              </div>
+              
+              <div className="pt-2 border-t border-gray-700/30">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Slippage Tolerance</label>
+                  <span className="text-xs font-bold text-blue-400">{slippage}%</span>
+                </div>
+                <div className="flex gap-2">
+                  {[0.5, 1, 3].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => setSlippage(val)}
+                      className={cn(
+                        "flex-1 py-2 rounded-lg text-xs font-bold transition-all border",
+                        slippage === val 
+                          ? "bg-blue-500 border-blue-600 text-white shadow-lg shadow-blue-500/20" 
+                          : "bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600"
+                      )}
+                    >
+                      {val}%
+                    </button>
+                  ))}
+                  <div className="flex-1 relative">
+                    <input
+                      type="number"
+                      value={slippage}
+                      onChange={(e) => setSlippage(parseFloat(e.target.value) || 1)}
+                      className="w-full py-2 px-2 bg-gray-800 text-white text-xs font-bold rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none transition-all pr-5"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-500">%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action Button */}
+          <Button
+            onClick={handleSwap}
+            disabled={state.loading || state.quoteLoading || !walletClient || !amountIn || !state.quote}
+            className={cn(
+              "w-full h-16 rounded-2xl text-lg font-bold shadow-2xl transition-all active:scale-[0.97]",
+              !state.quote || state.loading || state.quoteLoading
+                ? "bg-gray-800 text-gray-500 cursor-not-allowed grayscale"
+                : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-blue-500/20"
+            )}
+          >
+            {state.loading || state.quoteLoading ? (
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span>{state.quoteLoading ? 'Finding best price...' : 'Executing Swap...'}</span>
+              </div>
+            ) : !walletClient ? (
+              'Connect Wallet'
+            ) : !amountIn ? (
+              'Enter Amount'
+            ) : (
+              `Swap ${tokenIn.symbol} to ${tokenOut.symbol}`
+            )}
+          </Button>
+          
+          <p className="text-[10px] text-center text-gray-500 font-medium">
+            Non-custodial swap. You maintain full control of your private keys.
           </p>
         </div>
-        {isExpanded ? (
-          <ChevronUp className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400" />
-        ) : (
-          <ChevronDown className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400" />
-        )}
-      </button>
-
-      {/* Collapsible Content */}
-      {isExpanded && (
-        <div className="p-4 sm:p-6 border-t border-gray-700">
-          {/* Info Banner */}
-          <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-blue-900/20 border border-blue-500/50 rounded-lg text-blue-300 text-xs">
-            <strong>1inch Aggregation:</strong> Best prices across all Base DEXs
-            <ul className="list-disc ml-4 mt-1 space-y-0.5">
-              <li>Swap any token to any token</li>
-              <li>Automated routing through multiple liquidity sources</li>
-              <li className="hidden sm:list-item">Gas-optimized transactions</li>
-            </ul>
-          </div>
-
-      {/* Error Message */}
-      {state.error && (
-        <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-red-900/30 border border-red-500 rounded-lg text-red-300 text-xs sm:text-sm break-words">
-          {state.error}
-        </div>
-      )}
-
-      {/* Success Message */}
-      {state.success && state.txHash && (
-        <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-green-900/30 border border-green-500 rounded-lg text-green-300 text-xs sm:text-sm">
-          Swap successful!
-          <a
-            href={`https://basescan.org/tx/${state.txHash}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block underline mt-1 break-all"
-          >
-            View on BaseScan
-          </a>
-        </div>
-      )}
-
-      <div className="space-y-3 sm:space-y-4">
-        {/* Token In */}
-        <div>
-          <div className="flex justify-between items-center mb-1">
-            <label className="text-xs sm:text-sm text-gray-400">From</label>
-            {balances[tokenIn.address] && parseFloat(balances[tokenIn.address]) > 0 && (
-              <button
-                onClick={handleMaxClick}
-                className="text-xs text-blue-400 hover:text-blue-300"
-              >
-                Balance: {parseFloat(balances[tokenIn.address]).toFixed(6)}
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-2 sm:p-3 mb-2">
-            <select
-              value={tokenIn.address}
-              onChange={(e) => {
-                const selected = BASE_TOKENS.find(t => t.address === e.target.value);
-                if (selected) {
-                  setTokenIn(selected);
-                  setCustomTokenAddress('');
-                }
-              }}
-              className="bg-transparent text-white text-sm border-none focus:outline-none min-w-[70px]"
-            >
-              {BASE_TOKENS.filter(t => t.address !== tokenOut.address).map(token => {
-                const balance = balances[token.address];
-                const hasBalance = balance && parseFloat(balance) > 0;
-                return (
-                  <option key={token.address} value={token.address}>
-                    {token.symbol} {hasBalance ? `(${parseFloat(balance).toFixed(4)})` : ''}
-                  </option>
-                );
-              })}
-            </select>
-            <input
-              type="number"
-              value={amountIn}
-              onChange={(e) => setAmountIn(e.target.value)}
-              placeholder="0.0"
-              className="flex-1 bg-transparent text-white text-sm sm:text-base border-none focus:outline-none text-right"
-            />
-          </div>
-
-          {/* Custom Token Input */}
-          <div className="text-xs text-gray-400 mb-1">Or enter custom token address:</div>
-          <input
-            type="text"
-            value={customTokenAddress}
-            onChange={(e) => handleCustomToken(e.target.value)}
-            placeholder="0x..."
-            className="w-full p-2 bg-gray-800 text-white text-xs sm:text-sm rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
-          />
-        </div>
-
-        {/* Quote Display */}
-        {state.quoteLoading && (
-          <div className="text-center py-2 text-gray-400">
-            <span className="flex items-center justify-center text-xs sm:text-sm">
-              <svg
-                className="animate-spin -ml-1 mr-2 h-3 w-3 sm:h-4 sm:w-4 text-gray-400"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              Getting best price...
-            </span>
-          </div>
-        )}
-
-        {state.quote && !state.quoteLoading && (
-          <div className="p-2 sm:p-3 bg-gray-800 rounded-lg text-xs sm:text-sm">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-400">You receive:</span>
-              <span className="text-white font-medium break-all text-right">
-                {parseFloat(state.quote.toAmount).toFixed(6)} {tokenOut.symbol}
-              </span>
-            </div>
-            <div className="flex justify-between items-center mt-1">
-              <span className="text-gray-400 text-xs">Est. Gas:</span>
-              <span className="text-gray-400 text-xs">{state.quote.estimatedGas}</span>
-            </div>
-            <div className="mt-1 text-xs text-gray-400">Powered by 1inch v5.2</div>
-          </div>
-        )}
-
-        {/* Swap Direction Arrow */}
-        <div className="flex justify-center">
-          <button
-            onClick={handleSwapTokens}
-            className="p-1.5 sm:p-2 rounded-full bg-gray-800 border border-gray-700 hover:bg-gray-700 hover:border-blue-500 transition-all active:scale-95"
-            title="Swap token positions"
-          >
-            <ArrowDownUp className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400" />
-          </button>
-        </div>
-
-        {/* Token Out (Any Token) */}
-        <div>
-          <label className="block text-xs sm:text-sm text-gray-400 mb-1">To</label>
-          <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-2 sm:p-3">
-            <select
-              value={tokenOut.address}
-              onChange={(e) => {
-                const selected = BASE_TOKENS.find(t => t.address === e.target.value);
-                if (selected) {
-                  setTokenOut(selected);
-                }
-              }}
-              className="bg-transparent text-white text-sm border-none focus:outline-none min-w-[70px]"
-            >
-              {BASE_TOKENS.filter(t => t.address !== tokenIn.address).map(token => (
-                <option key={token.address} value={token.address}>
-                  {token.symbol}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={state.quote ? state.quote.toAmount : '0.0'}
-              readOnly
-              placeholder="0.0"
-              className="flex-1 bg-transparent text-gray-400 text-sm sm:text-base border-none focus:outline-none text-right"
-            />
-          </div>
-        </div>
-
-        {/* Slippage Settings */}
-        <div>
-          <label className="block text-xs sm:text-sm text-gray-400 mb-1">Slippage Tolerance</label>
-          <div className="flex gap-1.5 sm:gap-2">
-            {[0.5, 1, 2].map((value) => (
-              <button
-                key={value}
-                onClick={() => setSlippage(value)}
-                className={`flex-1 py-1.5 sm:py-2 rounded-lg border text-xs sm:text-sm ${
-                  slippage === value
-                    ? 'bg-blue-500/20 border-blue-500 text-blue-400'
-                    : 'bg-gray-800 border-gray-700 text-gray-400'
-                }`}
-              >
-                {value}%
-              </button>
-            ))}
-            <input
-              type="number"
-              value={slippage}
-              onChange={(e) => setSlippage(parseFloat(e.target.value) || 1)}
-              className="w-16 sm:w-20 p-1.5 sm:p-2 bg-gray-800 text-white text-xs sm:text-sm rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
-              step="0.1"
-              min="0.1"
-              max="5"
-            />
-          </div>
-        </div>
-
-        {/* Swap Button */}
-        <button
-          onClick={handleSwap}
-          disabled={
-            state.loading ||
-            state.quoteLoading ||
-            !walletClient ||
-            !amountIn ||
-            !state.quote
-          }
-          className={`w-full py-3 sm:py-4 px-4 rounded-lg font-medium text-base sm:text-lg ${
-            state.loading || state.quoteLoading
-              ? 'bg-gray-600 cursor-not-allowed'
-              : !walletClient
-              ? 'bg-gray-700 cursor-not-allowed'
-              : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 active:scale-[0.98]'
-          } text-white transition-all`}
-        >
-          {state.loading || state.quoteLoading ? (
-            <span className="flex items-center justify-center">
-              <svg
-                className="animate-spin -ml-1 mr-2 sm:mr-3 h-4 w-4 sm:h-5 sm:w-5 text-white"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              {state.quoteLoading ? 'Getting quote...' : 'Swapping...'}
-            </span>
-          ) : (
-            'Swap via 1inch'
-          )}
-        </button>
       </div>
-      </div>
-      )}
     </div>
   );
 }

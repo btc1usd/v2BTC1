@@ -7,8 +7,14 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import OneInchSwapWidget from './OneInchSwapWidget';
+import { ArrowLeftRight } from 'lucide-react';
 
 interface SwapModalProps {
   isOpen: boolean;
@@ -16,48 +22,25 @@ interface SwapModalProps {
 }
 
 export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
-  // Prevent body scroll when modal is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  // Handle backdrop click
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
-  };
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
-      onClick={handleBackdropClick}
-    >
-      <div className="relative w-full max-w-2xl my-8 animate-in fade-in zoom-in duration-200">
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute -top-2 -right-2 z-10 p-2 rounded-full bg-gray-800 border border-gray-700 hover:bg-gray-700 hover:border-red-500 transition-all shadow-lg"
-          aria-label="Close modal"
-        >
-          <X className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 hover:text-red-400" />
-        </button>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-xl p-0 bg-gray-950 border-gray-800 overflow-hidden rounded-3xl shadow-2xl">
+        <DialogHeader className="p-6 pb-0">
+          <DialogTitle className="flex items-center gap-3 text-white text-2xl">
+            <div className="p-2 bg-blue-600/20 rounded-xl">
+              <ArrowLeftRight className="h-6 w-6 text-blue-400" />
+            </div>
+            Token Swap
+          </DialogTitle>
+          <p className="text-gray-400 text-sm mt-1">
+            Exchange any token on Base with the best available rates.
+          </p>
+        </DialogHeader>
 
-        {/* Modal content */}
-        <div className="bg-gray-900 rounded-xl border border-gray-700 shadow-2xl">
+        <div className="max-h-[85vh] overflow-y-auto custom-scrollbar">
           <OneInchSwapWidget />
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

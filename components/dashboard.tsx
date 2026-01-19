@@ -3029,7 +3029,7 @@ function Dashboard() {
                 </p>
               </div>
 
-              {/* Overview Cards - First row with Buy, Sell, Swap, Rewards, Balance */}
+              {/* Overview Cards - First row with Buy, Sell, Swap, Rewards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 {/* Buy BTC1 Card */}
                 <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
@@ -3171,7 +3171,10 @@ function Dashboard() {
                     </Button>
                   </CardContent>
                 </Card>
+              </div>
 
+              {/* Second Row - Statistics & Balance Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Your Balance */}
                 <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -3191,10 +3194,6 @@ function Dashboard() {
                     </p>
                   </CardContent>
                 </Card>
-              </div>
-
-              {/* Second Row - Statistics Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* BTC Collateral */}
                 <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -3253,36 +3252,6 @@ function Dashboard() {
                     </div>
                     <p className="text-xs text-gray-400 mt-1">
                       Bitcoin Price: {formatCurrency(protocolState.btcPrice, 0)}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                {/* Next Reward In */}
-                <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-300">
-                      Next Reward In
-                    </CardTitle>
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-400 to-pink-600 flex items-center justify-center">
-                      <Calendar className="h-4 w-4 text-white" />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="text-2xl font-bold text-pink-500">
-                      {nextDistributionTime
-                        ? (() => {
-                            const nextDist = new Date(Number(nextDistributionTime) * 1000);
-                            const now = new Date();
-                            const diff = nextDist.getTime() - now.getTime();
-                            if (diff <= 0) return "Ready";
-                            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-                            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                            return `${days}d ${hours}h`;
-                          })()
-                        : "Loading..."}
-                    </div>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Until next distribution (weekly cycle)
                     </p>
                   </CardContent>
                 </Card>

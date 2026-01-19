@@ -183,6 +183,23 @@
   background: oklch(0.45 0.01 240);
 }
 
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: oklch(0.3 0.01 240);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.4 0.01 240);
+}
+
 /* Enhanced gradient backgrounds for cards - Adaptive to theme */
 .gradient-card {
   background: linear-gradient(135deg, oklch(0.99 0.005 240) 0%, oklch(0.97 0.008 240) 100%);
