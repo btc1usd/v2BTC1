@@ -24,21 +24,30 @@ interface SwapModalProps {
 export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-xl p-0 bg-gray-950 border-gray-800 overflow-hidden rounded-3xl shadow-2xl">
-        <DialogHeader className="p-6 pb-0">
-          <DialogTitle className="flex items-center gap-3 text-white text-2xl">
-            <div className="p-2 bg-blue-600/20 rounded-xl">
-              <ArrowLeftRight className="h-6 w-6 text-blue-400" />
+      <DialogContent className="max-w-lg p-0 bg-gray-950 border-gray-800 overflow-hidden rounded-[32px] shadow-2xl">
+        <DialogHeader className="p-8 pb-4">
+          <DialogTitle className="flex items-center gap-4 text-white text-3xl font-bold">
+            <div className="p-3 bg-blue-600/20 rounded-2xl">
+              <ArrowLeftRight className="h-7 w-7 text-blue-400" />
             </div>
             Token Swap
           </DialogTitle>
-          <p className="text-gray-400 text-sm mt-1">
+          <p className="text-gray-400 text-base mt-2">
             Exchange any token on Base with the best available rates.
           </p>
         </DialogHeader>
 
-        <div className="max-h-[85vh] overflow-y-auto custom-scrollbar">
+        <div className="max-h-[70vh] overflow-y-auto custom-scrollbar">
           <OneInchSwapWidget />
+        </div>
+
+        <div className="p-6 bg-gray-900/50 border-t border-gray-800 flex justify-center">
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-white text-sm font-medium transition-colors"
+          >
+            Cancel and Close
+          </button>
         </div>
       </DialogContent>
     </Dialog>

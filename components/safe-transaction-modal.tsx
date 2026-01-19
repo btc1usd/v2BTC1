@@ -103,25 +103,25 @@ export default function SafeTransactionModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${getCategoryColor()}`}>
-              <Shield className="h-5 w-5" />
+      <DialogContent className="max-w-xl p-0 bg-gray-950 border-gray-800 overflow-hidden rounded-[32px] shadow-2xl">
+        <DialogHeader className="p-8 pb-4">
+          <DialogTitle className="flex items-center gap-4 text-white text-3xl font-bold">
+            <div className={`p-3 rounded-2xl ${getCategoryColor()}`}>
+              <Shield className="h-7 w-7" />
             </div>
             <div>
-              <p className="text-xl">{title}</p>
-              <Badge variant="outline" className="mt-1 text-xs capitalize">
+              <p>{title}</p>
+              <Badge variant="outline" className="mt-1 text-xs capitalize border-gray-700 text-gray-400">
                 {category}
               </Badge>
             </div>
           </DialogTitle>
-          <DialogDescription className="text-base">
+          <DialogDescription className="text-gray-400 text-base mt-2">
             {description}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 mt-4">
+        <div className="max-h-[70vh] overflow-y-auto custom-scrollbar p-8 pt-0 space-y-6">
           {/* Safe Info Card */}
           <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
             <div className="flex items-center gap-2 mb-3">
@@ -267,22 +267,25 @@ export default function SafeTransactionModal({
           )}
 
           {/* Actions */}
-          <div className="flex gap-3">
+          <div className="flex gap-4 pt-4 pb-8">
             <Button
-              className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              className="flex-1 h-14 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-lg font-bold shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98]"
               onClick={handleOpenInSafe}
               disabled={!safeAddress}
             >
-              <ExternalLink className="h-4 w-4 mr-2" />
+              <ExternalLink className="h-5 w-5 mr-2" />
               Open Safe App
             </Button>
-            <Button
-              variant="outline"
-              onClick={onClose}
-            >
-              Close
-            </Button>
           </div>
+        </div>
+
+        <div className="p-6 bg-gray-900/50 border-t border-gray-800 flex justify-center">
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-white text-sm font-medium transition-colors"
+          >
+            Cancel and Close
+          </button>
         </div>
       </DialogContent>
     </Dialog>

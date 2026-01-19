@@ -124,20 +124,20 @@ export default function LiquidityModal({ isOpen, onClose }: LiquidityModalProps)
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl p-0 bg-gray-950 border-gray-800 overflow-hidden rounded-3xl shadow-2xl">
-        <DialogHeader className="p-6 pb-0">
-          <DialogTitle className="flex items-center gap-3 text-white text-2xl">
-            <div className="p-2 bg-green-600/20 rounded-xl">
-              <Droplets className="h-6 w-6 text-green-400" />
+      <DialogContent className="max-w-xl p-0 bg-gray-950 border-gray-800 overflow-hidden rounded-[32px] shadow-2xl">
+        <DialogHeader className="p-8 pb-4">
+          <DialogTitle className="flex items-center gap-4 text-white text-3xl font-bold">
+            <div className="p-3 bg-green-600/20 rounded-2xl">
+              <Droplets className="h-7 w-7 text-green-400" />
             </div>
             Add Liquidity
           </DialogTitle>
-          <p className="text-gray-400 text-sm mt-1">
+          <p className="text-gray-400 text-base mt-2">
             Provide liquidity to pools and earn trading fees on Base.
           </p>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[85vh] p-6 pt-4">
+        <ScrollArea className="max-h-[70vh] p-8 pt-2">
           <div className="space-y-6">
             {/* Error Alert */}
             {error && (
@@ -260,6 +260,15 @@ export default function LiquidityModal({ isOpen, onClose }: LiquidityModalProps)
             </p>
           </div>
         </ScrollArea>
+
+        <div className="p-6 bg-gray-900/50 border-t border-gray-800 flex justify-center">
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-white text-sm font-medium transition-colors"
+          >
+            Cancel and Close
+          </button>
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -485,7 +485,7 @@ export default function OneInchSwapWidget() {
   };
 
   return (
-    <div className="w-full mx-auto bg-gray-900">
+    <div className="w-full mx-auto bg-transparent">
       {/* Collapsible Content */}
       <div className="p-4 sm:p-6">
         {/* Info Banner */}
