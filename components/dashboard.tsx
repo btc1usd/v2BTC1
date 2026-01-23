@@ -471,7 +471,7 @@ function Dashboard() {
   });
 
   // BTC1USD balance reading
-  const { data: btc1usdBalance, refetch: refetchBtc1usdBalance } =
+  const { data: btc1usdBalance, refetch: refetchBtc1usdBalance, error: btc1usdBalanceError, isLoading: isBtc1usdBalanceLoading } =
     useReadContract({
       address: protocolState?.contractAddresses?.btc1usd as any,
       abi: [
@@ -497,10 +497,26 @@ function Dashboard() {
       ],
       functionName: "balanceOf",
       args: address ? [address as any] : undefined,
+      chainId: 8453, // Force Base Mainnet where contracts are deployed
       query: {
         enabled: !!address && !!protocolState?.contractAddresses?.btc1usd,
       },
     });
+
+  // Log balance fetching for debugging
+  useEffect(() => {
+    if (address) {
+      console.log("Balance fetch debug:", {
+        address,
+        userChainId: chainId,
+        contractChainId: 8453,
+        btc1usdContract: protocolState?.contractAddresses?.btc1usd,
+        balance: btc1usdBalance,
+        isLoading: isBtc1usdBalanceLoading,
+        error: btc1usdBalanceError,
+      });
+    }
+  }, [address, chainId, btc1usdBalance, isBtc1usdBalanceLoading, btc1usdBalanceError, protocolState?.contractAddresses?.btc1usd]);
 
   // Read permit nonces for collateral tokens (for mintWithPermit)
   const { data: wbtcNonce } = useReadContract({

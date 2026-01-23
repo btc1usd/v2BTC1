@@ -5,7 +5,7 @@ import { useConnect, useAccount } from "wagmi";
 import { useConnect as useThirdwebConnect, useActiveAccount, useConnectModal } from "thirdweb/react";
 import { inAppWallet, createWallet } from "thirdweb/wallets";
 import { client as thirdwebClient } from "@/lib/thirdweb-client";
-import { base } from "thirdweb/chains";
+import { baseSepolia } from "thirdweb/chains";
 import { useWeb3 } from "../lib/web3-provider";
 import {
   Dialog,
@@ -123,10 +123,11 @@ export function WalletSelectionModal({
       if (connectorId === "thirdweb") {
         try {
           // Open Thirdweb's full connection modal with all supported options
+          // Set to Base Sepolia for email/social logins
           await openThirdwebModal({
             client: thirdwebClient,
             theme: "dark",
-            chain: base,
+            chain: baseSepolia,
             wallets: [
               inAppWallet({
                 auth: {

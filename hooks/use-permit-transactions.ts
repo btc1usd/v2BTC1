@@ -16,11 +16,15 @@ import {
   PERMIT_TYPES,
   getPermitDomain 
 } from '@/lib/permit-utils';
+import { useWeb3 } from '@/lib/web3-provider';
+import { useActiveAccount } from 'thirdweb/react';
 
 export function usePermitTransactions() {
-  const { address } = useAccount();
+  const { address: wagmiAddress } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
+  const { address: unifiedAddress, isConnected } = useWeb3();
+  const activeAccount = useActiveAccount();
   const [status, setStatus] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -36,7 +40,16 @@ export function usePermitTransactions() {
     onSuccess?: (hash: string) => void,
     onError?: (error: Error) => void
   ) => {
-    if (!address || !walletClient || !publicClient) {
+    if (!wagmiAddress || !walletClient || !publicClient) {
+      if (activeAccount && unifiedAddress) {
+        const error = new Error(
+          'Email/social login is active, but Permit2 mint requires a browser wallet (MetaMask, Coinbase, etc.) to sign EIP-712 messages. Please connect a browser wallet.'
+        );
+        setStatus(error.message);
+        onError?.(error);
+        return;
+      }
+
       const error = new Error('Wallet not connected');
       setStatus('Wallet not connected');
       onError?.(error);
@@ -67,7 +80,7 @@ export function usePermitTransactions() {
 
       // Sign the permit
       const signature = await walletClient.signTypedData({
-        account: address,
+        account: wagmiAddress,
         domain,
         types: PERMIT2_TYPES,
         primaryType: 'PermitTransferFrom',
@@ -155,7 +168,16 @@ export function usePermitTransactions() {
     onSuccess?: (hash: string) => void,
     onError?: (error: Error) => void
   ) => {
-    if (!address || !walletClient || !publicClient) {
+    if (!wagmiAddress || !walletClient || !publicClient) {
+      if (activeAccount && unifiedAddress) {
+        const error = new Error(
+          'Email/social login is active, but Permit redeem requires a browser wallet (MetaMask, Coinbase, etc.) to sign EIP-2612 messages. Please connect a browser wallet.'
+        );
+        setStatus(error.message);
+        onError?.(error);
+        return;
+      }
+
       const error = new Error('Wallet not connected');
       setStatus('Wallet not connected');
       onError?.(error);
@@ -177,7 +199,7 @@ export function usePermitTransactions() {
           outputs: [{ type: 'uint256' }],
         }],
         functionName: 'nonces',
-        args: [address],
+        args: [wagmiAddress],
       }) as bigint;
 
       // Generate deadline
@@ -185,7 +207,7 @@ export function usePermitTransactions() {
 
       // Create permit message
       const message = createPermitMessage(
-        address,
+        wagmiAddress!,
         vaultAddress, // spender is the Vault
         btc1Amount,
         nonce,
@@ -199,7 +221,7 @@ export function usePermitTransactions() {
 
       // Sign the permit
       const signature = await walletClient.signTypedData({
-        account: address,
+        account: wagmiAddress,
         domain,
         types: PERMIT_TYPES,
         primaryType: 'Permit',

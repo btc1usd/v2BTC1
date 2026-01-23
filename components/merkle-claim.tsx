@@ -21,6 +21,11 @@ import {
 } from "wagmi";
 import { formatUnits, parseUnits } from "viem";
 import { CheckCircle, Clock, AlertCircle, Gift, Loader2 } from "lucide-react";
+import { useWeb3 } from "@/lib/web3-provider";
+import { client as thirdwebClient } from "@/lib/thirdweb-client";
+import { getContract, prepareContractCall } from "thirdweb";
+import { baseSepolia } from "thirdweb/chains";
+import { useSendTransaction } from "thirdweb/react";
 
 interface MerkleClaim {
   index: number;
@@ -147,7 +152,8 @@ const MERKLE_DISTRIBUTOR_ABI = [
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 
 export default function MerkleClaim() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected } = useWeb3();
+  const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
   const [distributionData, setDistributionData] =
     useState<DistributionData | null>(null);
   const [userClaim, setUserClaim] = useState<MerkleClaim | null>(null);
@@ -156,6 +162,9 @@ export default function MerkleClaim() {
 
   // Contract address - use centralized configuration
   const MERKLE_DISTRIBUTOR_ADDRESS = CONTRACT_ADDRESSES.MERKLE_DISTRIBUTOR;
+
+  const { mutate: sendThirdwebTransaction, isPending: isThirdwebPending } =
+    useSendTransaction();
 
   // Fetch distribution stats
   const { data: distributionStats, isLoading: statsLoading } = useReadContract({
@@ -407,18 +416,41 @@ export default function MerkleClaim() {
     });
 
     try {
-      writeContract({
-        address: MERKLE_DISTRIBUTOR_ADDRESS as `0x${string}`,
-        abi: MERKLE_DISTRIBUTOR_ABI,
-        functionName: "claim",
-        args: [
-          BigInt(distributionData.distributionId),
-          BigInt(userClaim.index),
-          userClaim.account as `0x${string}`,
-          BigInt(userClaim.amount),
-          userClaim.proof as `0x${string}`[],
-        ],
-      });
+      if (isWagmiConnected && wagmiAddress) {
+        writeContract({
+          address: MERKLE_DISTRIBUTOR_ADDRESS as `0x${string}`,
+          abi: MERKLE_DISTRIBUTOR_ABI,
+          functionName: "claim",
+          args: [
+            BigInt(distributionData.distributionId),
+            BigInt(userClaim.index),
+            userClaim.account as `0x${string}`,
+            BigInt(userClaim.amount),
+            userClaim.proof as `0x${string}`[],
+          ],
+        });
+      } else {
+        // Thirdweb path for email/social wallets
+        const merkleContract = getContract({
+          client: thirdwebClient,
+          address: MERKLE_DISTRIBUTOR_ADDRESS as `0x${string}`,
+          chain: baseSepolia,
+        });
+
+        const transaction = prepareContractCall({
+          contract: merkleContract,
+          method: "function claim(uint256 distributionId, uint256 index, address account, uint256 amount, bytes32[] calldata merkleProof)" as const,
+          params: [
+            BigInt(distributionData.distributionId),
+            BigInt(userClaim.index),
+            userClaim.account,
+            BigInt(userClaim.amount),
+            userClaim.proof as readonly `0x${string}`[],
+          ],
+        });
+
+        sendThirdwebTransaction(transaction);
+      }
     } catch (error) {
       console.error("Error initiating claim transaction:", error);
       setError(

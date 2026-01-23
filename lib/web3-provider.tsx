@@ -2,9 +2,9 @@
 
 import React, { ReactNode, createContext, useContext, useState, useEffect } from "react"
 import { useAccount, useDisconnect } from "wagmi"
-import { useActiveAccount, useDisconnect as useThirdwebDisconnect } from "thirdweb/react"
+import { useActiveAccount } from "thirdweb/react"
 import { client as thirdwebClient } from "./thirdweb-client"
-import { base } from "thirdweb/chains"
+import { baseSepolia } from "thirdweb/chains"
 import { WalletSelectionModal } from "@/components/wallet-selection-modal"
 
 interface Web3ContextType {
@@ -27,12 +27,11 @@ export function Web3Provider({ children }: { children: ReactNode }) {
 
   // Use Thirdweb's active account
   const thirdwebAccount = useActiveAccount()
-  const { disconnect: thirdwebDisconnect } = useThirdwebDisconnect()
 
   // Derived states
-  const isConnected = isWagmiConnected || !!thirdwebAccount
-  const address = wagmiAddress || (thirdwebAccount?.address as `0x${string}` | undefined)
-  const chainId = wagmiChainId || (thirdwebAccount ? base.id : undefined) // Default to base if thirdweb connected
+  const isConnected = !!thirdwebAccount || isWagmiConnected
+  const address = (thirdwebAccount?.address as `0x${string}` | undefined) || wagmiAddress
+  const chainId = thirdwebAccount ? baseSepolia.id : wagmiChainId // Base Sepolia (84532) for Thirdweb in-app wallets
 
   // Automatically close modal when connected
   useEffect(() => {
@@ -49,8 +48,10 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     if (isWagmiConnected) {
       wagmiDisconnect()
     }
+    // For Thirdweb in-app wallets, the session is tied to the active account.
+    // Reloading the page will clear the in-memory session and return to the landing state.
     if (thirdwebAccount) {
-      thirdwebDisconnect(thirdwebClient)
+      window.location.reload()
     }
   }
 
