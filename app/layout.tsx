@@ -7,6 +7,7 @@ import { Web3Provider } from "@/lib/web3-provider";
 import { WagmiProviderComponent } from "@/lib/wagmi-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { NetworkGuard } from "@/components/network-guard";
+import { ThirdwebProvider } from "thirdweb/react";
 
 export const metadata: Metadata = {
   title: "BTC1USD Protocol",
@@ -71,12 +72,14 @@ export default function RootLayout({
           storageKey="btc1usd-theme"
           disableTransitionOnChange
         >
-          <WagmiProviderComponent>
-            <Web3Provider>
-              <NetworkGuard />
-              {children}
-            </Web3Provider>
-          </WagmiProviderComponent>
+          <ThirdwebProvider>
+            <WagmiProviderComponent>
+              <Web3Provider>
+                <NetworkGuard />
+                {children}
+              </Web3Provider>
+            </WagmiProviderComponent>
+          </ThirdwebProvider>
         </ThemeProvider>
         <Analytics />
       </body>

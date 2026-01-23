@@ -124,8 +124,11 @@ export default function LiquidityModal({ isOpen, onClose }: LiquidityModalProps)
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-xl p-0 bg-gray-950 border-gray-800 overflow-hidden rounded-[32px] shadow-2xl">
-        <DialogHeader className="p-8 pb-4">
+      <DialogContent 
+        className="w-[95vw] sm:max-w-xl p-0 bg-gray-950 border-gray-800 overflow-hidden rounded-2xl sm:rounded-[32px] shadow-2xl z-[9999] max-h-[90vh] flex flex-col"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogHeader className="p-6 sm:p-8 pb-4 flex-shrink-0">
           <DialogTitle className="flex items-center gap-4 text-white text-3xl font-bold">
             <div className="p-3 bg-green-600/20 rounded-2xl">
               <Droplets className="h-7 w-7 text-green-400" />
@@ -137,7 +140,7 @@ export default function LiquidityModal({ isOpen, onClose }: LiquidityModalProps)
           </p>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[70vh] p-8 pt-2">
+        <ScrollArea className="flex-1 p-4 sm:p-8 pt-2 overflow-y-auto">
           <div className="space-y-6">
             {/* Error Alert */}
             {error && (
@@ -261,7 +264,7 @@ export default function LiquidityModal({ isOpen, onClose }: LiquidityModalProps)
           </div>
         </ScrollArea>
 
-        <div className="p-6 bg-gray-900/50 border-t border-gray-800 flex justify-center">
+        <div className="p-4 sm:p-6 bg-gray-900/50 border-t border-gray-800 flex justify-center flex-shrink-0">
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-white text-sm font-medium transition-colors"

@@ -37,6 +37,8 @@ import EnhancedMerkleClaim from "@/components/enhanced-merkle-claim";
 import CollateralManagement from "@/components/collateral-management";
 import SwapModal from "@/components/swap-modal";
 import LiquidityModal from "@/components/liquidity-modal";
+import SwapXModal from "@/components/swapx-modal";
+import BuyXModal from "@/components/buyx-modal";
 
 import { useTheme } from "next-themes";
 import { useWeb3 } from "@/lib/web3-provider";
@@ -103,6 +105,10 @@ import {
   CalendarCheck,
   Vote,
 } from "lucide-react";
+
+import { SwapWidget, BuyWidget } from "thirdweb/react";
+import { client as thirdwebClient } from "@/lib/thirdweb-client";
+import { base } from "thirdweb/chains";
 
 const formatCurrency = (amount: number, decimals = 2): string => {
   return new Intl.NumberFormat("en-US", {
@@ -230,6 +236,8 @@ function Dashboard() {
   const [usePermit, setUsePermit] = useState(false); // Toggle for gasless permit transactions
   const [swapModalOpen, setSwapModalOpen] = useState(false); // Swap modal state
   const [liquidityModalOpen, setLiquidityModalOpen] = useState(false); // Liquidity modal state
+  const [swapXModalOpen, setSwapXModalOpen] = useState(false); // SwapX modal state
+  const [buyXModalOpen, setBuyXModalOpen] = useState(false); // BuyX modal state
 
   // Safe Transaction Modal State
   const [safeModalOpen, setSafeModalOpen] = useState(false);
@@ -3172,6 +3180,61 @@ function Dashboard() {
                   </CardContent>
                 </Card>
               </div>
+              
+              {/* SwapX & BuyX - Thirdweb Bridge Widgets */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                {/* SwapX Card */}
+                <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-300">
+                      SwapX
+                    </CardTitle>
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
+                      <ArrowLeftRight className="h-4 w-4 text-white" />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="text-2xl font-bold text-white">
+                      Thirdweb Bridge
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Cross-chain swap
+                    </p>
+                    <Button
+                      onClick={() => setSwapXModalOpen(true)}
+                      className="w-full sm:w-auto sm:px-8 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold shadow-lg shadow-blue-500/20"
+                    >
+                      SWAPX
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* BuyX Card */}
+                <Card className="bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-300">
+                      BuyX
+                    </CardTitle>
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center">
+                      <Plus className="h-4 w-4 text-white" />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="text-2xl font-bold text-white">
+                      Fiat On-ramp
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Buy with card or crypto
+                    </p>
+                    <Button
+                      onClick={() => setBuyXModalOpen(true)}
+                      className="w-full sm:w-auto sm:px-8 h-12 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold shadow-lg shadow-green-500/20"
+                    >
+                      BUYX
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
 
               {/* Second Row - Statistics & Balance Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -4412,6 +4475,12 @@ function Dashboard() {
 
       {/* Liquidity Modal */}
       <LiquidityModal isOpen={liquidityModalOpen} onClose={() => setLiquidityModalOpen(false)} />
+
+      {/* SwapX Modal */}
+      <SwapXModal isOpen={swapXModalOpen} onClose={() => setSwapXModalOpen(false)} />
+
+      {/* BuyX Modal */}
+      <BuyXModal isOpen={buyXModalOpen} onClose={() => setBuyXModalOpen(false)} />
 
       {/* Safe Transaction Modal */}
       {safeModalConfig && (

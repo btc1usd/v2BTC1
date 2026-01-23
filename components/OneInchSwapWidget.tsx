@@ -139,63 +139,65 @@ function TokenSelector({ selectedToken, onSelect, tokens, balances, label, disab
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[280px] p-0 bg-gray-900 border-gray-700" align="start">
-        <Command className="bg-gray-900 text-white">
+      <PopoverContent 
+        className="w-[280px] p-0 bg-gray-900 border-gray-700 z-[9999]" 
+        align="start"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <Command className="bg-gray-900 text-white" shouldFilter={true}>
           <CommandInput placeholder={`Search ${label}...`} className="text-white" />
-          <CommandList>
+          <CommandList className="max-h-[300px] overflow-y-auto custom-scrollbar">
             <CommandEmpty>No token found.</CommandEmpty>
             <CommandGroup heading="Available Tokens" className="text-gray-400">
-              <ScrollArea className="h-[300px]">
-                {tokens.map((token) => {
-                  const balance = balances[token.address];
-                  const hasBalance = balance && parseFloat(balance) > 0;
-                  
-                  return (
-                    <CommandItem
-                      key={token.address}
-                      value={token.symbol}
-                      onSelect={() => {
-                        onSelect(token);
-                        setOpen(false);
-                      }}
-                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-800 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        {token.logo ? (
-                          <img src={token.logo} alt={token.symbol} className="w-8 h-8 rounded-full" />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold">
-                            {token.symbol.slice(0, 2)}
-                          </div>
-                        )}
-                        <div className="flex flex-col">
-                          <span className="font-bold text-white">{token.symbol}</span>
-                          <span className="text-[10px] text-gray-400 truncate max-w-[120px]">{token.name}</span>
+              {tokens.map((token) => {
+                const balance = balances[token.address];
+                const hasBalance = balance && parseFloat(balance) > 0;
+                
+                return (
+                  <CommandItem
+                    key={token.address}
+                    value={`${token.symbol} ${token.name} ${token.address}`}
+                    onSelect={() => {
+                      onSelect(token);
+                      setOpen(false);
+                    }}
+                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-800 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      {token.logo ? (
+                        <img src={token.logo} alt={token.symbol} className="w-8 h-8 rounded-full" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold">
+                          {token.symbol.slice(0, 2)}
                         </div>
-                      </div>
-                      
-                      <div className="flex flex-col items-end">
-                        {hasBalance ? (
-                          <>
-                            <span className="text-sm font-medium text-blue-400">
-                              {parseFloat(balance).toLocaleString(undefined, { maximumFractionDigits: 6 })}
-                            </span>
-                            <Badge variant="outline" className="text-[9px] h-4 border-blue-500/50 text-blue-300">
-                              In Wallet
-                            </Badge>
-                          </>
-                        ) : (
-                          <span className="text-xs text-gray-500">0.00</span>
-                        )}
-                      </div>
-                      
-                      {selectedToken.address === token.address && (
-                        <Check className="ml-2 h-4 w-4 text-blue-500" />
                       )}
-                    </CommandItem>
-                  );
-                })}
-              </ScrollArea>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-white">{token.symbol}</span>
+                        <span className="text-[10px] text-gray-400 truncate max-w-[120px]">{token.name}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-col items-end">
+                      {hasBalance ? (
+                        <>
+                          <span className="text-sm font-medium text-blue-400">
+                            {parseFloat(balance).toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                          </span>
+                          <Badge variant="outline" className="text-[9px] h-4 border-blue-500/50 text-blue-300">
+                            In Wallet
+                          </Badge>
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-500">0.00</span>
+                      )}
+                    </div>
+                    
+                    {selectedToken.address === token.address && (
+                      <Check className="ml-2 h-4 w-4 text-blue-500" />
+                    )}
+                  </CommandItem>
+                );
+              })}
             </CommandGroup>
           </CommandList>
         </Command>
@@ -203,6 +205,7 @@ function TokenSelector({ selectedToken, onSelect, tokens, balances, label, disab
     </Popover>
   );
 }
+
 
 export default function OneInchSwapWidget() {
   const { data: walletClient } = useWalletClient();
@@ -503,13 +506,20 @@ export default function OneInchSwapWidget() {
                 balances={balances}
                 label="token"
               />
-              <input
-                type="number"
-                value={amountIn}
-                onChange={(e) => setAmountIn(e.target.value)}
-                placeholder="0.00"
-                className="flex-1 bg-transparent text-white text-3xl font-bold border-none focus:outline-none text-right placeholder:text-gray-700 pr-2"
-              />
+              <div className="flex-1">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  value={amountIn}
+                  onChange={(e) => setAmountIn(e.target.value)}
+                  placeholder="0.00"
+                  className={cn(
+                    "w-full bg-transparent text-3xl font-bold border-none focus:outline-none text-right placeholder:text-gray-700 pr-2 transition-colors",
+                    amountIn ? "text-white" : "text-gray-700"
+                  )}
+                />
+              </div>
             </div>
           </div>
 
