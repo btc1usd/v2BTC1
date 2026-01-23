@@ -4090,7 +4090,7 @@ function Dashboard() {
                                 <div className="flex items-center justify-between w-full">
                                   <span className="font-medium text-white">{token}</span>
                                   <span className="text-gray-400 text-sm ml-4">
-                                    Available: {vaultBalance.toFixed(4)}
+                                    Available: {vaultBalance.toFixed(8)}
                                   </span>
                                 </div>
                               </SelectItem>

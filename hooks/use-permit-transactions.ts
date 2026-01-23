@@ -554,14 +554,29 @@ export function usePermitTransactions() {
     // Check if using Thirdweb In-App Wallet
     const isThirdwebWallet = !!activeAccount && !wagmiAddress;
 
-    if (!isThirdwebWallet && (!walletClient || !publicClient)) {
+    // Check if any wallet is connected
+    if (!isThirdwebWallet && !walletClient) {
       const error = new Error('Wallet not connected');
+      console.error('❌ approvePermit2: No wallet connected', { 
+        isThirdwebWallet, 
+        activeAccount: !!activeAccount, 
+        wagmiAddress: !!wagmiAddress,
+        walletClient: !!walletClient 
+      });
       onError?.(error);
       return;
     }
 
-    if (isThirdwebWallet && !publicClient) {
+    if (isThirdwebWallet && !activeAccount) {
+      const error = new Error('Thirdweb wallet not available');
+      console.error('❌ approvePermit2: Thirdweb wallet not available');
+      onError?.(error);
+      return;
+    }
+
+    if (!publicClient) {
       const error = new Error('Public client not available');
+      console.error('❌ approvePermit2: Public client not available');
       onError?.(error);
       return;
     }
