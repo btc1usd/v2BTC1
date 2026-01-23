@@ -9,11 +9,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Zap, Coins, Info, Check, X } from "lucide-react";
-import { useAccount, useChainId } from "wagmi";
+import { Zap, Coins, Info, Check, X, Loader2 } from "lucide-react";
 import { parseUnits, type Address } from "viem";
 import { usePermitTransactions } from "@/hooks/use-permit-transactions";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
+import { useWeb3 } from "@/lib/web3-provider";
+import { TransactionModal, TransactionDetails } from "@/components/transaction-modal";
 
 interface PermitMintRedeemProps {
   protocolState: any;
@@ -27,8 +28,7 @@ interface PermitMintRedeemProps {
 }
 
 export default function PermitMintRedeem({ protocolState, userBalances, onSuccess }: PermitMintRedeemProps) {
-  const { address } = useAccount();
-  const chainId = useChainId();
+  const { address, chainId } = useWeb3();
   
   const {
     mintWithPermit2,
@@ -43,28 +43,34 @@ export default function PermitMintRedeem({ protocolState, userBalances, onSucces
   const [redeemAmount, setRedeemAmount] = useState("");
   const [selectedCollateral, setSelectedCollateral] = useState("WBTC");
   const [permit2Approved, setPermit2Approved] = useState<boolean | null>(null);
+  
+  // Transaction Modal State
+  const [showMintModal, setShowMintModal] = useState(false);
+  const [showRedeemModal, setShowRedeemModal] = useState(false);
+  const [transactionDetails, setTransactionDetails] = useState<TransactionDetails | null>(null);
+  const [modalError, setModalError] = useState("");
 
   // Check Permit2 approval status when component mounts or collateral changes
   const handleCheckPermit2 = async () => {
     if (!address) return;
     
     const collateralAddress = 
-      selectedCollateral === "WBTC" ? CONTRACT_ADDRESSES.WBTC :
-      selectedCollateral === "cbBTC" ? CONTRACT_ADDRESSES.CBBTC :
-      CONTRACT_ADDRESSES.TBTC;
+      selectedCollateral === "WBTC" ? CONTRACT_ADDRESSES.WBTC_TOKEN :
+      selectedCollateral === "cbBTC" ? CONTRACT_ADDRESSES.CBBTC_TOKEN :
+      CONTRACT_ADDRESSES.TBTC_TOKEN;
 
     const approved = await checkPermit2Approval(
       collateralAddress as Address,
       address as Address
     );
-    setPermit2Approved(approved);
+    setPermit2Approved(approved > 0n);
   };
 
   const handleApprovePermit2 = async () => {
     const collateralAddress = 
-      selectedCollateral === "WBTC" ? CONTRACT_ADDRESSES.WBTC :
-      selectedCollateral === "cbBTC" ? CONTRACT_ADDRESSES.CBBTC :
-      CONTRACT_ADDRESSES.TBTC;
+      selectedCollateral === "WBTC" ? CONTRACT_ADDRESSES.WBTC_TOKEN :
+      selectedCollateral === "cbBTC" ? CONTRACT_ADDRESSES.CBBTC_TOKEN :
+      CONTRACT_ADDRESSES.TBTC_TOKEN;
 
     await approvePermit2(
       collateralAddress as Address,
@@ -77,57 +83,168 @@ export default function PermitMintRedeem({ protocolState, userBalances, onSucces
     );
   };
 
+  // Prepare and show mint modal
+  const handleMintClick = () => {
+    console.log("🔵 handleMintClick called", { address, chainId, mintAmount });
+    
+    if (!address || !chainId || !mintAmount) {
+      console.warn("⚠️ Missing required fields:", { address, chainId, mintAmount });
+      return;
+    }
+
+    const btcAmount = parseFloat(mintAmount);
+    console.log("🔵 Calculating mint details", { btcAmount });
+    
+    const btcPrice = protocolState.btcPrice || 100000;
+    const usdValue = btcAmount * btcPrice;
+    const currentRatio = protocolState.collateralRatio || 1.2;
+    const mintPrice = Math.max(1.2, currentRatio);
+    
+    // Calculate tokens and fees
+    const tokensToMint = usdValue / mintPrice;
+    const devFee = tokensToMint * 0.01;
+    const endowmentFee = tokensToMint * 0.01;
+    const totalMinted = tokensToMint + devFee + endowmentFee;
+    
+    // Calculate new ratio
+    const currentCollateralValue = protocolState.totalCollateralValue || 0;
+    const newCollateralValue = currentCollateralValue + usdValue;
+    const newTotalSupply = (protocolState.totalSupply || 0) + totalMinted;
+    const newRatio = newTotalSupply > 0 ? newCollateralValue / newTotalSupply : 1.2;
+
+    const details = {
+      type: "mint" as const,
+      collateralAmount: mintAmount,
+      collateralSymbol: selectedCollateral,
+      btc1Amount: tokensToMint.toFixed(8),
+      mintPrice,
+      devFee: devFee.toFixed(8),
+      endowmentFee: endowmentFee.toFixed(8),
+      currentCollateralRatio: currentRatio,
+      newCollateralRatio: newRatio,
+      isGasless: true,
+    };
+    
+    console.log("🔵 Setting transaction details:", details);
+    setTransactionDetails(details);
+    
+    console.log("🔵 Opening mint modal");
+    setShowMintModal(true);
+    setModalError("");
+  };
+
   const handleMintWithPermit2 = async () => {
     if (!address || !chainId || !mintAmount) return;
 
     const collateralAddress = 
-      selectedCollateral === "WBTC" ? CONTRACT_ADDRESSES.WBTC :
-      selectedCollateral === "cbBTC" ? CONTRACT_ADDRESSES.CBBTC :
-      CONTRACT_ADDRESSES.TBTC;
+      selectedCollateral === "WBTC" ? CONTRACT_ADDRESSES.WBTC_TOKEN :
+      selectedCollateral === "cbBTC" ? CONTRACT_ADDRESSES.CBBTC_TOKEN :
+      CONTRACT_ADDRESSES.TBTC_TOKEN;
 
     const amount = parseUnits(mintAmount, 8);
 
-    await mintWithPermit2(
-      CONTRACT_ADDRESSES.VAULT as Address,
-      collateralAddress as Address,
-      amount,
-      chainId,
-      (hash) => {
-        console.log("Mint successful:", hash);
-        setMintAmount("");
-        onSuccess?.();
-      },
-      (error) => {
-        console.error("Mint failed:", error);
-      }
-    );
+    try {
+      await mintWithPermit2(
+        CONTRACT_ADDRESSES.VAULT as Address,
+        collateralAddress as Address,
+        amount,
+        chainId,
+        (hash) => {
+          console.log("Mint successful:", hash);
+          setMintAmount("");
+          setShowMintModal(false);
+          onSuccess?.();
+        },
+        (error) => {
+          console.error("Mint failed:", error);
+          setModalError(error.message || "Mint transaction failed");
+        }
+      );
+    } catch (error: any) {
+      setModalError(error.message || "Failed to initiate mint");
+    }
+  };
+
+  // Prepare and show redeem modal
+  const handleRedeemClick = () => {
+    console.log("🟠 handleRedeemClick called", { address, chainId, redeemAmount });
+    
+    if (!address || !chainId || !redeemAmount) {
+      console.warn("⚠️ Missing required fields:", { address, chainId, redeemAmount });
+      return;
+    }
+
+    const tokenAmount = parseFloat(redeemAmount);
+    console.log("🟠 Calculating redeem details", { tokenAmount });
+    
+    const currentRatio = protocolState.collateralRatio || 1.2;
+    const btcPrice = protocolState.btcPrice || 100000;
+    const isStressMode = currentRatio < 1.1;
+    const effectivePrice = isStressMode ? 0.9 * currentRatio : 1.0;
+    
+    // Calculate redemption
+    const grossBtcValue = (tokenAmount * effectivePrice) / btcPrice;
+    const devFee = grossBtcValue * 0.001;
+    const btcToReceive = grossBtcValue - devFee;
+    
+    // Calculate new ratio
+    const newTotalSupply = (protocolState.totalSupply || 0) - tokenAmount;
+    const usdValueRedeemed = grossBtcValue * btcPrice;
+    const currentCollateralValue = protocolState.totalCollateralValue || 0;
+    const newCollateralValue = currentCollateralValue - usdValueRedeemed;
+    const newRatio = newTotalSupply > 0 ? newCollateralValue / newTotalSupply : 0;
+
+    const details = {
+      type: "redeem" as const,
+      btc1AmountToRedeem: redeemAmount,
+      collateralToReceive: btcToReceive.toFixed(8),
+      redeemCollateralSymbol: selectedCollateral,
+      redeemPrice: effectivePrice,
+      stressMode: isStressMode,
+      currentCollateralRatio: currentRatio,
+      newCollateralRatio: newRatio,
+      isGasless: true,
+    };
+    
+    console.log("🟠 Setting transaction details:", details);
+    setTransactionDetails(details);
+    
+    console.log("🟠 Opening redeem modal");
+    setShowRedeemModal(true);
+    setModalError("");
   };
 
   const handleRedeemWithPermit = async () => {
     if (!address || !chainId || !redeemAmount) return;
 
     const collateralAddress = 
-      selectedCollateral === "WBTC" ? CONTRACT_ADDRESSES.WBTC :
-      selectedCollateral === "cbBTC" ? CONTRACT_ADDRESSES.CBBTC :
-      CONTRACT_ADDRESSES.TBTC;
+      selectedCollateral === "WBTC" ? CONTRACT_ADDRESSES.WBTC_TOKEN :
+      selectedCollateral === "cbBTC" ? CONTRACT_ADDRESSES.CBBTC_TOKEN :
+      CONTRACT_ADDRESSES.TBTC_TOKEN;
 
     const amount = parseUnits(redeemAmount, 8);
 
-    await redeemWithPermit(
-      CONTRACT_ADDRESSES.VAULT as Address,
-      CONTRACT_ADDRESSES.BTC1USD as Address,
-      collateralAddress as Address,
-      amount,
-      chainId,
-      (hash) => {
-        console.log("Redeem successful:", hash);
-        setRedeemAmount("");
-        onSuccess?.();
-      },
-      (error) => {
-        console.error("Redeem failed:", error);
-      }
-    );
+    try {
+      await redeemWithPermit(
+        CONTRACT_ADDRESSES.VAULT as Address,
+        CONTRACT_ADDRESSES.BTC1USD as Address,
+        collateralAddress as Address,
+        amount,
+        chainId,
+        (hash) => {
+          console.log("Redeem successful:", hash);
+          setRedeemAmount("");
+          setShowRedeemModal(false);
+          onSuccess?.();
+        },
+        (error) => {
+          console.error("Redeem failed:", error);
+          setModalError(error.message || "Redeem transaction failed");
+        }
+      );
+    } catch (error: any) {
+      setModalError(error.message || "Failed to initiate redeem");
+    }
   };
 
   return (
@@ -246,15 +363,15 @@ export default function PermitMintRedeem({ protocolState, userBalances, onSucces
 
               {/* Mint Button */}
               <Button
-                onClick={handleMintWithPermit2}
+                onClick={handleMintClick}
                 disabled={!mintAmount || !address || isProcessing || permit2Approved === false}
                 className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
               >
                 {isProcessing ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Processing...</span>
-                  </div>
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
                 ) : (
                   <>
                     <Zap className="h-4 w-4 mr-2" />
@@ -262,15 +379,6 @@ export default function PermitMintRedeem({ protocolState, userBalances, onSucces
                   </>
                 )}
               </Button>
-
-              {/* Status */}
-              {status && (
-                <Alert className={status.includes("✅") ? "bg-green-900/20 border-green-500/30" : "bg-gray-800 border-gray-700"}>
-                  <AlertDescription className="text-gray-200">
-                    {status}
-                  </AlertDescription>
-                </Alert>
-              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -336,15 +444,15 @@ export default function PermitMintRedeem({ protocolState, userBalances, onSucces
 
               {/* Redeem Button */}
               <Button
-                onClick={handleRedeemWithPermit}
+                onClick={handleRedeemClick}
                 disabled={!redeemAmount || !address || isProcessing}
                 className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700"
               >
                 {isProcessing ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Processing...</span>
-                  </div>
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
                 ) : (
                   <>
                     <Zap className="h-4 w-4 mr-2" />
@@ -352,15 +460,6 @@ export default function PermitMintRedeem({ protocolState, userBalances, onSucces
                   </>
                 )}
               </Button>
-
-              {/* Status */}
-              {status && (
-                <Alert className={status.includes("✅") ? "bg-green-900/20 border-green-500/30" : "bg-gray-800 border-gray-700"}>
-                  <AlertDescription className="text-gray-200">
-                    {status}
-                  </AlertDescription>
-                </Alert>
-              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -400,6 +499,47 @@ export default function PermitMintRedeem({ protocolState, userBalances, onSucces
           </div>
         </CardContent>
       </Card>
+
+      {/* Transaction Modals */}
+      <TransactionModal
+        open={showMintModal}
+        onOpenChange={setShowMintModal}
+        details={transactionDetails || {
+          type: "mint",
+          collateralAmount: "0",
+          collateralSymbol: "WBTC",
+          btc1Amount: "0",
+          mintPrice: 0,
+          devFee: "0",
+          endowmentFee: "0",
+          currentCollateralRatio: 0,
+          newCollateralRatio: 0,
+          isGasless: true,
+        }}
+        onConfirm={handleMintWithPermit2}
+        isProcessing={isProcessing}
+        status={status}
+        error={modalError}
+      />
+      <TransactionModal
+        open={showRedeemModal}
+        onOpenChange={setShowRedeemModal}
+        details={transactionDetails || {
+          type: "redeem",
+          btc1AmountToRedeem: "0",
+          collateralToReceive: "0",
+          redeemCollateralSymbol: "WBTC",
+          redeemPrice: 0,
+          stressMode: false,
+          currentCollateralRatio: 0,
+          newCollateralRatio: 0,
+          isGasless: true,
+        }}
+        onConfirm={handleRedeemWithPermit}
+        isProcessing={isProcessing}
+        status={status}
+        error={modalError}
+      />
     </div>
   );
 }

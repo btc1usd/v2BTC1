@@ -29,7 +29,8 @@ import {
   TrendingUp,
   TrendingDown
 } from 'lucide-react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useWeb3 } from '@/lib/web3-provider';
 import { formatUnits, parseUnits } from 'viem';
 import { DistributionAnalyticsDashboard } from '@/components/distribution-analytics-dashboard';
 
@@ -141,7 +142,7 @@ const MERKLE_DISTRIBUTOR_ABI = [
 import { CONTRACT_ADDRESSES } from '@/lib/contracts';
 
 export default function EnhancedMerkleManagement() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected } = useWeb3();
   const [merkleRootInput, setMerkleRootInput] = useState('');
   const [totalTokens, setTotalTokens] = useState('');
   const [blockNumberInput, setBlockNumberInput] = useState('');

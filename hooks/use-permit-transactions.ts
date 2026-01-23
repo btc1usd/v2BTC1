@@ -20,15 +20,16 @@ import { useWeb3 } from '@/lib/web3-provider';
 import { useActiveAccount, useSendTransaction } from 'thirdweb/react';
 import { getContract, prepareContractCall, sendTransaction } from 'thirdweb';
 import { client as thirdwebClient } from '@/lib/thirdweb-client';
-import { baseSepolia } from 'thirdweb/chains';
+import { baseSepolia, base } from 'thirdweb/chains';
+import { NETWORK_CONFIG } from '@/lib/contracts';
 
 export type TransactionStatus = 'idle' | 'preparing' | 'signing' | 'confirming' | 'success' | 'error';
 
 export function usePermitTransactions() {
-  const { address: wagmiAddress } = useAccount();
+  const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
-  const { address: unifiedAddress, isConnected } = useWeb3();
+  const { address: unifiedAddress, isConnected: isUnifiedConnected } = useWeb3();
   const activeAccount = useActiveAccount();
   const { mutate: sendThirdwebTransaction, isPending: isThirdwebPending } = useSendTransaction();
   const [status, setStatus] = useState<string>('');
@@ -38,10 +39,8 @@ export function usePermitTransactions() {
   const [transactionError, setTransactionError] = useState<string | undefined>();
   const [permit2ApprovedTokens, setPermit2ApprovedTokens] = useState<Set<string>>(new Set());
 
-  // Get configured chain ID from environment
-  const configuredChainId = process.env.NEXT_PUBLIC_CHAIN_ID 
-    ? parseInt(process.env.NEXT_PUBLIC_CHAIN_ID) 
-    : 84532; // Default to Base Sepolia
+  // Determine target chain for Thirdweb
+  const targetChain = NETWORK_CONFIG.chainId === 84532 ? baseSepolia : base;
 
   /**
    * Mint BTC1USD using Permit2 (for collateral approval)
@@ -57,9 +56,9 @@ export function usePermitTransactions() {
     onError?: (error: Error) => void
   ) => {
     // Check if using Thirdweb In-App Wallet
-    const isThirdwebWallet = !!activeAccount && !wagmiAddress;
+    const isThirdwebWallet = !!activeAccount;
 
-    if (!isThirdwebWallet && (!wagmiAddress || !walletClient || !publicClient)) {
+    if (!isThirdwebWallet && (!wagmiAddress || !isWagmiConnected || !walletClient || !publicClient)) {
       const error = new Error('Wallet not connected');
       setStatus('Wallet not connected');
       onError?.(error);
@@ -107,7 +106,7 @@ export function usePermitTransactions() {
           const vaultContract = getContract({
             client: thirdwebClient,
             address: vaultAddress,
-            chain: baseSepolia,
+            chain: targetChain,
           });
 
           // Prepare transaction with signed permit using ABI object format
@@ -294,9 +293,9 @@ export function usePermitTransactions() {
     onError?: (error: Error) => void
   ) => {
     // Check if using Thirdweb In-App Wallet
-    const isThirdwebWallet = !!activeAccount && !wagmiAddress;
+    const isThirdwebWallet = !!activeAccount;
 
-    if (!isThirdwebWallet && (!wagmiAddress || !walletClient || !publicClient)) {
+    if (!isThirdwebWallet && (!wagmiAddress || !isWagmiConnected || !walletClient || !publicClient)) {
       const error = new Error('Wallet not connected');
       setStatus('Wallet not connected');
       onError?.(error);
@@ -359,7 +358,7 @@ export function usePermitTransactions() {
           const vaultContract = getContract({
             client: thirdwebClient,
             address: vaultAddress,
-            chain: baseSepolia,
+            chain: targetChain,
           });
 
           const transaction = prepareContractCall({
@@ -566,10 +565,10 @@ export function usePermitTransactions() {
     onError?: (error: Error) => void
   ) => {
     // Check if using Thirdweb In-App Wallet
-    const isThirdwebWallet = !!activeAccount && !wagmiAddress;
+    const isThirdwebWallet = !!activeAccount;
 
     // Check if any wallet is connected
-    if (!isThirdwebWallet && !walletClient) {
+    if (!isThirdwebWallet && (!wagmiAddress || !isWagmiConnected || !walletClient)) {
       const error = new Error('Wallet not connected');
       console.error('❌ approvePermit2: No wallet connected', { 
         isThirdwebWallet, 
@@ -606,7 +605,7 @@ export function usePermitTransactions() {
         const tokenContract = getContract({
           client: thirdwebClient,
           address: tokenAddress,
-          chain: baseSepolia,
+          chain: targetChain,
         });
 
         const transaction = prepareContractCall({
