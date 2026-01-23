@@ -89,18 +89,8 @@ export function WalletSelectionModal({
   const { connect, connectors, error: connectError } = useConnect();
   const { connect: connectThirdweb } = useThirdwebConnect();
   const { connect: openThirdwebModal } = useConnectModal();
-  const activeAccount = useActiveAccount();
-  const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
-  const { isConnected } = useWeb3();
   const [connectingWallet, setConnectingWallet] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // Close modal automatically when connected
-  useEffect(() => {
-    if (isConnected) {
-      onOpenChange(false);
-    }
-  }, [isConnected, onOpenChange]);
 
   // Helper function to find connector by wallet option ID
   const findConnector = (walletId: string) => {

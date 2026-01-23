@@ -21,8 +21,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { useLandingStats } from "@/hooks/use-landing-stats"
 
 export function LandingPage() {
-  const { isConnected } = useWeb3()
-  const [showWalletOptions, setShowWalletOptions] = useState(false)
+  const { isConnected, setModalOpen } = useWeb3()
   const { 
     totalSupply, 
     btcReserves, 
@@ -126,7 +125,7 @@ export function LandingPage() {
             <Button 
               size="lg" 
               className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-6 text-lg"
-              onClick={() => setShowWalletOptions(true)}
+              onClick={() => setModalOpen(true)}
             >
               <Wallet className="mr-2 h-5 w-5" />
               Connect Wallet
@@ -145,11 +144,7 @@ export function LandingPage() {
         </div>
       </div>
 
-      {/* Wallet Connection Modal */}
-      <WagmiWalletConnect
-        showModal={showWalletOptions}
-        onModalChange={setShowWalletOptions}
-      />
+      {/* Wallet Connection Modal is now managed globally in Web3Provider */}
 
       {/* Stats Section - Moved to be above "How It Works" */}
       <div className="bg-muted/30 py-16">
@@ -348,7 +343,7 @@ export function LandingPage() {
               <Button
                 size="lg"
                 className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-6 text-lg shadow-lg shadow-orange-500/30"
-                onClick={() => setShowWalletOptions(true)}
+                onClick={() => setModalOpen(true)}
               >
                 <Wallet className="mr-2 h-5 w-5" />
                 Connect Wallet

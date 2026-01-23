@@ -16,16 +16,8 @@ interface WagmiWalletConnectProps {
   onModalChange?: (show: boolean) => void;
 }
 
-export function WagmiWalletConnect({
-  showModal,
-  onModalChange,
-}: WagmiWalletConnectProps = {}) {
+export function WagmiWalletConnect() {
   const [mounted, setMounted] = useState(false);
-  const [internalShowModal, setInternalShowModal] = useState(false);
-
-  // Use external modal state if provided, otherwise use internal state
-  const modalOpen = showModal !== undefined ? showModal : internalShowModal;
-  const setModalOpen = onModalChange || setInternalShowModal;
 
   useEffect(() => {
     setMounted(true);
@@ -33,11 +25,6 @@ export function WagmiWalletConnect({
 
   // Prevent hydration mismatch - don't render wagmi hooks during SSR
   if (!mounted) {
-    // If modal is controlled externally, show loading button
-    if (showModal !== undefined) {
-      return null;
-    }
-
     return (
       <Button
         className="bg-orange-500 hover:bg-orange-600 text-white font-medium py-2 px-6 rounded-lg opacity-50 cursor-not-allowed"
@@ -49,29 +36,16 @@ export function WagmiWalletConnect({
     );
   }
 
-  return (
-    <WagmiWalletConnectInner
-      showModal={showModal}
-      onModalChange={onModalChange}
-    />
-  );
+  return <WagmiWalletConnectInner />;
 }
 
-function WagmiWalletConnectInner({
-  showModal,
-  onModalChange,
-}: WagmiWalletConnectProps) {
-  const { address, isConnected, chainId, disconnectWallet } = useWeb3();
+function WagmiWalletConnectInner() {
+  const { address, isConnected, chainId, disconnectWallet, setModalOpen } = useWeb3();
   const { status } = useAccount();
   const { data: balance } = useBalance({
     address: address,
   });
   const { toast } = useToast();
-  const [internalShowModal, setInternalShowModal] = useState(false);
-
-  // Use external modal state if provided, otherwise use internal state
-  const modalOpen = showModal !== undefined ? showModal : internalShowModal;
-  const setModalOpen = onModalChange || setInternalShowModal;
 
   // Log account changes for debugging
   useEffect(() => {
@@ -112,13 +86,6 @@ function WagmiWalletConnectInner({
       window.open(`https://basescan.org/address/${address}`, "_blank");
     }
   };
-
-  // If modal is controlled externally, only render the modal (not the wallet card)
-  if (showModal !== undefined) {
-    return (
-      <WalletSelectionModal open={modalOpen} onOpenChange={setModalOpen} />
-    );
-  }
 
   // For standalone mode: show wallet card when connected
   if (isConnected && address) {
@@ -190,18 +157,14 @@ function WagmiWalletConnectInner({
     );
   }
 
-  // Otherwise render both button and modal
+  // Otherwise render the connect button
   return (
-    <>
-      <Button
-        onClick={() => setModalOpen(true)}
-        className="bg-orange-500 hover:bg-orange-600 text-white font-medium py-2 px-6 rounded-lg transition-colors"
-      >
-        <Wallet className="mr-2 h-4 w-4" />
-        Connect Wallet
-      </Button>
-
-      <WalletSelectionModal open={modalOpen} onOpenChange={setModalOpen} />
-    </>
+    <Button
+      onClick={() => setModalOpen(true)}
+      className="bg-orange-500 hover:bg-orange-600 text-white font-medium py-2 px-6 rounded-lg transition-colors"
+    >
+      <Wallet className="mr-2 h-4 w-4" />
+      Connect Wallet
+    </Button>
   );
 }
