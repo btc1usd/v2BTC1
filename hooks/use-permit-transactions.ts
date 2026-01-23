@@ -17,7 +17,12 @@ import {
   getPermitDomain 
 } from '@/lib/permit-utils';
 import { useWeb3 } from '@/lib/web3-provider';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useSendTransaction } from 'thirdweb/react';
+import { getContract, prepareContractCall, sendTransaction } from 'thirdweb';
+import { client as thirdwebClient } from '@/lib/thirdweb-client';
+import { baseSepolia } from 'thirdweb/chains';
+
+export type TransactionStatus = 'idle' | 'preparing' | 'signing' | 'confirming' | 'success' | 'error';
 
 export function usePermitTransactions() {
   const { address: wagmiAddress } = useAccount();
@@ -25,12 +30,22 @@ export function usePermitTransactions() {
   const { data: walletClient } = useWalletClient();
   const { address: unifiedAddress, isConnected } = useWeb3();
   const activeAccount = useActiveAccount();
+  const { mutate: sendThirdwebTransaction, isPending: isThirdwebPending } = useSendTransaction();
   const [status, setStatus] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [transactionStatus, setTransactionStatus] = useState<TransactionStatus>('idle');
+  const [transactionHash, setTransactionHash] = useState<string | undefined>();
+  const [transactionError, setTransactionError] = useState<string | undefined>();
+
+  // Get configured chain ID from environment
+  const configuredChainId = process.env.NEXT_PUBLIC_CHAIN_ID 
+    ? parseInt(process.env.NEXT_PUBLIC_CHAIN_ID) 
+    : 84532; // Default to Base Sepolia
 
   /**
    * Mint BTC1USD using Permit2 (for collateral approval)
    * Works with any ERC20 token (wBTC, cbBTC, tBTC)
+   * Supports both wagmi (browser wallets) and Thirdweb (In-App Wallets)
    */
   const mintWithPermit2 = async (
     vaultAddress: Address,
@@ -40,16 +55,10 @@ export function usePermitTransactions() {
     onSuccess?: (hash: string) => void,
     onError?: (error: Error) => void
   ) => {
-    if (!wagmiAddress || !walletClient || !publicClient) {
-      if (activeAccount && unifiedAddress) {
-        const error = new Error(
-          'Email/social login is active, but Permit2 mint requires a browser wallet (MetaMask, Coinbase, etc.) to sign EIP-712 messages. Please connect a browser wallet.'
-        );
-        setStatus(error.message);
-        onError?.(error);
-        return;
-      }
+    // Check if using Thirdweb In-App Wallet
+    const isThirdwebWallet = !!activeAccount && !wagmiAddress;
 
+    if (!isThirdwebWallet && (!wagmiAddress || !walletClient || !publicClient)) {
       const error = new Error('Wallet not connected');
       setStatus('Wallet not connected');
       onError?.(error);
@@ -64,6 +73,120 @@ export function usePermitTransactions() {
       const nonce = generateNonce();
       const deadline = getPermit2Deadline(1); // 1 hour expiry
 
+      if (isThirdwebWallet && activeAccount) {
+        // THIRDWEB PATH: Sign Permit2 message and submit transaction
+        setTransactionStatus('signing');
+        setStatus('📝 Signing permit with In-App Wallet...');
+
+        // Create Permit2 message for signing
+        const message = createPermit2TransferMessage(
+          collateralAddress,
+          amount,
+          vaultAddress, // spender is the Vault
+          nonce,
+          deadline
+        );
+
+        // Get domain for signing
+        const domain = getPermit2Domain(chainId);
+
+        try {
+          // Sign the permit using Thirdweb's signTypedData
+          const signature = await activeAccount.signTypedData({
+            domain,
+            types: PERMIT2_TYPES,
+            primaryType: 'PermitTransferFrom',
+            message,
+          });
+
+          setTransactionStatus('confirming');
+          setStatus('📤 Submitting mint transaction...');
+
+          // Create vault contract instance
+          const vaultContract = getContract({
+            client: thirdwebClient,
+            address: vaultAddress,
+            chain: baseSepolia,
+          });
+
+          // Prepare transaction with signed permit using ABI object format
+          const transaction = prepareContractCall({
+            contract: vaultContract,
+            method: {
+              name: 'mintWithPermit2',
+              type: 'function',
+              stateMutability: 'nonpayable',
+              inputs: [
+                { name: 'collateral', type: 'address' },
+                { name: 'amount', type: 'uint256' },
+                {
+                  name: 'permit',
+                  type: 'tuple',
+                  components: [
+                    {
+                      name: 'permitted',
+                      type: 'tuple',
+                      components: [
+                        { name: 'token', type: 'address' },
+                        { name: 'amount', type: 'uint256' },
+                      ],
+                    },
+                    { name: 'nonce', type: 'uint256' },
+                    { name: 'deadline', type: 'uint256' },
+                  ],
+                },
+                { name: 'signature', type: 'bytes' },
+              ],
+              outputs: [],
+            },
+            params: [
+              collateralAddress,
+              amount,
+              {
+                permitted: {
+                  token: collateralAddress,
+                  amount,
+                },
+                nonce,
+                deadline,
+              },
+              signature,
+            ],
+          });
+
+          // Send transaction
+          sendThirdwebTransaction(transaction, {
+            onSuccess: (result) => {
+              setTransactionStatus('success');
+              setTransactionHash(result.transactionHash);
+              setStatus('✅ Mint successful!');
+              setIsProcessing(false);
+              onSuccess?.(result.transactionHash);
+            },
+            onError: (error) => {
+              console.error('Thirdweb mint error:', error);
+              const errorMsg = error?.message || 'Mint failed';
+              setTransactionStatus('error');
+              setTransactionError(errorMsg);
+              setStatus(`❌ ${errorMsg}`);
+              setIsProcessing(false);
+              onError?.(error as Error);
+            },
+          });
+        } catch (signError: any) {
+          console.error('Permit signing error:', signError);
+          const errorMsg = signError?.message || 'Signing failed';
+          setTransactionStatus('error');
+          setTransactionError(errorMsg);
+          setStatus(`❌ ${errorMsg}`);
+          setIsProcessing(false);
+          onError?.(signError);
+        }
+
+        return; // Exit early for Thirdweb path
+      }
+
+      // WAGMI PATH: Browser wallet with EIP-712 signing
       // Create Permit2 message
       const message = createPermit2TransferMessage(
         collateralAddress,
@@ -79,8 +202,8 @@ export function usePermitTransactions() {
       setStatus('📝 Please sign the permit message...');
 
       // Sign the permit
-      const signature = await walletClient.signTypedData({
-        account: wagmiAddress,
+      const signature = await walletClient!.signTypedData({
+        account: wagmiAddress!,
         domain,
         types: PERMIT2_TYPES,
         primaryType: 'PermitTransferFrom',
@@ -90,7 +213,7 @@ export function usePermitTransactions() {
       setStatus('📤 Submitting mint transaction...');
 
       // Call mintWithPermit2 on vault
-      const hash = await walletClient.writeContract({
+      const hash = await walletClient!.writeContract({
         address: vaultAddress,
         abi: [{
           name: 'mintWithPermit2',
@@ -138,7 +261,7 @@ export function usePermitTransactions() {
       setStatus('⏳ Waiting for confirmation...');
 
       // Wait for transaction receipt
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient!.waitForTransactionReceipt({ hash });
 
       if (receipt.status === 'success') {
         setStatus('✅ Mint successful!');
@@ -158,6 +281,7 @@ export function usePermitTransactions() {
 
   /**
    * Redeem BTC1USD using EIP-2612 Permit (for BTC1USD approval)
+   * Supports both wagmi (browser wallets) and Thirdweb (In-App Wallets)
    */
   const redeemWithPermit = async (
     vaultAddress: Address,
@@ -168,16 +292,10 @@ export function usePermitTransactions() {
     onSuccess?: (hash: string) => void,
     onError?: (error: Error) => void
   ) => {
-    if (!wagmiAddress || !walletClient || !publicClient) {
-      if (activeAccount && unifiedAddress) {
-        const error = new Error(
-          'Email/social login is active, but Permit redeem requires a browser wallet (MetaMask, Coinbase, etc.) to sign EIP-2612 messages. Please connect a browser wallet.'
-        );
-        setStatus(error.message);
-        onError?.(error);
-        return;
-      }
+    // Check if using Thirdweb In-App Wallet
+    const isThirdwebWallet = !!activeAccount && !wagmiAddress;
 
+    if (!isThirdwebWallet && (!wagmiAddress || !walletClient || !publicClient)) {
       const error = new Error('Wallet not connected');
       setStatus('Wallet not connected');
       onError?.(error);
@@ -186,10 +304,119 @@ export function usePermitTransactions() {
 
     try {
       setIsProcessing(true);
+
+      if (isThirdwebWallet && activeAccount) {
+        // THIRDWEB PATH: Sign EIP-2612 permit and submit redeem transaction
+        setTransactionStatus('signing');
+        setStatus('📝 Signing redeem with In-App Wallet...');
+
+        // Get current nonce from BTC1USD contract
+        const nonce = await publicClient!.readContract({
+          address: btc1usdAddress,
+          abi: [{
+            name: 'nonces',
+            type: 'function',
+            stateMutability: 'view',
+            inputs: [{ name: 'owner', type: 'address' }],
+            outputs: [{ type: 'uint256' }],
+          }],
+          functionName: 'nonces',
+          args: [activeAccount.address as Address],
+        }) as bigint;
+
+        // Generate deadline
+        const deadline = getPermitDeadline(1); // 1 hour expiry
+
+        // Create permit message
+        const message = createPermitMessage(
+          activeAccount.address as Address,
+          vaultAddress, // spender is the Vault
+          btc1Amount,
+          nonce,
+          deadline
+        );
+
+        // Get domain for signing
+        const domain = getPermitDomain(btc1usdAddress, 'BTC1USD', chainId);
+
+        try {
+          // Sign the permit using Thirdweb's signTypedData
+          const signature = await activeAccount.signTypedData({
+            domain,
+            types: PERMIT_TYPES,
+            primaryType: 'Permit',
+            message,
+          });
+
+          // Split signature into v, r, s
+          const { v, r, s } = splitSignature(signature);
+
+          setTransactionStatus('confirming');
+          setStatus('📤 Submitting redeem transaction...');
+
+          // Create vault contract instance
+          const vaultContract = getContract({
+            client: thirdwebClient,
+            address: vaultAddress,
+            chain: baseSepolia,
+          });
+
+          const transaction = prepareContractCall({
+            contract: vaultContract,
+            method: {
+              name: 'redeemWithPermit',
+              type: 'function',
+              stateMutability: 'nonpayable',
+              inputs: [
+                { name: 'btc1Amount', type: 'uint256' },
+                { name: 'collateral', type: 'address' },
+                { name: 'deadline', type: 'uint256' },
+                { name: 'v', type: 'uint8' },
+                { name: 'r', type: 'bytes32' },
+                { name: 's', type: 'bytes32' },
+              ],
+              outputs: [],
+            },
+            params: [btc1Amount, collateralAddress, deadline, v, r, s],
+          });
+
+          // Send transaction
+          sendThirdwebTransaction(transaction, {
+            onSuccess: (result) => {
+              setTransactionStatus('success');
+              setTransactionHash(result.transactionHash);
+              setStatus('✅ Redeem successful!');
+              setIsProcessing(false);
+              onSuccess?.(result.transactionHash);
+            },
+            onError: (error) => {
+              console.error('Thirdweb redeem error:', error);
+              const errorMsg = error?.message || 'Redeem failed';
+              setTransactionStatus('error');
+              setTransactionError(errorMsg);
+              setStatus(`❌ ${errorMsg}`);
+              setIsProcessing(false);
+              onError?.(error as Error);
+            },
+          });
+        } catch (signError: any) {
+          console.error('Permit signing error:', signError);
+          const errorMsg = signError?.message || 'Signing failed';
+          setTransactionStatus('error');
+          setTransactionError(errorMsg);
+          setStatus(`❌ ${errorMsg}`);
+          setIsProcessing(false);
+          onError?.(signError);
+        }
+
+        return; // Exit early for Thirdweb path
+      }
+
+      // WAGMI PATH: Browser wallet with EIP-2612 signing
       setStatus('📊 Fetching nonce...');
 
       // Get current nonce from BTC1USD contract
-      const nonce = await publicClient.readContract({
+      const nonce = await publicClient!.readContract({
         address: btc1usdAddress,
         abi: [{
           name: 'nonces',
@@ -199,7 +426,7 @@ export function usePermitTransactions() {
           outputs: [{ type: 'uint256' }],
         }],
         functionName: 'nonces',
-        args: [wagmiAddress],
+        args: [wagmiAddress!],
       }) as bigint;
 
       // Generate deadline
@@ -220,8 +447,8 @@ export function usePermitTransactions() {
       setStatus('📝 Please sign the permit message...');
 
       // Sign the permit
-      const signature = await walletClient.signTypedData({
-        account: wagmiAddress,
+      const signature = await walletClient!.signTypedData({
+        account: wagmiAddress!,
         domain,
         types: PERMIT_TYPES,
         primaryType: 'Permit',
@@ -234,7 +461,7 @@ export function usePermitTransactions() {
       setStatus('📤 Submitting redeem transaction...');
 
       // Call redeemWithPermit on vault
-      const hash = await walletClient.writeContract({
+      const hash = await walletClient!.writeContract({
         address: vaultAddress,
         abi: [{
           name: 'redeemWithPermit',
@@ -257,7 +484,7 @@ export function usePermitTransactions() {
       setStatus('⏳ Waiting for confirmation...');
 
       // Wait for transaction receipt
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient!.waitForTransactionReceipt({ hash });
 
       if (receipt.status === 'success') {
         setStatus('✅ Redeem successful!');
@@ -303,22 +530,38 @@ export function usePermitTransactions() {
       }) as bigint;
 
       return allowance;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error checking Permit2 approval:', error);
+      // If contract doesn't exist or doesn't have allowance function, return 0
+      // This can happen with mock/invalid tokens on testnets
+      if (error?.message?.includes('returned no data') || error?.message?.includes('0x')) {
+        console.warn(`⚠️ Token at ${tokenAddress} may not be a valid ERC20 or doesn't exist on this network`);
+        console.warn('This is expected for mock tokens on testnets. Proceeding without Permit2 approval check.');
+      }
       return 0n;
     }
   };
 
   /**
    * Approve Permit2 to spend unlimited tokens (one-time setup)
+   * Supports both wagmi (browser wallets) and Thirdweb (In-App Wallets)
    */
   const approvePermit2 = async (
     tokenAddress: Address,
     onSuccess?: (hash: string) => void,
     onError?: (error: Error) => void
   ) => {
-    if (!walletClient || !publicClient) {
+    // Check if using Thirdweb In-App Wallet
+    const isThirdwebWallet = !!activeAccount && !wagmiAddress;
+
+    if (!isThirdwebWallet && (!walletClient || !publicClient)) {
       const error = new Error('Wallet not connected');
+      onError?.(error);
+      return;
+    }
+
+    if (isThirdwebWallet && !publicClient) {
+      const error = new Error('Public client not available');
       onError?.(error);
       return;
     }
@@ -329,7 +572,49 @@ export function usePermitTransactions() {
 
       const maxUint256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
 
-      const hash = await walletClient.writeContract({
+      if (isThirdwebWallet && activeAccount) {
+        // THIRDWEB PATH: Use Thirdweb SDK for In-App Wallets
+        const tokenContract = getContract({
+          client: thirdwebClient,
+          address: tokenAddress,
+          chain: baseSepolia,
+        });
+
+        const transaction = prepareContractCall({
+          contract: tokenContract,
+          method: {
+            name: 'approve',
+            type: 'function',
+            stateMutability: 'nonpayable',
+            inputs: [
+              { name: 'spender', type: 'address' },
+              { name: 'amount', type: 'uint256' },
+            ],
+            outputs: [{ type: 'bool' }],
+          },
+          params: [PERMIT2_ADDRESS, maxUint256],
+        });
+
+        sendThirdwebTransaction(transaction, {
+          onSuccess: (result) => {
+            setStatus('✅ Permit2 approved!');
+            setIsProcessing(false);
+            onSuccess?.(result.transactionHash);
+          },
+          onError: (error) => {
+            console.error('Thirdweb approval error:', error);
+            const errorMsg = error?.message || 'Approval failed';
+            setStatus(`❌ ${errorMsg}`);
+            setIsProcessing(false);
+            onError?.(error as Error);
+          },
+        });
+
+        return; // Exit early for Thirdweb path
+      }
+
+      // WAGMI PATH: Browser wallet
+      const hash = await walletClient!.writeContract({
         address: tokenAddress,
         abi: [{
           name: 'approve',
@@ -347,7 +632,7 @@ export function usePermitTransactions() {
 
       setStatus('⏳ Waiting for confirmation...');
 
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient!.waitForTransactionReceipt({ hash });
 
       if (receipt.status === 'success') {
         setStatus('✅ Permit2 approved!');
@@ -365,6 +650,16 @@ export function usePermitTransactions() {
     }
   };
 
+  /**
+   * Reset transaction state (useful for closing modals and starting fresh)
+   */
+  const resetTransactionState = () => {
+    setTransactionStatus('idle');
+    setTransactionHash(undefined);
+    setTransactionError(undefined);
+    setStatus('');
+  };
+
   return {
     mintWithPermit2,
     redeemWithPermit,
@@ -372,5 +667,9 @@ export function usePermitTransactions() {
     approvePermit2,
     status,
     isProcessing,
+    transactionStatus,
+    transactionHash,
+    transactionError,
+    resetTransactionState,
   };
 }

@@ -97,7 +97,7 @@ import {
 import { CONTRACT_ADDRESSES, COLLATERAL_TOKENS } from "@/lib/contracts";
 import { getPermitDomain, PERMIT_TYPES, getPermitDeadline, createPermitMessage, splitSignature } from "@/lib/permit-utils";
 import { PERMIT2_ADDRESS, PERMIT2_ABI, PERMIT2_TYPES, getPermit2Domain, createPermit2Message, getPermit2Expiration, getPermit2SigDeadline, MAX_UINT160 } from "@/lib/permit2-utils";
-import { usePermitTransactions } from "@/hooks/use-permit-transactions";
+import { usePermitTransactions, TransactionStatus } from "@/hooks/use-permit-transactions";
 import { useRecentActivity } from "@/hooks/useRecentActivity";
 import {
   ArrowUpRight,
@@ -183,7 +183,9 @@ function Dashboard() {
 
     switch (chainId) {
       case 8453:
-        return "Base";
+        return "Base Mainnet";
+      case 84532:
+        return "Base Sepolia";
       case 1:
         return "Ethereum";
       case 11155111:
@@ -470,6 +472,11 @@ function Dashboard() {
     },
   });
 
+  // Get configured chain ID from environment or fallback
+  const configuredChainId = process.env.NEXT_PUBLIC_CHAIN_ID 
+    ? parseInt(process.env.NEXT_PUBLIC_CHAIN_ID) 
+    : 8453; // Default to Base Mainnet if not configured
+
   // BTC1USD balance reading
   const { data: btc1usdBalance, refetch: refetchBtc1usdBalance, error: btc1usdBalanceError, isLoading: isBtc1usdBalanceLoading } =
     useReadContract({
@@ -497,7 +504,7 @@ function Dashboard() {
       ],
       functionName: "balanceOf",
       args: address ? [address as any] : undefined,
-      chainId: 8453, // Force Base Mainnet where contracts are deployed
+      chainId: configuredChainId, // Use configured chain ID from environment
       query: {
         enabled: !!address && !!protocolState?.contractAddresses?.btc1usd,
       },
@@ -509,14 +516,15 @@ function Dashboard() {
       console.log("Balance fetch debug:", {
         address,
         userChainId: chainId,
-        contractChainId: 8453,
+        contractChainId: configuredChainId,
+        envChainId: process.env.NEXT_PUBLIC_CHAIN_ID,
         btc1usdContract: protocolState?.contractAddresses?.btc1usd,
         balance: btc1usdBalance,
         isLoading: isBtc1usdBalanceLoading,
         error: btc1usdBalanceError,
       });
     }
-  }, [address, chainId, btc1usdBalance, isBtc1usdBalanceLoading, btc1usdBalanceError, protocolState?.contractAddresses?.btc1usd]);
+  }, [address, chainId, btc1usdBalance, isBtc1usdBalanceLoading, btc1usdBalanceError, protocolState?.contractAddresses?.btc1usd, configuredChainId]);
 
   // Read permit nonces for collateral tokens (for mintWithPermit)
   const { data: wbtcNonce } = useReadContract({
@@ -1049,6 +1057,7 @@ function Dashboard() {
     abi: ERC20_BALANCE_ABI,
     functionName: "balanceOf",
     args: address ? [address as any] : undefined,
+    chainId: configuredChainId, // Use configured chain ID
     query: {
       enabled: !!address && !!protocolState?.contractAddresses?.wbtc,
     },
@@ -1059,6 +1068,7 @@ function Dashboard() {
     abi: ERC20_BALANCE_ABI,
     functionName: "balanceOf",
     args: address ? [address as any] : undefined,
+    chainId: configuredChainId, // Use configured chain ID
     query: {
       enabled: !!address && !!protocolState?.contractAddresses?.cbbtc,
     },
@@ -1069,6 +1079,7 @@ function Dashboard() {
     abi: ERC20_BALANCE_ABI,
     functionName: "balanceOf",
     args: address ? [address as any] : undefined,
+    chainId: configuredChainId, // Use configured chain ID
     query: {
       enabled: !!address && !!protocolState?.contractAddresses?.tbtc,
     },
@@ -1991,7 +2002,22 @@ function Dashboard() {
     approvePermit2,
     status: permitStatus,
     isProcessing: permitProcessing,
+    transactionStatus: permitTransactionStatus,
+    transactionHash: permitTransactionHash,
+    transactionError: permitTransactionError,
+    resetTransactionState,
   } = usePermitTransactions();
+
+  // Thirdweb Transaction Modal State
+  const [showThirdwebModal, setShowThirdwebModal] = useState(false);
+  const [modalType, setModalType] = useState<'mint' | 'redeem'>('mint');
+  const [modalAmount, setModalAmount] = useState('');
+  const [modalCollateral, setModalCollateral] = useState('');
+  const [pendingMintData, setPendingMintData] = useState<{
+    vaultAddress: string;
+    collateralAddress: string;
+    amount: bigint;
+  } | null>(null);
 
   const handleMint = async () => {
     console.log("=== BTC1USD MINT WITH PERMIT2 START ===");
