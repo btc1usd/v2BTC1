@@ -123,10 +123,12 @@ export default function LiquidityModal({ isOpen, onClose }: LiquidityModalProps)
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={false}>
       <DialogContent 
-        className="w-[95vw] sm:max-w-xl p-0 bg-gray-950 border-gray-800 overflow-hidden rounded-2xl sm:rounded-[32px] shadow-2xl z-[9999] max-h-[90vh] flex flex-col"
+        className="w-[95vw] sm:max-w-xl p-0 bg-gray-950 border-gray-800 rounded-2xl sm:rounded-[32px] shadow-2xl z-50 max-h-[90vh] flex flex-col"
         onOpenAutoFocus={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => e.preventDefault()}
       >
         <DialogHeader className="p-6 sm:p-8 pb-4 flex-shrink-0">
           <DialogTitle className="flex items-center gap-4 text-white text-3xl font-bold">
@@ -140,7 +142,7 @@ export default function LiquidityModal({ isOpen, onClose }: LiquidityModalProps)
           </p>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 p-4 sm:p-8 pt-2 overflow-y-auto">
+        <ScrollArea className="flex-1 p-4 sm:p-8 pt-2 overflow-y-auto pointer-events-auto flex flex-col items-center">
           <div className="space-y-6">
             {/* Error Alert */}
             {error && (

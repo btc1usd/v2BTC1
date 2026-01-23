@@ -1,7 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { useConnect } from "wagmi";
+import { useState, useEffect } from "react";
+import { useConnect, useAccount } from "wagmi";
+import { useConnect as useThirdwebConnect, useActiveAccount, useConnectModal } from "thirdweb/react";
+import { inAppWallet, createWallet } from "thirdweb/wallets";
+import { client as thirdwebClient } from "@/lib/thirdweb-client";
+import { base } from "thirdweb/chains";
+import { useWeb3 } from "../lib/web3-provider";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +21,7 @@ import {
   Smartphone,
   ChevronRight,
   Sparkles,
+  ExternalLink,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -29,6 +35,20 @@ interface WalletOption {
 }
 
 const walletOptions: WalletOption[] = [
+  {
+    id: "thirdweb",
+    name: "Thirdweb",
+    icon: (
+      <div className="w-8 h-8 flex items-center justify-center">
+        <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-white">
+          <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.269 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.295 2.747-1.026 2.747-1.026.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12c0-5.523-4.477-10-10-10z" />
+        </svg>
+      </div>
+    ),
+    description: "Email, Social, or Cross-chain Wallet",
+    gradient: "from-purple-500/20 to-pink-500/20",
+    recommended: true,
+  },
   {
     id: "io.metamask",
     name: "MetaMask",
@@ -67,8 +87,20 @@ export function WalletSelectionModal({
   onOpenChange,
 }: WalletSelectionModalProps) {
   const { connect, connectors, error: connectError } = useConnect();
+  const { connect: connectThirdweb } = useThirdwebConnect();
+  const { connect: openThirdwebModal } = useConnectModal();
+  const activeAccount = useActiveAccount();
+  const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
+  const { isConnected } = useWeb3();
   const [connectingWallet, setConnectingWallet] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Close modal automatically when connected
+  useEffect(() => {
+    if (isConnected) {
+      onOpenChange(false);
+    }
+  }, [isConnected, onOpenChange]);
 
   // Helper function to find connector by wallet option ID
   const findConnector = (walletId: string) => {
@@ -98,6 +130,33 @@ export function WalletSelectionModal({
       setConnectingWallet(connectorId);
       setError(null);
 
+      if (connectorId === "thirdweb") {
+        try {
+          // Open Thirdweb's full connection modal with all supported options
+          await openThirdwebModal({
+            client: thirdwebClient,
+            theme: "dark",
+            chain: base,
+            wallets: [
+              inAppWallet({
+                auth: {
+                  options: ["google", "facebook", "apple", "email", "phone", "passkey"],
+                },
+              }),
+              createWallet("io.metamask"),
+              createWallet("com.coinbase.wallet"),
+              createWallet("me.rainbow"),
+              createWallet("io.rabby"),
+              createWallet("org.uniswap"),
+            ],
+          });
+        } catch (err) {
+          console.error("Thirdweb modal error:", err);
+          setError("Failed to open connection modal");
+        }
+        return;
+      }
+
       const connector = findConnector(connectorId);
 
       if (!connector) {
@@ -111,7 +170,6 @@ export function WalletSelectionModal({
         // Ensure connection is persisted
         chainId: undefined,
       });
-      onOpenChange(false);
     } catch (error) {
       console.error("Wallet connection error:", error);
       setError(
@@ -154,7 +212,7 @@ export function WalletSelectionModal({
           <div className="space-y-3 py-6">
             <AnimatePresence>
               {walletOptions.map((wallet, index) => {
-                const connector = findConnector(wallet.id);
+                const connector = wallet.id === "thirdweb" ? { id: "thirdweb" } : findConnector(wallet.id);
                 const isConnecting = connectingWallet === wallet.id;
                 const isAvailable = !!connector;
 

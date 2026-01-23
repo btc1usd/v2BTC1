@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Wallet, Copy, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { WalletSelectionModal } from "./wallet-selection-modal";
+import { useWeb3 } from "@/lib/web3-provider";
 
 interface WagmiWalletConnectProps {
   showModal?: boolean;
@@ -60,8 +61,8 @@ function WagmiWalletConnectInner({
   showModal,
   onModalChange,
 }: WagmiWalletConnectProps) {
-  const { address, isConnected, chainId, status } = useAccount();
-  const { disconnect } = useDisconnect();
+  const { address, isConnected, chainId, disconnectWallet } = useWeb3();
+  const { status } = useAccount();
   const { data: balance } = useBalance({
     address: address,
   });
@@ -89,7 +90,7 @@ function WagmiWalletConnectInner({
 
   const handleDisconnect = () => {
     try {
-      disconnect();
+      disconnectWallet();
     } catch (err) {
       console.error("Disconnect error:", err);
     }
