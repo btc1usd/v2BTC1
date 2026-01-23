@@ -735,68 +735,129 @@ function Dashboard() {
       stateMutability: "view",
       type: "function",
     },
-  ];
+  ] as const;
 
-  // WBTC Collateral Balance from Vault
-  const { data: vaultWbtcBalance, refetch: refetchVaultWbtcBalance } =
+  // WBTC Collateral Balance from Vault - Using direct token balanceOf
+  const { data: vaultWbtcBalance, refetch: refetchVaultWbtcBalance, error: vaultWbtcError, isLoading: vaultWbtcLoading } =
     useReadContract({
-      address: protocolState?.contractAddresses?.vault as any,
-      abi: VAULT_COLLATERAL_BALANCE_ABI,
-      functionName: "collateralBalances",
-      args: protocolState?.contractAddresses?.wbtc
-        ? [protocolState.contractAddresses.wbtc as any]
+      address: protocolState?.contractAddresses?.wbtc as any,
+      abi: [
+        {
+          inputs: [{ internalType: "address", name: "account", type: "address" }],
+          name: "balanceOf",
+          outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+          stateMutability: "view",
+          type: "function",
+        },
+      ],
+      functionName: "balanceOf",
+      args: protocolState?.contractAddresses?.vault
+        ? [protocolState.contractAddresses.vault as any]
         : undefined,
+      chainId: configuredChainId,
       query: {
         enabled:
           !!protocolState?.contractAddresses?.vault &&
           !!protocolState?.contractAddresses?.wbtc,
+        retry: false, // Don't retry on Base Mainnet if token doesn't exist
       },
     });
 
-  // cbBTC Collateral Balance from Vault
-  const { data: vaultCbbtcBalance, refetch: refetchVaultCbbtcBalance } =
+  // cbBTC Collateral Balance from Vault - Using direct token balanceOf
+  const { data: vaultCbbtcBalance, refetch: refetchVaultCbbtcBalance, error: vaultCbbtcError, isLoading: vaultCbbtcLoading } =
     useReadContract({
-      address: protocolState?.contractAddresses?.vault as any,
-      abi: VAULT_COLLATERAL_BALANCE_ABI,
-      functionName: "collateralBalances",
-      args: protocolState?.contractAddresses?.cbbtc
-        ? [protocolState.contractAddresses.cbbtc as any]
+      address: protocolState?.contractAddresses?.cbbtc as any,
+      abi: [
+        {
+          inputs: [{ internalType: "address", name: "account", type: "address" }],
+          name: "balanceOf",
+          outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+          stateMutability: "view",
+          type: "function",
+        },
+      ],
+      functionName: "balanceOf",
+      args: protocolState?.contractAddresses?.vault
+        ? [protocolState.contractAddresses.vault as any]
         : undefined,
+      chainId: configuredChainId,
       query: {
         enabled:
           !!protocolState?.contractAddresses?.vault &&
           !!protocolState?.contractAddresses?.cbbtc,
+        retry: false,
       },
     });
 
-  // tBTC Collateral Balance from Vault
-  const { data: vaultTbtcBalance, refetch: refetchVaultTbtcBalance } =
+  // tBTC Collateral Balance from Vault - Using direct token balanceOf
+  const { data: vaultTbtcBalance, refetch: refetchVaultTbtcBalance, error: vaultTbtcError, isLoading: vaultTbtcLoading } =
     useReadContract({
-      address: protocolState?.contractAddresses?.vault as any,
-      abi: VAULT_COLLATERAL_BALANCE_ABI,
-      functionName: "collateralBalances",
-      args: protocolState?.contractAddresses?.tbtc
-        ? [protocolState.contractAddresses.tbtc as any]
+      address: protocolState?.contractAddresses?.tbtc as any,
+      abi: [
+        {
+          inputs: [{ internalType: "address", name: "account", type: "address" }],
+          name: "balanceOf",
+          outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+          stateMutability: "view",
+          type: "function",
+        },
+      ],
+      functionName: "balanceOf",
+      args: protocolState?.contractAddresses?.vault
+        ? [protocolState.contractAddresses.vault as any]
         : undefined,
+      chainId: configuredChainId,
       query: {
         enabled:
           !!protocolState?.contractAddresses?.vault &&
           !!protocolState?.contractAddresses?.tbtc,
+        retry: false,
       },
     });
   
   // ============ COMPREHENSIVE VAULT DEBUG ============
   console.log("\n============ VAULT COLLATERAL DEBUG ============");
-  console.log("🔍 Contract Addresses:");
+  console.log("🔍 Network Configuration:");
+  console.log("  User's Chain ID:", chainId);
+  console.log("  Configured Chain ID:", configuredChainId);
+  console.log("  Network Match:", chainId === configuredChainId ? "✅ YES" : "❌ NO - WRONG NETWORK!");
+  console.log("\n🔍 Contract Addresses:");
   console.log("  Vault:", protocolState?.contractAddresses?.vault);
   console.log("  WBTC:", protocolState?.contractAddresses?.wbtc);
   console.log("  cbBTC:", protocolState?.contractAddresses?.cbbtc);
   console.log("  tBTC:", protocolState?.contractAddresses?.tbtc);
-  console.log("\n🔍 Vault Collateral Balances:");
-  console.log("  WBTC:", vaultWbtcBalance?.toString(), "(", vaultWbtcBalance ? formatUnits(vaultWbtcBalance as unknown as bigint, 8) : "0", "BTC)");
-  console.log("  cbBTC:", vaultCbbtcBalance?.toString(), "(", vaultCbbtcBalance ? formatUnits(vaultCbbtcBalance as unknown as bigint, 8) : "0", "BTC)");
-  console.log("  tBTC:", vaultTbtcBalance?.toString(), "(", vaultTbtcBalance ? formatUnits(vaultTbtcBalance as unknown as bigint, 8) : "0", "BTC)");
+  console.log("\n🔍 Vault Collateral Balances (using ERC20 balanceOf):");
+  console.log("  WBTC:", {
+    data: vaultWbtcBalance?.toString(),
+    formatted: vaultWbtcBalance ? formatUnits(vaultWbtcBalance as unknown as bigint, 8) : "0",
+    loading: vaultWbtcLoading,
+    error: vaultWbtcError ? (vaultWbtcError.message.includes('returned no data') ? 'Token contract not found or RPC issue' : vaultWbtcError.message) : null
+  });
+  console.log("  cbBTC:", {
+    data: vaultCbbtcBalance?.toString(),
+    formatted: vaultCbbtcBalance ? formatUnits(vaultCbbtcBalance as unknown as bigint, 8) : "0",
+    loading: vaultCbbtcLoading,
+    error: vaultCbbtcError ? (vaultCbbtcError.message.includes('returned no data') ? 'Token contract not found or RPC issue' : vaultCbbtcError.message) : null
+  });
+  console.log("  tBTC:", {
+    data: vaultTbtcBalance?.toString(),
+    formatted: vaultTbtcBalance ? formatUnits(vaultTbtcBalance as unknown as bigint, 8) : "0",
+    loading: vaultTbtcLoading,
+    error: vaultTbtcError ? (vaultTbtcError.message.includes('returned no data') ? 'Token contract not found or RPC issue' : vaultTbtcError.message) : null
+  });
   console.log("\n🔍 Your BTC1 Balance:", btc1usdBalance?.toString(), "(", btc1usdBalance ? formatUnits(btc1usdBalance as unknown as bigint, 8) : "0", "BTC1)");
+  
+  if (chainId !== configuredChainId) {
+    console.warn("⚠️ WARNING: You are connected to the wrong network!");
+    console.warn(`   Please switch to chain ID ${configuredChainId} (${configuredChainId === 8453 ? 'Base Mainnet' : configuredChainId === 84532 ? 'Base Sepolia' : 'Unknown'})`);
+  }
+  
+  if (vaultWbtcError || vaultCbbtcError || vaultTbtcError) {
+    console.error("❌ ERROR: Unable to fetch vault balances. Possible causes:");
+    console.error("   1. Token contracts don't exist on this network");
+    console.error("   2. RPC endpoint is not responding");
+    console.error("   3. Wrong network selected in wallet");
+  }
   console.log("============================================\n");
 
   // Dev Wallet BTC1USD Balance - Updated from deployment config

@@ -4,7 +4,8 @@ import React, { ReactNode, createContext, useContext, useState, useEffect } from
 import { useAccount, useDisconnect } from "wagmi"
 import { useActiveAccount } from "thirdweb/react"
 import { client as thirdwebClient } from "./thirdweb-client"
-import { baseSepolia } from "thirdweb/chains"
+import { baseSepolia, base } from "thirdweb/chains"
+import { NETWORK_CONFIG } from "./contracts"
 import { WalletSelectionModal } from "@/components/wallet-selection-modal"
 
 interface Web3ContextType {
@@ -31,7 +32,25 @@ export function Web3Provider({ children }: { children: ReactNode }) {
   // Derived states
   const isConnected = !!thirdwebAccount || isWagmiConnected
   const address = (thirdwebAccount?.address as `0x${string}` | undefined) || wagmiAddress
-  const chainId = thirdwebAccount ? baseSepolia.id : wagmiChainId // Base Sepolia (84532) for Thirdweb in-app wallets
+  
+  // Use NETWORK_CONFIG for chainId, but fallback to baseSepolia for Thirdweb if on testnet
+  const activeChain = NETWORK_CONFIG.chainId === 84532 ? baseSepolia : base
+  const chainId = thirdwebAccount ? activeChain.id : wagmiChainId
+
+  // Debugging connection state
+  useEffect(() => {
+    if (thirdwebAccount || isWagmiConnected) {
+      console.log("🔐 Web3Provider Connection State:", {
+        type: thirdwebAccount ? "Thirdweb" : "Wagmi",
+        address: (thirdwebAccount?.address as string) || wagmiAddress,
+        isConnected,
+        isWagmiConnected,
+        hasThirdwebAccount: !!thirdwebAccount,
+        chainId,
+        targetChainId: activeChain.id
+      });
+    }
+  }, [thirdwebAccount, isWagmiConnected, isConnected, wagmiAddress, chainId, activeChain.id]);
 
   // Automatically close modal when connected
   useEffect(() => {

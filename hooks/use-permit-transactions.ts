@@ -36,6 +36,7 @@ export function usePermitTransactions() {
   const [transactionStatus, setTransactionStatus] = useState<TransactionStatus>('idle');
   const [transactionHash, setTransactionHash] = useState<string | undefined>();
   const [transactionError, setTransactionError] = useState<string | undefined>();
+  const [permit2ApprovedTokens, setPermit2ApprovedTokens] = useState<Set<string>>(new Set());
 
   // Get configured chain ID from environment
   const configuredChainId = process.env.NEXT_PUBLIC_CHAIN_ID 
@@ -511,6 +512,13 @@ export function usePermitTransactions() {
   ): Promise<bigint> => {
     if (!publicClient) return 0n;
 
+    // Check cache first to avoid unnecessary RPC calls
+    const cacheKey = `${tokenAddress.toLowerCase()}-${userAddress.toLowerCase()}`;
+    if (permit2ApprovedTokens.has(cacheKey)) {
+      console.log(`✅ Permit2 approval cached for ${tokenAddress}`);
+      return BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+    }
+
     try {
       // Check ERC20 allowance: user -> Permit2
       const allowance = await publicClient.readContract({
@@ -528,6 +536,12 @@ export function usePermitTransactions() {
         functionName: 'allowance',
         args: [userAddress, PERMIT2_ADDRESS],
       }) as bigint;
+
+      // If allowance is greater than 0, cache it
+      if (allowance > 0n) {
+        setPermit2ApprovedTokens(prev => new Set(prev).add(cacheKey));
+        console.log(`✅ Permit2 approval detected and cached for ${tokenAddress}:`, allowance.toString());
+      }
 
       return allowance;
     } catch (error: any) {
@@ -614,6 +628,13 @@ export function usePermitTransactions() {
           onSuccess: (result) => {
             setStatus('✅ Permit2 approved!');
             setIsProcessing(false);
+            
+            // Cache the approval
+            const userAddress = activeAccount.address.toLowerCase();
+            const cacheKey = `${tokenAddress.toLowerCase()}-${userAddress}`;
+            setPermit2ApprovedTokens(prev => new Set(prev).add(cacheKey));
+            console.log(`✅ Permit2 approval cached for ${tokenAddress}`);
+            
             onSuccess?.(result.transactionHash);
           },
           onError: (error) => {
@@ -651,6 +672,13 @@ export function usePermitTransactions() {
 
       if (receipt.status === 'success') {
         setStatus('✅ Permit2 approved!');
+        
+        // Cache the approval
+        const userAddress = wagmiAddress!.toLowerCase();
+        const cacheKey = `${tokenAddress.toLowerCase()}-${userAddress}`;
+        setPermit2ApprovedTokens(prev => new Set(prev).add(cacheKey));
+        console.log(`✅ Permit2 approval cached for ${tokenAddress}`);
+        
         onSuccess?.(hash);
       } else {
         throw new Error('Approval failed');
@@ -675,6 +703,14 @@ export function usePermitTransactions() {
     setStatus('');
   };
 
+  /**
+   * Clear Permit2 approval cache (useful when switching wallets)
+   */
+  const clearPermit2Cache = () => {
+    setPermit2ApprovedTokens(new Set());
+    console.log('🗑️ Permit2 approval cache cleared');
+  };
+
   return {
     mintWithPermit2,
     redeemWithPermit,
@@ -686,5 +722,6 @@ export function usePermitTransactions() {
     transactionHash,
     transactionError,
     resetTransactionState,
+    clearPermit2Cache,
   };
 }

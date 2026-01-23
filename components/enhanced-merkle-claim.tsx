@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
+import { useWeb3 } from "@/lib/web3-provider";
 
 const MERKLE_DISTRIBUTOR_ABI = [
   {
@@ -417,7 +418,15 @@ const DistributionItem = ({
 
 // Update the component to show all distributions, not just claimable ones
 export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boolean }) {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useWeb3();
+  
+  useEffect(() => {
+    console.log("=== EnhancedMerkleClaim Debug ===");
+    console.log("address:", address);
+    console.log("isConnected:", isConnected);
+    console.log("chainId:", chainId);
+  }, [address, isConnected, chainId]);
+
   const [distributionData, setDistributionData] =
     useState<DistributionData | null>(null);
   const [allDistributions, setAllDistributions] =

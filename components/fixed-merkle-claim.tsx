@@ -152,9 +152,10 @@ const MERKLE_DISTRIBUTOR_ABI = [
 ];
 
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
+import { useWeb3 } from "@/lib/web3-provider";
 
 export default function FixedMerkleClaim() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected } = useWeb3();
   const [distributionData, setDistributionData] =
     useState<DistributionData | null>(null);
   const [userClaim, setUserClaim] = useState<MerkleClaim | null>(null);

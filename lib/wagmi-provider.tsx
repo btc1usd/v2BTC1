@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider, createConfig, http, fallback } from "wagmi";
+import { NETWORK_CONFIG } from "./contracts";
 import { baseSepolia, base, mainnet, polygon, arbitrum, optimism, bsc, avalanche } from "wagmi/chains";
 import { injected, coinbaseWallet } from "wagmi/connectors";
 import React, { ReactNode, useState, useEffect } from "react";
@@ -13,13 +14,8 @@ const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "";
 // ============================================
 // NETWORK CONFIGURATION
 // ============================================
-// Current: Base Mainnet (Production)
-const TARGET_CHAIN = base;
-const ALCHEMY_ENDPOINT = 'base-mainnet';
-
-// For Testnet deployment, uncomment these lines:
-// const TARGET_CHAIN = baseSepolia;
-// const ALCHEMY_ENDPOINT = 'base-sepolia';
+const TARGET_CHAIN = NETWORK_CONFIG.chainId === 84532 ? baseSepolia : base;
+const ALCHEMY_ENDPOINT = NETWORK_CONFIG.chainId === 84532 ? 'base-sepolia' : 'base-mainnet';
 // ============================================
 
 // Create a react-query client once

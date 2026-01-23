@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
-import { useAccount } from 'wagmi';
+import { useWeb3 } from '@/lib/web3-provider';
 import {
   Settings,
   BarChart3,
@@ -29,7 +29,7 @@ export default function DistributionAdmin({
   onSetMerkleRoot,
   onExecuteDistribution 
 }: DistributionAdminProps) {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected } = useWeb3();
   
   // Use new auth system - separates UI access from transaction execution
   const authStatus = getAuthStatus(address);

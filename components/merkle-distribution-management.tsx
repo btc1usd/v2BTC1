@@ -11,7 +11,8 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useWeb3 } from '@/lib/web3-provider';
 import { formatUnits, parseUnits, encodeFunctionData } from 'viem';
 import {
   Settings,
@@ -249,7 +250,7 @@ const safeDecimalToBigInt = (value: string): bigint => {
     onSetMerkleRoot,
     onExecuteDistribution
   }: MerkleDistributionManagementProps = {}) {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected } = useWeb3();
 
 
   const [merkleRootInput, setMerkleRootInput] = useState('');
