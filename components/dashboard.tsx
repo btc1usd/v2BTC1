@@ -39,6 +39,7 @@ import SwapModal from "@/components/swap-modal";
 import LiquidityModal from "@/components/liquidity-modal";
 import SwapXModal from "@/components/swapx-modal";
 import BuyXModal from "@/components/buyx-modal";
+import { TransactionModal, TransactionDetails } from "@/components/transaction-modal";
 
 import { useTheme } from "next-themes";
 import { useWeb3 } from "@/lib/web3-provider";
@@ -240,6 +241,14 @@ function Dashboard() {
   const [liquidityModalOpen, setLiquidityModalOpen] = useState(false); // Liquidity modal state
   const [swapXModalOpen, setSwapXModalOpen] = useState(false); // SwapX modal state
   const [buyXModalOpen, setBuyXModalOpen] = useState(false); // BuyX modal state
+
+  // Transaction Modal State
+  const [showMintModal, setShowMintModal] = useState(false);
+  const [showRedeemModal, setShowRedeemModal] = useState(false);
+  const [showClaimModal, setShowClaimModal] = useState(false);
+  const [transactionDetails, setTransactionDetails] = useState<TransactionDetails | null>(null);
+  const [modalError, setModalError] = useState("");
+  const [modalStatus, setModalStatus] = useState("");
 
   // Safe Transaction Modal State
   const [safeModalOpen, setSafeModalOpen] = useState(false);
@@ -2080,6 +2089,91 @@ function Dashboard() {
     amount: bigint;
   } | null>(null);
 
+  // Mint Modal Handler - Shows modal with transaction details
+  const handleMintClick = () => {
+    if (!mintAmount || !address) {
+      setTransactionStatus("Please enter an amount and connect your wallet");
+      setTimeout(() => setTransactionStatus(""), 3000);
+      return;
+    }
+
+    const btcAmount = parseFloat(mintAmount);
+    if (isNaN(btcAmount) || btcAmount <= 0) {
+      setTransactionStatus("Please enter a valid BTC amount");
+      setTimeout(() => setTransactionStatus(""), 3000);
+      return;
+    }
+
+    const btcPrice = protocolState.btcPrice || 100000;
+    const usdValue = btcAmount * btcPrice;
+    const currentRatio = collateralRatio || 1.2;
+    const mintPrice = Math.max(1.2, currentRatio);
+    
+    // Calculate tokens and fees
+    const tokensToMint = usdValue / mintPrice;
+    const devFee = tokensToMint * 0.01;
+    const endowmentFee = tokensToMint * 0.01;
+
+    const details: TransactionDetails = {
+      type: "mint",
+      collateralAmount: mintAmount,
+      collateralSymbol: selectedCollateral,
+      btc1Amount: tokensToMint.toFixed(8),
+      mintPrice,
+      devFee: devFee.toFixed(8),
+      endowmentFee: endowmentFee.toFixed(8),
+      currentCollateralRatio: currentRatio,
+      isGasless: true,
+    };
+    
+    setTransactionDetails(details);
+    setShowMintModal(true);
+    setModalError("");
+    setModalStatus("");
+  };
+
+  // Redeem Modal Handler - Shows modal with transaction details
+  const handleRedeemClick = () => {
+    if (!redeemAmount || !address) {
+      setTransactionStatus("Please enter an amount and connect your wallet");
+      setTimeout(() => setTransactionStatus(""), 3000);
+      return;
+    }
+
+    const tokenAmount = parseFloat(redeemAmount);
+    if (isNaN(tokenAmount) || tokenAmount <= 0) {
+      setTransactionStatus("Please enter a valid amount");
+      setTimeout(() => setTransactionStatus(""), 3000);
+      return;
+    }
+
+    const currentRatio = collateralRatio || 1.2;
+    const btcPrice = protocolState.btcPrice || 100000;
+    const isStressMode = currentRatio < 1.1;
+    const effectivePrice = isStressMode ? 0.9 * currentRatio : 1.0;
+    
+    // Calculate redemption
+    const grossBtcValue = (tokenAmount * effectivePrice) / btcPrice;
+    const devFee = grossBtcValue * 0.001;
+    const btcToReceive = grossBtcValue - devFee;
+
+    const details: TransactionDetails = {
+      type: "redeem",
+      btc1AmountToRedeem: redeemAmount,
+      collateralToReceive: btcToReceive.toFixed(8),
+      redeemCollateralSymbol: selectedRedeemCollateral,
+      redeemPrice: effectivePrice,
+      stressMode: isStressMode,
+      currentCollateralRatio: currentRatio,
+      isGasless: true,
+    };
+    
+    setTransactionDetails(details);
+    setShowRedeemModal(true);
+    setModalError("");
+    setModalStatus("");
+  };
+
   const handleMint = async () => {
     console.log("=== BTC1USD MINT WITH PERMIT2 START ===");
 
@@ -2218,6 +2312,7 @@ function Dashboard() {
       chainId!,
       (hash) => {
         console.log("✅ Mint transaction successful:", hash);
+        setModalStatus(`✅ Mint successful! Hash: ${hash}`);
         setTransactionStatus(`Mint successful! Hash: ${hash}`);
         setMintAmount("");
         setMintingStep("idle");
@@ -2241,6 +2336,7 @@ function Dashboard() {
       },
       (error) => {
         console.error("❌ Mint failed:", error);
+        setModalError(error.message);
         setTransactionStatus(`Mint failed: ${error.message}`);
         setMintingStep("idle");
         setPendingTransactionType(null);
@@ -2492,6 +2588,7 @@ function Dashboard() {
         chainId,
         (hash) => {
           console.log("✅ Redeem transaction successful:", hash);
+          setModalStatus(`✅ Redeem successful! Hash: ${hash}`);
           setTransactionStatus(`Redeem successful! Hash: ${hash}`);
           setRedeemAmount("");
           setMintingStep("idle");
@@ -2515,6 +2612,7 @@ function Dashboard() {
         },
         (error) => {
           console.error("❌ Redeem failed:", error);
+          setModalError(error.message);
           setTransactionStatus(`Redeem failed: ${error.message}`);
           setMintingStep("idle");
           setPendingTransactionType(null);
@@ -4001,7 +4099,7 @@ function Dashboard() {
 
                     <div className="pt-2">
                       <Button
-                        onClick={handleMint}
+                        onClick={handleMintClick}
                         disabled={
                           !isConnected ||
                           !mintAmount ||
@@ -4360,7 +4458,7 @@ function Dashboard() {
 
                     <div className="pt-2">
                       <Button
-                        onClick={handleRedeem}
+                        onClick={handleRedeemClick}
                         disabled={
                           !isConnected ||
                           !redeemAmount ||
@@ -4601,6 +4699,45 @@ function Dashboard() {
           category={safeModalConfig.category}
         />
       )}
+
+      {/* Transaction Modals */}
+      <TransactionModal
+        open={showMintModal}
+        onOpenChange={setShowMintModal}
+        details={transactionDetails || {
+          type: "mint",
+          collateralAmount: "0",
+          collateralSymbol: "WBTC",
+          btc1Amount: "0",
+          mintPrice: 0,
+          devFee: "0",
+          endowmentFee: "0",
+          currentCollateralRatio: 0,
+          isGasless: true,
+        }}
+        onConfirm={handleMint}
+        isProcessing={mintingStep !== "idle"}
+        status={modalStatus}
+        error={modalError}
+      />
+      <TransactionModal
+        open={showRedeemModal}
+        onOpenChange={setShowRedeemModal}
+        details={transactionDetails || {
+          type: "redeem",
+          btc1AmountToRedeem: "0",
+          collateralToReceive: "0",
+          redeemCollateralSymbol: "WBTC",
+          redeemPrice: 0,
+          stressMode: false,
+          currentCollateralRatio: 0,
+          isGasless: true,
+        }}
+        onConfirm={handleRedeem}
+        isProcessing={mintingStep !== "idle"}
+        status={modalStatus}
+        error={modalError}
+      />
     </div>
   );
 }

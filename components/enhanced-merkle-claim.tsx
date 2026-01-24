@@ -31,6 +31,12 @@ import {
 
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { useWeb3 } from "@/lib/web3-provider";
+import { TransactionModal, TransactionDetails } from "@/components/transaction-modal";
+import { useActiveAccount } from "thirdweb/react";
+import { getContract, prepareContractCall, sendTransaction } from "thirdweb";
+import { client as thirdwebClient } from "@/lib/thirdweb-client";
+import { base, baseSepolia } from "thirdweb/chains";
+import { NETWORK_CONFIG } from "@/lib/contracts";
 
 const MERKLE_DISTRIBUTOR_ABI = [
   {
@@ -419,6 +425,9 @@ const DistributionItem = ({
 // Update the component to show all distributions, not just claimable ones
 export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boolean }) {
   const { address, isConnected, chainId } = useWeb3();
+  const activeAccount = useActiveAccount();
+  const isThirdwebWallet = !!activeAccount;
+  const targetChain = NETWORK_CONFIG.chainId === 84532 ? baseSepolia : base;
   
   useEffect(() => {
     console.log("=== EnhancedMerkleClaim Debug ===");
@@ -618,9 +627,16 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
   // Track claim success state
   const [claimSuccess, setClaimSuccess] = useState(false);
 
+  // Transaction Modal State
+  const [showClaimModal, setShowClaimModal] = useState(false);
+  const [transactionDetails, setTransactionDetails] = useState<TransactionDetails | null>(null);
+  const [modalError, setModalError] = useState("");
+  const [modalStatus, setModalStatus] = useState("");
+
   // Refresh claim status when transaction is confirmed
   useEffect(() => {
-    if (isConfirmed) {
+    if (isConfirmed && claimData) {
+      setModalStatus(`✅ Claim successful! Hash: ${claimData}`);
       // Set claim success state
       setClaimSuccess(true);
 
@@ -747,6 +763,30 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
     setRefreshing(false);
   };
 
+  // Show claim modal with transaction details
+  const handleClaimClick = (distributionId?: string, claim?: MerkleClaim) => {
+    const claimToUse = claim || userClaim;
+    const distributionToUse = distributionId || distributionData?.distributionId;
+
+    if (!claimToUse || !distributionToUse) {
+      setError("No claim data available. Please refresh and try again.");
+      return;
+    }
+
+    const claimAmount = formatUnits(claimToUse.amount as any, 8);
+
+    const details: TransactionDetails = {
+      type: "claim",
+      claimAmount: claimAmount,
+      distributionCount: 1,
+    };
+
+    setTransactionDetails(details);
+    setShowClaimModal(true);
+    setModalError("");
+    setModalStatus("");
+  };
+
   // Handle claim
   const handleClaim = async (distributionId?: string, claim?: MerkleClaim) => {
     // Use provided claim or fallback to current userClaim
@@ -756,7 +796,7 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
 
     if (!claimToUse || !distributionToUse) {
       console.error("No user claim or distribution data available");
-      setError("No claim data available. Please refresh and try again.");
+      setModalError("No claim data available. Please refresh and try again.");
       return;
     }
 
@@ -767,28 +807,68 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
       amount: claimToUse.amount,
       proofLength: claimToUse.proof.length,
       contract: MERKLE_DISTRIBUTOR_ADDRESS,
+      isThirdwebWallet,
     });
 
     try {
-      writeContract({
-        address: MERKLE_DISTRIBUTOR_ADDRESS as `0x${string}`,
-        abi: MERKLE_DISTRIBUTOR_ABI,
-        functionName: "claim",
-        args: [
-          BigInt(distributionToUse),
-          BigInt(claimToUse.index),
-          claimToUse.account as `0x${string}`,
-          BigInt(claimToUse.amount),
-          claimToUse.proof as `0x${string}`[],
-        ],
-      });
+      if (isThirdwebWallet && activeAccount) {
+        // Use Thirdweb for in-app wallets
+        console.log("🔵 Using Thirdweb for claim");
+        
+        const contract = getContract({
+          client: thirdwebClient,
+          address: MERKLE_DISTRIBUTOR_ADDRESS,
+          chain: targetChain,
+        });
+
+        const transaction = prepareContractCall({
+          contract,
+          method: "function claim(uint256 distributionId, uint256 index, address account, uint256 amount, bytes32[] merkleProof)",
+          params: [
+            BigInt(distributionToUse),
+            BigInt(claimToUse.index),
+            claimToUse.account as `0x${string}`,
+            BigInt(claimToUse.amount),
+            claimToUse.proof as `0x${string}`[],
+          ],
+        });
+
+        const result = await sendTransaction({
+          transaction,
+          account: activeAccount,
+        });
+
+        console.log("✅ Thirdweb claim successful:", result.transactionHash);
+        setModalStatus(`✅ Claim successful! Hash: ${result.transactionHash}`);
+        
+        // Set claim success and trigger refresh
+        setClaimSuccess(true);
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
+      } else {
+        // Use wagmi for MetaMask and other wallets
+        console.log("🟠 Using wagmi for claim");
+        writeContract({
+          address: MERKLE_DISTRIBUTOR_ADDRESS as `0x${string}`,
+          abi: MERKLE_DISTRIBUTOR_ABI,
+          functionName: "claim",
+          args: [
+            BigInt(distributionToUse),
+            BigInt(claimToUse.index),
+            claimToUse.account as `0x${string}`,
+            BigInt(claimToUse.amount),
+            claimToUse.proof as `0x${string}`[],
+          ],
+        });
+      }
     } catch (error) {
       console.error("Error initiating claim transaction:", error);
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to initiate claim transaction"
-      );
+      const errorMessage = error instanceof Error
+        ? error.message
+        : "Failed to initiate claim transaction";
+      setModalError(errorMessage);
+      setError(errorMessage);
     }
   };
 
@@ -1017,7 +1097,7 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
                     complete: false,
                   }}
                   userClaimForDist={dist.claim}
-                  onClaim={handleClaim}
+                  onClaim={handleClaimClick}
                   isClaimLoading={isClaimLoading}
                   isConfirming={isConfirming}
                   isConnected={isConnected}
@@ -1187,7 +1267,7 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
 
               {!isAlreadyClaimed && !isReclaimed && !isExpired && (
                 <Button
-                  onClick={() => handleClaim()}
+                  onClick={() => handleClaimClick()}
                   disabled={!canUserClaim || isClaimLoading || isConfirming}
                   className="w-full bg-blue-600 hover:bg-blue-700"
                 >
@@ -1274,6 +1354,21 @@ export default function EnhancedMerkleClaim({ isAdmin = false }: { isAdmin?: boo
           <div>• The system is fully decentralized, permissionless and automated.</div>
         </CardContent>
       </Card>
+
+      {/* Transaction Modal */}
+      <TransactionModal
+        open={showClaimModal}
+        onOpenChange={setShowClaimModal}
+        details={transactionDetails || {
+          type: "claim",
+          claimAmount: "0",
+          distributionCount: 1,
+        }}
+        onConfirm={handleClaim}
+        isProcessing={isClaimLoading || isConfirming}
+        status={modalStatus}
+        error={modalError}
+      />
     </div>
   );
 }

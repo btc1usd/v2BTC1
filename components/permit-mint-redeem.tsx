@@ -85,15 +85,9 @@ export default function PermitMintRedeem({ protocolState, userBalances, onSucces
 
   // Prepare and show mint modal
   const handleMintClick = () => {
-    console.log("🔵 handleMintClick called", { address, chainId, mintAmount });
-    
-    if (!address || !chainId || !mintAmount) {
-      console.warn("⚠️ Missing required fields:", { address, chainId, mintAmount });
-      return;
-    }
+    if (!address || !chainId || !mintAmount) return;
 
     const btcAmount = parseFloat(mintAmount);
-    console.log("🔵 Calculating mint details", { btcAmount });
     
     const btcPrice = protocolState.btcPrice || 100000;
     const usdValue = btcAmount * btcPrice;
@@ -125,10 +119,7 @@ export default function PermitMintRedeem({ protocolState, userBalances, onSucces
       isGasless: true,
     };
     
-    console.log("🔵 Setting transaction details:", details);
     setTransactionDetails(details);
-    
-    console.log("🔵 Opening mint modal");
     setShowMintModal(true);
     setModalError("");
   };
@@ -167,15 +158,9 @@ export default function PermitMintRedeem({ protocolState, userBalances, onSucces
 
   // Prepare and show redeem modal
   const handleRedeemClick = () => {
-    console.log("🟠 handleRedeemClick called", { address, chainId, redeemAmount });
-    
-    if (!address || !chainId || !redeemAmount) {
-      console.warn("⚠️ Missing required fields:", { address, chainId, redeemAmount });
-      return;
-    }
+    if (!address || !chainId || !redeemAmount) return;
 
     const tokenAmount = parseFloat(redeemAmount);
-    console.log("🟠 Calculating redeem details", { tokenAmount });
     
     const currentRatio = protocolState.collateralRatio || 1.2;
     const btcPrice = protocolState.btcPrice || 100000;
@@ -206,10 +191,7 @@ export default function PermitMintRedeem({ protocolState, userBalances, onSucces
       isGasless: true,
     };
     
-    console.log("🟠 Setting transaction details:", details);
     setTransactionDetails(details);
-    
-    console.log("🟠 Opening redeem modal");
     setShowRedeemModal(true);
     setModalError("");
   };

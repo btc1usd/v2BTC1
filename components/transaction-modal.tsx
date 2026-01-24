@@ -70,8 +70,6 @@ export function TransactionModal({
   status = "",
   error = "",
 }: TransactionModalProps) {
-  console.log("🐛 TransactionModal render:", { open, details, isProcessing, status, error });
-  
   const { address, isConnected } = useWeb3();
   const activeAccount = useActiveAccount();
   const [step, setStep] = useState<"review" | "signing" | "success" | "error">("review");
@@ -188,16 +186,6 @@ export function TransactionModal({
                 <span className="text-muted-foreground">Current Collateral Ratio</span>
                 <span className="font-medium">{details.currentCollateralRatio?.toFixed(2)}x</span>
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground flex items-center gap-1">
-                  New Collateral Ratio
-                  {details.newCollateralRatio && details.currentCollateralRatio && 
-                   details.newCollateralRatio > details.currentCollateralRatio && (
-                    <TrendingUp className="h-3 w-3 text-green-500" />
-                  )}
-                </span>
-                <span className="font-medium text-green-500">{details.newCollateralRatio?.toFixed(2)}x</span>
-              </div>
             </div>
 
             {/* Gas Info */}
@@ -258,16 +246,6 @@ export function TransactionModal({
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Current Collateral Ratio</span>
                 <span className="font-medium">{details.currentCollateralRatio?.toFixed(2)}x</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground flex items-center gap-1">
-                  New Collateral Ratio
-                  {details.newCollateralRatio && details.currentCollateralRatio && 
-                   details.newCollateralRatio < details.currentCollateralRatio && (
-                    <TrendingDown className="h-3 w-3 text-orange-500" />
-                  )}
-                </span>
-                <span className="font-medium text-orange-500">{details.newCollateralRatio?.toFixed(2)}x</span>
               </div>
             </div>
 
@@ -406,12 +384,6 @@ export function TransactionModal({
                     <span className="font-medium">{details.collateralAmount} {details.collateralSymbol}</span>
                   </div>
                   <Separator className="bg-green-500/20" />
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">New Collateral Ratio</span>
-                    <Badge variant="outline" className="border-green-500/50 text-green-500">
-                      {details.newCollateralRatio?.toFixed(2)}x
-                    </Badge>
-                  </div>
                 </>
               )}
               
@@ -426,12 +398,6 @@ export function TransactionModal({
                     <span className="font-medium text-green-500">{details.collateralToReceive} {details.redeemCollateralSymbol}</span>
                   </div>
                   <Separator className="bg-green-500/20" />
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">New Collateral Ratio</span>
-                    <Badge variant="outline" className="border-orange-500/50 text-orange-500">
-                      {details.newCollateralRatio?.toFixed(2)}x
-                    </Badge>
-                  </div>
                 </>
               )}
               
