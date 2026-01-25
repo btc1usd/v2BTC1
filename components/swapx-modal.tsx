@@ -22,7 +22,7 @@ export default function SwapXModal({ isOpen, onClose }: SwapXModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={false}>
       <DialogContent 
-        className="w-[100vw] h-[100vh] sm:w-[95vw] sm:h-auto sm:max-w-lg p-0 bg-gray-950 border-0 sm:border border-gray-800 rounded-none sm:rounded-2xl sm:rounded-[32px] shadow-2xl sm:max-h-[90vh] flex flex-col z-50"
+        className="fixed inset-0 w-screen h-screen sm:relative sm:inset-auto sm:w-[95vw] sm:h-auto sm:max-w-lg p-0 bg-gray-950 border-0 sm:border border-gray-800 rounded-none sm:rounded-2xl sm:rounded-[32px] shadow-2xl sm:max-h-[90vh] flex flex-col z-50 data-[state=open]:animate-in data-[state=closed]:animate-out"
         onOpenAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => e.preventDefault()}
