@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import OneInchSwapWidget from './OneInchSwapWidget';
 import { ArrowLeftRight } from 'lucide-react';
 
@@ -40,11 +41,11 @@ export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
           </p>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar px-4 pb-4">
+        <ScrollArea className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4">
           <div className="w-full max-w-md mx-auto">
             <OneInchSwapWidget />
           </div>
-        </div>
+        </ScrollArea>
 
         <div className="p-4 sm:p-6 bg-gray-900/50 border-t border-gray-800 flex justify-center flex-shrink-0">
           <button

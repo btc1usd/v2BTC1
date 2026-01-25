@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { SwapWidget } from "thirdweb/react";
 import { client as thirdwebClient } from "@/lib/thirdweb-client";
 import { base } from "thirdweb/chains";
@@ -38,18 +39,20 @@ export default function SwapXModal({ isOpen, onClose }: SwapXModalProps) {
           </p>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto p-1 custom-scrollbar overflow-x-visible pointer-events-auto flex flex-col items-center">
-          <SwapWidget
-            client={thirdwebClient}
-            theme="dark"
-            prefill={{
-              buyToken: {
-                chainId: base.id,
-                tokenAddress: CONTRACT_ADDRESSES.BTC1USD as string,
-              },
-            }}
-          />
-        </div>
+        <ScrollArea className="flex-1 p-1 overflow-y-auto overflow-x-visible pointer-events-auto flex flex-col items-center">
+          <div className="w-full flex justify-center">
+            <SwapWidget
+              client={thirdwebClient}
+              theme="dark"
+              prefill={{
+                buyToken: {
+                  chainId: base.id,
+                  tokenAddress: CONTRACT_ADDRESSES.BTC1USD as string,
+                },
+              }}
+            />
+          </div>
+        </ScrollArea>
 
         <div className="p-4 sm:p-6 bg-gray-900/50 border-t border-gray-800 flex justify-center flex-shrink-0">
           <button

@@ -1,6 +1,7 @@
 'use client';
 
 import BuyXModal from '@/components/buyx-modal';
+import '@/lib/web3';
 
 export default function MobileBuyPage() {
   return (

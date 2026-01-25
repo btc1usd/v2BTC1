@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { BuyWidget } from "thirdweb/react";
 import { client as thirdwebClient } from "@/lib/thirdweb-client";
 import { base } from "thirdweb/chains";
@@ -36,7 +37,7 @@ export default function BuyXModal({ isOpen, onClose }: BuyXModalProps) {
           </p>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar px-4 pb-4">
+        <ScrollArea className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4">
           <div className="w-full max-w-md mx-auto">
             <BuyWidget
               client={thirdwebClient}
@@ -46,7 +47,7 @@ export default function BuyXModal({ isOpen, onClose }: BuyXModalProps) {
               tokenEditable={true}
             />
           </div>
-        </div>
+        </ScrollArea>
 
         <div className="p-4 sm:p-6 bg-gray-900/50 border-t border-gray-800 flex justify-center flex-shrink-0">
           <button
