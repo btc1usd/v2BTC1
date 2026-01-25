@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
       chainId = 8453,
       tokenAddress = CONTRACT_ADDRESSES.BTC1USD,
       receiver,
-      amountWei, // Optional
+      amountWei, // Optional - if not provided, user selects amount in onramp UI
       currency = "USD",
       country = "US"
     } = body;
@@ -30,16 +30,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const preparedOnramp = await Bridge.Onramp.prepare({
+    // Prepare onramp configuration
+    const onrampConfig: any = {
       client: thirdwebClient,
       onramp: onramp as any,
       chainId: Number(chainId),
       tokenAddress: tokenAddress as any,
       receiver: receiver as any,
-      amount: amountWei ? BigInt(amountWei) : undefined,
       currency,
       country,
-    });
+    };
+
+    // Only add amount if provided (optional parameter)
+    if (amountWei) {
+      onrampConfig.amount = BigInt(amountWei);
+    }
+
+    const preparedOnramp = await Bridge.Onramp.prepare(onrampConfig);
 
     return NextResponse.json({
       link: preparedOnramp.link,
