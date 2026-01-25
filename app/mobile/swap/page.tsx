@@ -1,11 +1,12 @@
 'use client';
 
-import SwapModal from '@/components/swap-modal';
+import SwapXModal from '@/components/swapx-modal';
+import '@/lib/web3';
 
 export default function MobileSwapPage() {
   return (
     <div className="min-h-screen bg-gray-950">
-      <SwapModal isOpen={true} onClose={() => {
+      <SwapXModal isOpen={true} onClose={() => {
         if (window.ReactNativeWebView) {
           window.ReactNativeWebView.postMessage(JSON.stringify({ action: 'close' }));
         }

@@ -11,6 +11,9 @@ declare global {
       on: (event: string, callback: (...args: any[]) => void) => void
       removeListener: (event: string, callback: (...args: any[]) => void) => void
     }
+    ReactNativeWebView?: {
+      postMessage: (message: string) => void
+    }
   }
 }
 
