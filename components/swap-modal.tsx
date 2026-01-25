@@ -23,12 +23,10 @@ interface SwapModalProps {
 
 export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={false}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent 
-        className="w-[95vw] sm:max-w-lg p-0 bg-gray-950 border-gray-800 rounded-2xl sm:rounded-[32px] shadow-2xl z-50 max-h-[90vh] flex flex-col"
+        className="w-[95vw] sm:max-w-lg p-0 bg-gray-950 border-gray-800 rounded-2xl sm:rounded-[32px] shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
         onOpenAutoFocus={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
-        onPointerDownOutside={(e) => e.preventDefault()}
       >
         <DialogHeader className="p-6 sm:p-8 pb-4 flex-shrink-0">
           <DialogTitle className="flex items-center gap-4 text-white text-3xl font-bold">
@@ -42,8 +40,10 @@ export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
           </p>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar pointer-events-auto flex flex-col items-center">
-          <OneInchSwapWidget />
+        <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar px-4 pb-4">
+          <div className="w-full max-w-md mx-auto">
+            <OneInchSwapWidget />
+          </div>
         </div>
 
         <div className="p-4 sm:p-6 bg-gray-900/50 border-t border-gray-800 flex justify-center flex-shrink-0">

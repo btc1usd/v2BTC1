@@ -19,12 +19,10 @@ interface BuyXModalProps {
 
 export default function BuyXModal({ isOpen, onClose }: BuyXModalProps) {
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={false}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent 
-        className="w-[95vw] sm:max-w-lg p-0 bg-gray-950 border-gray-800 rounded-2xl sm:rounded-[32px] shadow-2xl max-h-[90vh] flex flex-col z-50"
+        className="w-[95vw] sm:max-w-lg p-0 bg-gray-950 border-gray-800 rounded-2xl sm:rounded-[32px] shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
         onOpenAutoFocus={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
-        onPointerDownOutside={(e) => e.preventDefault()}
       >
         <DialogHeader className="p-6 sm:p-8 pb-4 flex-shrink-0">
           <DialogTitle className="flex items-center gap-4 text-white text-2xl sm:text-3xl font-bold">
@@ -38,14 +36,16 @@ export default function BuyXModal({ isOpen, onClose }: BuyXModalProps) {
           </p>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto p-1 custom-scrollbar overflow-x-visible pointer-events-auto flex flex-col items-center">
-          <BuyWidget
-            client={thirdwebClient}
-            theme="dark"
-            chain={base}
-            tokenAddress={CONTRACT_ADDRESSES.BTC1USD as `0x${string}`}
-            tokenEditable={true}
-          />
+        <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar px-4 pb-4">
+          <div className="w-full max-w-md mx-auto">
+            <BuyWidget
+              client={thirdwebClient}
+              theme="dark"
+              chain={base}
+              tokenAddress={CONTRACT_ADDRESSES.BTC1USD as `0x${string}`}
+              tokenEditable={true}
+            />
+          </div>
         </div>
 
         <div className="p-4 sm:p-6 bg-gray-900/50 border-t border-gray-800 flex justify-center flex-shrink-0">
