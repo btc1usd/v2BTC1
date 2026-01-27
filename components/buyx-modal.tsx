@@ -22,7 +22,7 @@ export default function BuyXModal({ isOpen, onClose }: BuyXModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={false}>
       <DialogContent 
-        className="fixed inset-0 w-screen h-screen sm:fixed sm:inset-0 sm:w-[520px] sm:h-[95vh] p-0 bg-gray-950 border-0 sm:border border-gray-800 rounded-none sm:rounded-2xl sm:rounded-[32px] shadow-2xl flex flex-col z-50 data-[state=open]:animate-in data-[state=closed]:animate-out left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 overflow-x-scroll overflow-y-scroll scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin"
+        className="fixed inset-0 w-screen h-screen sm:fixed sm:inset-0 sm:w-[520px] sm:h-[95vh] p-0 bg-gray-950 border-0 sm:border border-gray-800 rounded-none sm:rounded-2xl sm:rounded-[32px] shadow-2xl flex flex-col z-50 data-[state=open]:animate-in data-[state=closed]:animate-out left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 overflow-x-scroll overflow-y-scroll [-webkit-overflow-scrolling:touch] scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin"
         onOpenAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => e.preventDefault()}
@@ -39,15 +39,17 @@ export default function BuyXModal({ isOpen, onClose }: BuyXModalProps) {
           </p>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 overflow-y-scroll overflow-x-scroll px-4 pb-6 [&>div]:whitespace-nowrap scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin">
-          <div className="w-full min-w-max max-w-[800px] mx-auto overflow-x-scroll overflow-y-scroll scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin">
-            <BuyWidget
-              client={thirdwebClient}
-              theme="dark"
-              chain={base}
-              tokenAddress="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-              tokenEditable={true}
-            />
+        <ScrollArea className="flex-1 overflow-y-scroll overflow-x-scroll px-4 pb-6 [&>div]:whitespace-nowrap overflow-x-scroll [-webkit-overflow-scrolling:touch] scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin">
+          <div className="w-full min-w-max max-w-none mx-auto overflow-x-scroll overflow-y-scroll [-webkit-overflow-scrolling:touch] scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin">
+            <div className="w-full min-w-[320px]">
+              <BuyWidget
+                client={thirdwebClient}
+                theme="dark"
+                chain={base}
+                tokenAddress="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                tokenEditable={true}
+              />
+            </div>
           </div>
         </ScrollArea>
 

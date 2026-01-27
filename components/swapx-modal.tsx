@@ -22,7 +22,7 @@ export default function SwapXModal({ isOpen, onClose }: SwapXModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={false}>
       <DialogContent 
-        className="fixed inset-0 w-screen h-screen sm:fixed sm:inset-0 sm:w-[520px] sm:h-[95vh] p-0 bg-gray-950 border-0 sm:border border-gray-800 rounded-none sm:rounded-2xl sm:rounded-[32px] shadow-2xl flex flex-col z-50 data-[state=open]:animate-in data-[state=closed]:animate-out left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 overflow-x-scroll overflow-y-scroll scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin"
+        className="fixed inset-0 w-screen h-screen sm:fixed sm:inset-0 sm:w-[520px] sm:h-[95vh] p-0 bg-gray-950 border-0 sm:border border-gray-800 rounded-none sm:rounded-2xl sm:rounded-[32px] shadow-2xl flex flex-col z-50 data-[state=open]:animate-in data-[state=closed]:animate-out left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 overflow-x-scroll overflow-y-scroll [-webkit-overflow-scrolling:touch] scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin"
         onOpenAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => e.preventDefault()}
@@ -39,25 +39,27 @@ export default function SwapXModal({ isOpen, onClose }: SwapXModalProps) {
           </p>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 px-4 py-2 overflow-y-scroll overflow-x-scroll [&>div]:whitespace-nowrap scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin">
-          <div className="w-full flex justify-center pb-6 overflow-x-scroll overflow-y-scroll scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin">
-            <div className="w-full min-w-max max-w-[800px] mx-auto overflow-x-scroll overflow-y-scroll scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin">
-              <SwapWidget
-                client={thirdwebClient}
-                theme="dark"
-               prefill={{
-    // Base USDC
-    buyToken: {
-      chainId: 8453,
-      tokenAddress: "0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5",
-    },
-    // Polygon native token (POL)
-    sellToken: {
-      tokenAddress: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-      chainId:8453,
-    },
-  }}
-              />
+        <ScrollArea className="flex-1 px-4 py-2 overflow-y-scroll overflow-x-scroll [&>div]:whitespace-nowrap [-webkit-overflow-scrolling:touch] scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin">
+          <div className="w-full flex justify-center pb-6 overflow-x-scroll overflow-y-scroll [-webkit-overflow-scrolling:touch] scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin">
+            <div className="w-full min-w-max max-w-none mx-auto overflow-x-scroll overflow-y-scroll [-webkit-overflow-scrolling:touch] scrollbar scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thin">
+              <div className="w-full min-w-[320px]">
+                  <SwapWidget
+                  client={thirdwebClient}
+                  theme="dark"
+                 prefill={{
+      // Base USDC
+      buyToken: {
+        chainId: 8453,
+        tokenAddress: "0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5",
+      },
+      // Polygon native token (POL)
+      sellToken: {
+        tokenAddress: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+        chainId:8453,
+      },
+    }}
+                />
+              </div>
             </div>
           </div>
         </ScrollArea>
