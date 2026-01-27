@@ -179,7 +179,7 @@ export function WalletSelectionModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="fixed inset-0 w-screen h-screen sm:fixed sm:inset-0 sm:w-[520px] sm:h-[95vh] bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border-0 sm:border border-gray-700/50 text-white shadow-2xl flex flex-col z-50 data-[state=open]:animate-in data-[state=closed]:animate-out sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 overflow-hidden">
+      <DialogContent className="fixed inset-0 w-screen h-screen sm:fixed sm:inset-0 sm:w-[520px] sm:h-[95vh] bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border-0 sm:border border-gray-700/50 text-white shadow-2xl flex flex-col z-50 data-[state=open]:animate-in data-[state=closed]:animate-out left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 overflow-hidden">
         {/* Animated background gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 via-transparent to-blue-500/5 animate-pulse" />
 
