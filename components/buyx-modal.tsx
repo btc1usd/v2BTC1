@@ -22,7 +22,7 @@ export default function BuyXModal({ isOpen, onClose }: BuyXModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={false}>
       <DialogContent 
-        className="fixed inset-0 w-screen h-screen sm:fixed sm:inset-0 sm:w-[95vw] sm:h-[95vh] sm:max-w-2xl p-0 bg-gray-950 border-0 sm:border border-gray-800 rounded-none sm:rounded-2xl sm:rounded-[32px] shadow-2xl flex flex-col z-50 data-[state=open]:animate-in data-[state=closed]:animate-out sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2"
+        className="fixed inset-0 w-screen h-screen sm:fixed sm:inset-0 sm:w-[520px] sm:h-[95vh] p-0 bg-gray-950 border-0 sm:border border-gray-800 rounded-none sm:rounded-2xl sm:rounded-[32px] shadow-2xl flex flex-col z-50 data-[state=open]:animate-in data-[state=closed]:animate-out sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2"
         onOpenAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => e.preventDefault()}
@@ -39,8 +39,8 @@ export default function BuyXModal({ isOpen, onClose }: BuyXModalProps) {
           </p>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 overflow-y-auto overflow-x-hidden px-0 sm:px-4 pb-6">
-          <div className="w-full max-w-[500px] min-w-[300px] mx-auto px-2 sm:px-0 h-full">
+        <ScrollArea className="flex-1 overflow-y-auto overflow-x-hidden px-0 sm:px-4 pb-6 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thumb-rounded-full scrollbar-track-rounded-full dark:scrollbar-thumb-gray-500 dark:scrollbar-track-gray-700">
+          <div className="w-full max-w-[500px] mx-auto px-2 sm:px-0">
             <BuyWidget
               client={thirdwebClient}
               theme="dark"
