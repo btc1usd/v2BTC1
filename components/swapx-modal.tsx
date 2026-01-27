@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { SwapWidget } from "thirdweb/react";
 import { client as thirdwebClient } from "@/lib/thirdweb-client";
 import { base } from "thirdweb/chains";
@@ -40,6 +40,7 @@ export default function SwapXModal({ isOpen, onClose }: SwapXModalProps) {
         </DialogHeader>
 
         <ScrollArea className="flex-1 px-4 py-2 overflow-y-auto overflow-x-auto">
+          <ScrollBar orientation="horizontal" />
           <div className="w-full flex justify-center pb-6">
             <div className="w-full max-w-[500px]">
               <SwapWidget

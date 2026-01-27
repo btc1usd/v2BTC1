@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { BuyWidget } from "thirdweb/react";
 import { client as thirdwebClient } from "@/lib/thirdweb-client";
 import { base } from "thirdweb/chains";
@@ -40,6 +40,7 @@ export default function BuyXModal({ isOpen, onClose }: BuyXModalProps) {
         </DialogHeader>
 
         <ScrollArea className="flex-1 overflow-y-auto overflow-x-auto px-4 pb-6">
+          <ScrollBar orientation="horizontal" />
           <div className="w-full max-w-[500px] mx-auto">
             <BuyWidget
               client={thirdwebClient}
