@@ -39,8 +39,8 @@ export default function SwapXModal({ isOpen, onClose }: SwapXModalProps) {
           </p>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 px-0 sm:px-4 py-2 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thumb-rounded-full scrollbar-track-rounded-full dark:scrollbar-thumb-gray-500 dark:scrollbar-track-gray-700">
-          <div className="w-full flex justify-center px-2 sm:px-0 pb-6">
+        <ScrollArea className="flex-1 px-4 py-2 overflow-y-auto overflow-x-hidden">
+          <div className="w-full flex justify-center pb-6">
             <div className="w-full max-w-[500px]">
               <SwapWidget
                 client={thirdwebClient}

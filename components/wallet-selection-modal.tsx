@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Card } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Loader2,
   Wallet,
@@ -178,7 +179,7 @@ export function WalletSelectionModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-gray-700/50 text-white shadow-2xl overflow-hidden">
+      <DialogContent className="fixed inset-0 w-screen h-screen sm:fixed sm:inset-0 sm:w-[520px] sm:h-[95vh] bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border-0 sm:border border-gray-700/50 text-white shadow-2xl flex flex-col z-50 data-[state=open]:animate-in data-[state=closed]:animate-out sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 overflow-hidden">
         {/* Animated background gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 via-transparent to-blue-500/5 animate-pulse" />
 
@@ -186,8 +187,8 @@ export function WalletSelectionModal({
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-orange-500/20 rounded-full blur-3xl" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-blue-500/20 rounded-full blur-3xl" />
 
-        <div className="relative z-10">
-          <DialogHeader className="space-y-3 pb-6">
+        <div className="relative z-10 flex flex-col h-full">
+          <DialogHeader className="space-y-3 pb-6 flex-shrink-0">
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
@@ -205,93 +206,95 @@ export function WalletSelectionModal({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 py-6">
-            <AnimatePresence>
-              {walletOptions.map((wallet, index) => {
-                const connector = wallet.id === "thirdweb" ? { id: "thirdweb" } : findConnector(wallet.id);
-                const isConnecting = connectingWallet === wallet.id;
-                const isAvailable = !!connector;
+          <ScrollArea className="flex-1 overflow-y-auto overflow-x-hidden px-4">
+            <div className="space-y-3 py-2">
+              <AnimatePresence>
+                {walletOptions.map((wallet, index) => {
+                  const connector = wallet.id === "thirdweb" ? { id: "thirdweb" } : findConnector(wallet.id);
+                  const isConnecting = connectingWallet === wallet.id;
+                  const isAvailable = !!connector;
 
-                return (
-                  <motion.div
-                    key={wallet.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <Card
-                      className={`group relative overflow-hidden transition-all duration-300 ${
-                        isAvailable
-                          ? "bg-gradient-to-br from-gray-800/50 to-gray-900/50 border-gray-700/50 hover:border-orange-500/50 hover:shadow-xl hover:shadow-orange-500/10 cursor-pointer hover:-translate-y-1"
-                          : "bg-gray-800/20 border-gray-700/30 opacity-40 cursor-not-allowed"
-                      }`}
-                      onClick={() =>
-                        isAvailable && !isConnecting && handleConnect(wallet.id)
-                      }
+                  return (
+                    <motion.div
+                      key={wallet.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
                     >
-                      {/* Gradient overlay */}
-                      <div
-                        className={`absolute inset-0 bg-gradient-to-br ${wallet.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}
-                      />
+                      <Card
+                        className={`group relative overflow-hidden transition-all duration-300 ${
+                          isAvailable
+                            ? "bg-gradient-to-br from-gray-800/50 to-gray-900/50 border-gray-700/50 hover:border-orange-500/50 hover:shadow-xl hover:shadow-orange-500/10 cursor-pointer hover:-translate-y-1"
+                            : "bg-gray-800/20 border-gray-700/30 opacity-40 cursor-not-allowed"
+                        }`}
+                        onClick={() =>
+                          isAvailable && !isConnecting && handleConnect(wallet.id)
+                        }
+                      >
+                        {/* Gradient overlay */}
+                        <div
+                          className={`absolute inset-0 bg-gradient-to-br ${wallet.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}
+                        />
 
-                      {/* Recommended badge */}
-                      {wallet.recommended && isAvailable && (
-                        <div className="absolute top-3 right-3">
-                          <div className="flex items-center gap-1 px-2 py-1 bg-orange-500/20 border border-orange-500/50 rounded-full text-xs text-orange-400">
-                            <Sparkles className="w-3 h-3" />
-                            <span>Popular</span>
+                        {/* Recommended badge */}
+                        {wallet.recommended && isAvailable && (
+                          <div className="absolute top-3 right-3">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-orange-500/20 border border-orange-500/50 rounded-full text-xs text-orange-400">
+                              <Sparkles className="w-3 h-3" />
+                              <span>Popular</span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="relative flex items-center gap-4 p-5">
+                          {/* Icon */}
+                          <div
+                            className={`flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center ${
+                              isAvailable
+                                ? "bg-gray-700/50 group-hover:bg-gray-700 text-orange-500"
+                                : "bg-gray-800/30 text-gray-600"
+                            } transition-all duration-300`}
+                          >
+                            {wallet.icon}
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-white text-lg group-hover:text-orange-400 transition-colors">
+                              {wallet.name}
+                            </h3>
+                            <p className="text-sm text-gray-400 mt-0.5">
+                              {wallet.description}
+                            </p>
+                          </div>
+
+                          {/* Status */}
+                          <div className="flex-shrink-0">
+                            {isConnecting ? (
+                              <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
+                            ) : isAvailable ? (
+                              <ChevronRight className="h-6 w-6 text-gray-500 group-hover:text-orange-500 group-hover:translate-x-1 transition-all" />
+                            ) : (
+                              <span className="text-xs text-gray-600">
+                                Unavailable
+                              </span>
+                            )}
                           </div>
                         </div>
-                      )}
 
-                      <div className="relative flex items-center gap-4 p-5">
-                        {/* Icon */}
-                        <div
-                          className={`flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center ${
-                            isAvailable
-                              ? "bg-gray-700/50 group-hover:bg-gray-700 text-orange-500"
-                              : "bg-gray-800/30 text-gray-600"
-                          } transition-all duration-300`}
-                        >
-                          {wallet.icon}
-                        </div>
-
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-white text-lg group-hover:text-orange-400 transition-colors">
-                            {wallet.name}
-                          </h3>
-                          <p className="text-sm text-gray-400 mt-0.5">
-                            {wallet.description}
-                          </p>
-                        </div>
-
-                        {/* Status */}
-                        <div className="flex-shrink-0">
-                          {isConnecting ? (
-                            <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
-                          ) : isAvailable ? (
-                            <ChevronRight className="h-6 w-6 text-gray-500 group-hover:text-orange-500 group-hover:translate-x-1 transition-all" />
-                          ) : (
-                            <span className="text-xs text-gray-600">
-                              Unavailable
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Bottom shine effect */}
-                      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-orange-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </Card>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
+                        {/* Bottom shine effect */}
+                        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-orange-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </Card>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+          </ScrollArea>
 
           {/* Error Message */}
           {(error || connectError) && (
-            <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-lg">
+            <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-lg flex-shrink-0">
               <p className="text-sm text-red-400">
                 {error || connectError?.message}
               </p>
@@ -299,7 +302,7 @@ export function WalletSelectionModal({
           )}
 
           {/* Footer */}
-          <div className="pt-6 border-t border-gray-700/50">
+          <div className="pt-6 border-t border-gray-700/50 flex-shrink-0">
             <div className="text-center space-y-3">
               <p className="text-xs text-gray-500">
                 By connecting, you agree to our{" "}
