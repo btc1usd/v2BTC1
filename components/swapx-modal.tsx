@@ -45,12 +45,18 @@ export default function SwapXModal({ isOpen, onClose }: SwapXModalProps) {
               <SwapWidget
                 client={thirdwebClient}
                 theme="dark"
-                prefill={{
-                  buyToken: {
-                    chainId: base.id,
-                    tokenAddress: CONTRACT_ADDRESSES.BTC1USD as string,
-                  },
-                }}
+               prefill={{
+    // Base USDC
+    buyToken: {
+      chainId: 8453,
+      tokenAddress: "0x9B8fc91C33ecAFE4992A2A8dBA27172328f423a5",
+    },
+    // Polygon native token (POL)
+    sellToken: {
+      tokenAddress: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      chainId:8453,
+    },
+  }}
               />
             </div>
           </div>

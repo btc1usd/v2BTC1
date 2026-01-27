@@ -9,7 +9,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { BuyWidget } from "thirdweb/react";
 import { client as thirdwebClient } from "@/lib/thirdweb-client";
-import { baseSepolia } from "thirdweb/chains";
+import { base } from "thirdweb/chains";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { Plus } from 'lucide-react';
 
@@ -44,9 +44,10 @@ export default function BuyXModal({ isOpen, onClose }: BuyXModalProps) {
             <BuyWidget
               client={thirdwebClient}
               theme="dark"
-              chain={baseSepolia}
-              tokenAddress={CONTRACT_ADDRESSES.BTC1USD as `0x${string}`}
-              tokenEditable={false}
+              chain={base}
+              tokenAddress="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+              tokenEditable={true}
+              
             />
           </div>
         </ScrollArea>
