@@ -39,15 +39,14 @@ export default function BuyXModal({ isOpen, onClose }: BuyXModalProps) {
           </p>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-6">
+        <ScrollArea className="flex-1 overflow-y-auto overflow-x-auto px-4 pb-6">
           <div className="w-full max-w-[500px] mx-auto">
             <BuyWidget
               client={thirdwebClient}
               theme="dark"
               chain={base}
-              tokenAddress="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-              tokenEditable={true}
-              
+              tokenAddress={CONTRACT_ADDRESSES.BTC1USD as `0x${string}`}
+              tokenEditable={false}
             />
           </div>
         </ScrollArea>

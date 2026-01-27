@@ -39,7 +39,7 @@ export default function SwapXModal({ isOpen, onClose }: SwapXModalProps) {
           </p>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 px-4 py-2 overflow-y-auto overflow-x-hidden">
+        <ScrollArea className="flex-1 px-4 py-2 overflow-y-auto overflow-x-auto">
           <div className="w-full flex justify-center pb-6">
             <div className="w-full max-w-[500px]">
               <SwapWidget
