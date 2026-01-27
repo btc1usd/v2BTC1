@@ -27,7 +27,7 @@ export default function SwapXModal({ isOpen, onClose }: SwapXModalProps) {
         onInteractOutside={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => e.preventDefault()}
       >
-        <DialogHeader className="p-4 sm:p-6 md:p-8 pb-3 sm:pb-4 flex-shrink-0">
+        <DialogHeader className="p-4 sm:p-6 md:p-8 pb-3 sm:pb-4 flex-shrink-0 overflow-x-auto">
           <DialogTitle className="flex items-center gap-3 sm:gap-4 text-white text-xl sm:text-2xl md:text-3xl font-bold">
             <div className="p-2 sm:p-2 md:p-3 bg-blue-600/20 rounded-xl sm:rounded-2xl">
               <ArrowLeftRight className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 text-blue-400" />
@@ -39,9 +39,9 @@ export default function SwapXModal({ isOpen, onClose }: SwapXModalProps) {
           </p>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 px-4 py-2 overflow-y-auto overflow-x-hidden">
-          <div className="w-full flex justify-center pb-6">
-            <div className="w-full max-w-[500px]">
+        <ScrollArea className="flex-1 px-4 py-2 overflow-y-auto overflow-x-auto [&>div]:whitespace-nowrap">
+          <div className="w-full flex justify-center pb-6 overflow-x-auto">
+            <div className="w-full min-w-max max-w-[800px] mx-auto overflow-x-auto">
               <SwapWidget
                 client={thirdwebClient}
                 theme="dark"
@@ -62,7 +62,7 @@ export default function SwapXModal({ isOpen, onClose }: SwapXModalProps) {
           </div>
         </ScrollArea>
 
-        <div className="p-3 sm:p-4 md:p-6 bg-gray-900/50 border-t border-gray-800 flex justify-center flex-shrink-0">
+        <div className="p-3 sm:p-4 md:p-6 bg-gray-900/50 border-t border-gray-800 flex justify-center flex-shrink-0 overflow-x-auto">
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-white text-xs sm:text-sm font-medium transition-colors px-4 py-2 rounded-lg hover:bg-gray-800/50"
